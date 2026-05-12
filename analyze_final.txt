@@ -1,0 +1,6 @@
+﻿Analyzing poultry_pms_desktop...                                
+
+  error - The argument type 'CardTheme' can't be assigned to the parameter type 'CardThemeData?'.  - lib\main.dart:44:20 - argument_type_not_assignable
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\screens\overview.dart:99:34 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\widgets\climate_widget.dart:23:33 - deprecated_member_use
+
