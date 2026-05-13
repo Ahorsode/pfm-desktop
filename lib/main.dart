@@ -14,6 +14,7 @@ import 'data/sync_engine.dart';
 import 'screens/main_scaffold.dart';
 import 'screens/login_screen.dart';
 import 'screens/device_setup_screen.dart';
+import 'theme/theme_provider.dart';
 
 /// Secure storage implementation for Supabase Auth
 class SecureLocalStorage extends LocalStorage {
@@ -122,11 +123,14 @@ void main() async {
     _startHandoffWatcher();
   }
 
+  final themeProvider = ThemeProvider();
+
   runApp(
     MultiProvider(
       providers: [
         Provider<AppDatabase>.value(value: database),
         ChangeNotifierProvider<SyncEngine>.value(value: syncEngine),
+        ChangeNotifierProvider<ThemeProvider>.value(value: themeProvider),
       ],
       child: MyApp(isBound: isBound),
     ),
@@ -167,17 +171,13 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Provider.of<ThemeProvider>(context);
     return MaterialApp(
-      title: 'Agri-ERP Desktop',
+      title: 'Poultry PMS Desktop',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF16A34A),
-          brightness: Brightness.light,
-        ),
-        useMaterial3: true,
-        fontFamily: 'Inter',
-      ),
+      theme: theme.lightTheme,
+      darkTheme: theme.darkTheme,
+      themeMode: theme.isDark ? ThemeMode.dark : ThemeMode.light,
       home: isBound ? const LoginScreen() : const DeviceSetupScreen(),
     );
   }

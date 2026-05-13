@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:drift/drift.dart' hide Batch, Column;
 import '../data/local_db.dart';
 import '../utils/farm_utils.dart';
+import '../widgets/register_unit_dialog.dart';
 
 class LivestockManager extends StatelessWidget {
   const LivestockManager({super.key});
@@ -13,12 +14,13 @@ class LivestockManager extends StatelessWidget {
     final db = Provider.of<AppDatabase>(context);
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        title: const Text('Livestock Inventory', 
-          style: TextStyle(fontWeight: FontWeight.w800, fontSize: 24)),
-        backgroundColor: Colors.white,
+        title: Text('Livestock Inventory',
+          style: TextStyle(fontWeight: FontWeight.w800, fontSize: 24, color: Theme.of(context).colorScheme.onSurface)),
+        backgroundColor: Theme.of(context).cardColor,
         elevation: 0,
+        surfaceTintColor: Colors.transparent,
         centerTitle: false,
         actions: [
           Padding(
@@ -54,7 +56,7 @@ class LivestockManager extends StatelessWidget {
               crossAxisCount: 3,
               crossAxisSpacing: 24,
               mainAxisSpacing: 24,
-              childAspectRatio: 1.4,
+              childAspectRatio: 1.1,
             ),
             itemCount: batches.length,
             itemBuilder: (context, index) {
@@ -91,89 +93,10 @@ class LivestockManager extends StatelessWidget {
   }
 
   Future<void> _showAddBatchDialog(BuildContext context, AppDatabase db) async {
-    final nameController = TextEditingController();
-    final countController = TextEditingController();
-    String selectedType = 'POULTRY_BROILER';
-
     return showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('Add New Livestock Batch', style: TextStyle(fontWeight: FontWeight.w800)),
-        content: SizedBox(
-          width: 400,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: nameController,
-                decoration: InputDecoration(
-                  labelText: 'Batch Name/ID',
-                  hintText: 'e.g. Batch A-2024',
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-              ),
-              const SizedBox(height: 20),
-              DropdownButtonFormField<String>(
-                value: selectedType,
-                items: const [
-                  DropdownMenuItem(value: 'POULTRY_BROILER', child: Text('Broilers')),
-                  DropdownMenuItem(value: 'POULTRY_LAYER', child: Text('Layers')),
-                  DropdownMenuItem(value: 'POULTRY_TURKEY', child: Text('Turkeys')),
-                ],
-                onChanged: (v) => selectedType = v!,
-                decoration: InputDecoration(
-                  labelText: 'Livestock Type',
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-              ),
-              const SizedBox(height: 20),
-              TextField(
-                controller: countController,
-                keyboardType: TextInputType.number,
-                decoration: InputDecoration(
-                  labelText: 'Initial Bird Count',
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context), 
-            child: Text('Cancel', style: TextStyle(color: Colors.blueGrey[400]))
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              final count = int.tryParse(countController.text) ?? 0;
-              if (nameController.text.isEmpty || count <= 0) return;
-              
-              final farmId = await FarmUtils.getBoundFarmId();
-              if (farmId == null) return;
-              
-              await db.into(db.batches).insert(
-                BatchesCompanion.insert(
-                  farmId: farmId,
-                  batchName: Value(nameController.text),
-                  type: Value(selectedType),
-                  arrivalDate: DateTime.now(),
-                  currentCount: count,
-                  initialCount: count,
-                  synced: const Value(false),
-                ),
-              );
-              if (context.mounted) Navigator.pop(context);
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.blue[600],
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-            ),
-            child: const Text('Register Batch'),
-          ),
-        ],
-      ),
+      barrierDismissible: true,
+      builder: (context) => const RegisterUnitDialog(),
     );
   }
 }
@@ -188,7 +111,7 @@ class _BatchDetailCard extends StatelessWidget {
 
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 20, offset: const Offset(0, 10))
@@ -201,26 +124,26 @@ class _BatchDetailCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _buildStatusBadge(batch.status),
+                _buildStatusBadge(context, batch.status),
                 const SizedBox(height: 16),
                 Text(batch.batchName, 
                   style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 22, letterSpacing: -0.5)),
                 const SizedBox(height: 4),
-                Text(batch.type.replaceAll('_', ' '), 
-                  style: TextStyle(color: Colors.blueGrey[400], fontWeight: FontWeight.w600, fontSize: 13)),
+                Text(batch.type.replaceAll('_', ' '),
+                  style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontWeight: FontWeight.w600, fontSize: 13)),
                 const Spacer(),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    _buildInfoItem('Birds', batch.currentCount.toString(), Icons.pets_rounded),
-                    _buildInfoItem('Age', '$ageDays Days', Icons.calendar_today_rounded),
+                    _buildInfoItem(context, 'Birds', batch.currentCount.toString(), Icons.pets_rounded),
+                    _buildInfoItem(context, 'Age', '$ageDays Days', Icons.calendar_today_rounded),
                   ],
                 ),
                 const SizedBox(height: 16),
                 const Divider(),
                 const SizedBox(height: 12),
                 Text('Arrived: ${DateFormat('MMM dd, yyyy').format(batch.arrivalDate)}',
-                  style: TextStyle(color: Colors.blueGrey[300], fontSize: 12, fontWeight: FontWeight.w600)),
+                  style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12, fontWeight: FontWeight.w600)),
               ],
             ),
           ),
@@ -228,7 +151,7 @@ class _BatchDetailCard extends StatelessWidget {
             top: 16,
             right: 16,
             child: IconButton(
-              icon: Icon(Icons.edit_note_rounded, color: Colors.blueGrey[200]),
+              icon: Icon(Icons.edit_note_rounded, color: Theme.of(context).colorScheme.onSurfaceVariant),
               onPressed: () {},
             ),
           ),
@@ -237,15 +160,15 @@ class _BatchDetailCard extends StatelessWidget {
     );
   }
 
-  Widget _buildInfoItem(String label, String value, IconData icon) {
+  Widget _buildInfoItem(BuildContext context, String label, String value, IconData icon) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           children: [
-            Icon(icon, size: 14, color: Colors.blueGrey[200]),
+            Icon(icon, size: 14, color: Theme.of(context).colorScheme.onSurfaceVariant),
             const SizedBox(width: 6),
-            Text(label, style: TextStyle(color: Colors.blueGrey[200], fontSize: 12, fontWeight: FontWeight.w600)),
+            Text(label, style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12, fontWeight: FontWeight.w600)),
           ],
         ),
         const SizedBox(height: 4),
@@ -254,7 +177,7 @@ class _BatchDetailCard extends StatelessWidget {
     );
   }
 
-  Widget _buildStatusBadge(String status) {
+  Widget _buildStatusBadge(BuildContext context, String status) {
     final isActive = status.toLowerCase() == 'active';
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),

@@ -272,6 +272,38 @@ class FeedFormulations extends Table {
   TextColumn get ingredientsJson => text().nullable()(); // JSON string
 }
 
+// 16. Vaccination Schedules
+@DataClassName('VaccinationSchedule')
+class VaccinationSchedules extends Table {
+  @override
+  String get tableName => 'vaccination_schedules';
+  
+  IntColumn get id => integer().autoIncrement()();
+  IntColumn get batchId => integer()();
+  TextColumn get vaccineName => text()();
+  DateTimeColumn get scheduledDate => dateTime()();
+  TextColumn get status => text().withDefault(const Constant('PENDING'))();
+  TextColumn get notes => text().nullable()();
+  IntColumn get farmId => integer()();
+  BoolColumn get synced => boolean().withDefault(const Constant(false))();
+}
+
+// 17. Medication Schedules
+@DataClassName('MedicationSchedule')
+class MedicationSchedules extends Table {
+  @override
+  String get tableName => 'medication_schedules';
+  
+  IntColumn get id => integer().autoIncrement()();
+  IntColumn get batchId => integer()();
+  TextColumn get medicationName => text()();
+  DateTimeColumn get scheduledDate => dateTime()();
+  TextColumn get status => text().withDefault(const Constant('PENDING'))();
+  TextColumn get notes => text().nullable()();
+  IntColumn get farmId => integer()();
+  BoolColumn get synced => boolean().withDefault(const Constant(false))();
+}
+
 LazyDatabase _openConnection() {
   return LazyDatabase(() async {
     final dbFolder = await getApplicationDocumentsDirectory();
@@ -296,13 +328,15 @@ LazyDatabase _openConnection() {
   DeviceRegistrations,
   FarmMembers,
   FeedTypes,
-  FeedFormulations
+  FeedFormulations,
+  VaccinationSchedules,
+  MedicationSchedules
 ])
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 5; // Bumped for full architecture reset
+  int get schemaVersion => 6; // Bumped to include Vaccination & Medication schedules
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -310,10 +344,8 @@ class AppDatabase extends _$AppDatabase {
           await m.createAll();
         },
         onUpgrade: (m, from, to) async {
-          if (from < 5) {
-            // Significant schema change (UUID -> Int, missing tables)
-            // DEV ONLY: Perform a clean reset to ensure all tables exist and match the new types.
-            // This resolves the "no such table: egg_production" and null-check login errors.
+          if (from < 6) {
+            // Significant schema change
             for (final table in allTables) {
               await m.deleteTable(table.actualTableName);
             }

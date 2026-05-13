@@ -217,17 +217,17 @@ class _DeviceSetupScreenState extends State<DeviceSetupScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey[50],
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: Center(
         child: Container(
           width: 450,
           padding: const EdgeInsets.all(40),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: Theme.of(context).cardColor,
             borderRadius: BorderRadius.circular(24),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.05),
+                color: Colors.black.withOpacity(0.08),
                 blurRadius: 30,
                 offset: const Offset(0, 15),
               )
@@ -253,7 +253,7 @@ class _DeviceSetupScreenState extends State<DeviceSetupScreen> {
                 _isAuthenticated 
                   ? 'Authenticated! Enter your Farm ID to finish.'
                   : 'Authorize this computer to access your farm data.',
-                style: TextStyle(fontSize: 14, color: Colors.grey[600], height: 1.5),
+                style: TextStyle(fontSize: 14, color: Theme.of(context).colorScheme.onSurfaceVariant, height: 1.5),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 32),
@@ -305,18 +305,18 @@ class _DeviceSetupScreenState extends State<DeviceSetupScreen> {
                   icon: const Icon(LucideIcons.chrome, size: 20),
                   label: Text(_isLoading ? 'Authenticating...' : 'Continue with Google'),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.white,
-                    foregroundColor: Colors.black87,
+                    backgroundColor: Theme.of(context).cardColor,
+                    foregroundColor: Theme.of(context).colorScheme.onSurface,
                     padding: const EdgeInsets.symmetric(vertical: 20),
-                    side: BorderSide(color: Colors.grey[300]!),
+                    side: BorderSide(color: Theme.of(context).colorScheme.outline),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   ),
                 ),
                 const SizedBox(height: 24),
                 if (_showManualEntry) ...[
-                  const Text(
+                  Text(
                     'Trouble logging in? Paste the URL from your browser below:',
-                    style: TextStyle(fontSize: 12, color: Colors.grey),
+                    style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant),
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 12),
@@ -348,7 +348,7 @@ class _DeviceSetupScreenState extends State<DeviceSetupScreen> {
                     prefixIcon: const Icon(LucideIcons.layoutGrid, size: 20),
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                     filled: true,
-                    fillColor: Colors.grey[50],
+                    fillColor: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3),
                   ),
                   keyboardType: TextInputType.number,
                   autofocus: true,
@@ -371,16 +371,16 @@ class _DeviceSetupScreenState extends State<DeviceSetupScreen> {
                   onPressed: _isLoading ? null : _signOut,
                   icon: const Icon(LucideIcons.logOut, size: 16),
                   label: const Text('Sign out / Use different account', style: TextStyle(fontSize: 13)),
-                  style: TextButton.styleFrom(foregroundColor: Colors.grey[600]),
+                  style: TextButton.styleFrom(foregroundColor: Theme.of(context).colorScheme.onSurfaceVariant),
                 ),
               ],
               
               const SizedBox(height: 32),
               const Divider(),
               const SizedBox(height: 12),
-              const Text(
+              Text(
                 '🔒 Your Hardware Identity will be bound to this Farm ID.',
-                style: TextStyle(fontSize: 11, color: Colors.grey),
+                style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurfaceVariant),
                 textAlign: TextAlign.center,
               ),
             ],

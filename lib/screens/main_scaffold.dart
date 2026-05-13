@@ -6,8 +6,17 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'login_screen.dart';
 import 'overview.dart';
 import 'livestock_manager.dart';
-import 'daily_operations.dart';
 import 'inventory_manager.dart';
+import 'houses_screen.dart';
+import 'operation_log_screen.dart';
+import 'upcoming_feature_screen.dart';
+import 'sales_screen.dart';
+import 'customer_directory_screen.dart';
+import 'financial_control_screen.dart';
+import 'team_management_screen.dart';
+import 'license_screen.dart';
+import 'settings_screen.dart';
+import '../widgets/app_sidebar.dart';
 
 class MainScaffold extends StatefulWidget {
   const MainScaffold({super.key});
@@ -20,12 +29,19 @@ class _MainScaffoldState extends State<MainScaffold> {
   int _selectedIndex = 0;
 
   final List<Widget> _pages = [
-    const OverviewPage(),
-    const LivestockManager(),
-    const DailyOperations(),
-    const InventoryManager(),
-    const Center(child: Text('Sales & Finance (Coming Soon)')),
-    const Center(child: Text('Settings')),
+    const OverviewPage(), // 0
+    const LivestockManager(), // 1
+    const HousesScreen(), // 2
+    const OperationLogScreen(type: OperationType.eggs), // 3
+    const OperationLogScreen(type: OperationType.feeding), // 4
+    const OperationLogScreen(type: OperationType.mortality), // 5
+    const SalesScreen(), // 6
+    const CustomerDirectoryScreen(), // 7
+    const FinancialControlScreen(), // 8
+    const InventoryManager(), // 9
+    const TeamManagementScreen(), // 10
+    const LicenseScreen(), // 11
+    const SettingsScreen(), // 12
   ];
 
   Future<void> _logout(BuildContext context) async {
@@ -58,142 +74,59 @@ class _MainScaffoldState extends State<MainScaffold> {
       body: Row(
         children: [
           // Navigation Sidebar
-          NavigationRail(
-            extended: true,
+          AppSidebar(
             selectedIndex: _selectedIndex,
             onDestinationSelected: (index) => setState(() => _selectedIndex = index),
-            leading: Column(
-              children: [
-                const SizedBox(height: 20),
-                const Icon(Icons.agriculture, size: 40, color: Colors.green),
-                const SizedBox(height: 10),
-                const Text('Agri-ERP', style: TextStyle(fontWeight: FontWeight.bold)),
-                const SizedBox(height: 20),
-              ],
-            ),
-            trailing: Expanded(
-              child: Align(
-                alignment: Alignment.bottomCenter,
-                child: Padding(
-                  padding: const EdgeInsets.only(bottom: 20),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      // Unified Sync Status Area
-                      StreamBuilder<bool>(
-                        stream: syncEngine.syncStatus,
-                        initialData: syncEngine.isSyncing,
-                        builder: (context, snapshot) {
-                          final isSyncing = snapshot.data ?? false;
-                          return Tooltip(
-                            message: isSyncing ? 'Synchronizing data...' : 'Click to sync now',
-                            child: InkWell(
-                              onTap: isSyncing ? null : () => syncEngine.syncNow(),
-                              borderRadius: BorderRadius.circular(8),
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
-                                child: Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    if (isSyncing)
-                                      const SizedBox(
-                                        height: 20,
-                                        width: 20,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                          valueColor: AlwaysStoppedAnimation<Color>(Colors.blue),
-                                        ),
-                                      )
-                                    else
-                                      const Icon(Icons.cloud_done, color: Colors.green, size: 20),
-                                    const SizedBox(height: 6),
-                                    Text(
-                                      isSyncing ? 'Syncing...' : 'Synced',
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w600,
-                                        color: isSyncing ? Colors.blue[700] : Colors.green[700],
-                                      ),
-                                    ),
-                                    if (!isSyncing)
-                                      Padding(
-                                        padding: const EdgeInsets.only(top: 2),
-                                        child: Text(
-                                          'Refresh Now',
-                                          style: TextStyle(
-                                            fontSize: 9,
-                                            color: Colors.grey[500],
-                                          ),
-                                        ),
-                                      ),
-                                  ],
-                                ),
+            onLogout: () => _logout(context),
+            syncStatus: StreamBuilder<bool>(
+              stream: syncEngine.syncStatus,
+              initialData: syncEngine.isSyncing,
+              builder: (context, snapshot) {
+                final isSyncing = snapshot.data ?? false;
+                return Tooltip(
+                  message: isSyncing ? 'Synchronizing data...' : 'Click to sync now',
+                  child: InkWell(
+                    onTap: isSyncing ? null : () => syncEngine.syncNow(),
+                    borderRadius: BorderRadius.circular(8),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (isSyncing)
+                            const SizedBox(
+                              height: 16,
+                              width: 16,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor: AlwaysStoppedAnimation<Color>(Colors.white70),
                               ),
+                            )
+                          else
+                            const Icon(Icons.cloud_done_rounded, color: Color(0xFF22C55E), size: 16),
+                          const SizedBox(width: 8),
+                          Text(
+                            isSyncing ? 'SYNCING...' : 'CLOUD SYNCED',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 0.5,
+                              color: isSyncing ? Colors.white70 : const Color(0xFF22C55E),
                             ),
-                          );
-                        },
-                      ),
-
-                      const Divider(indent: 16, endIndent: 16),
-
-                      // Logout button
-                      TextButton.icon(
-                        onPressed: () => _logout(context),
-                        icon: const Icon(Icons.logout, size: 18, color: Colors.redAccent),
-                        label: const Text(
-                          'Logout Account',
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: Colors.redAccent,
                           ),
-                        ),
-                        style: TextButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                        ),
+                        ],
                       ),
-                    ],
+                    ),
                   ),
-                ),
-              ),
+                );
+              },
             ),
-            destinations: const [
-              NavigationRailDestination(
-                icon: Icon(Icons.dashboard_outlined),
-                selectedIcon: Icon(Icons.dashboard),
-                label: Text('Dashboard'),
-              ),
-              NavigationRailDestination(
-                icon: Icon(Icons.pets_outlined),
-                selectedIcon: Icon(Icons.pets),
-                label: Text('Livestock'),
-              ),
-              NavigationRailDestination(
-                icon: Icon(Icons.edit_note_outlined),
-                selectedIcon: Icon(Icons.edit_note),
-                label: Text('Daily Logs'),
-              ),
-              NavigationRailDestination(
-                icon: Icon(Icons.inventory_2_outlined),
-                selectedIcon: Icon(Icons.inventory_2),
-                label: Text('Inventory'),
-              ),
-              NavigationRailDestination(
-                icon: Icon(Icons.monetization_on_outlined),
-                selectedIcon: Icon(Icons.monetization_on),
-                label: Text('Finance'),
-              ),
-              NavigationRailDestination(
-                icon: Icon(Icons.settings_outlined),
-                selectedIcon: Icon(Icons.settings),
-                label: Text('Settings'),
-              ),
-            ],
           ),
-          const VerticalDivider(thickness: 1, width: 1),
+          const VerticalDivider(thickness: 1, width: 1, color: Colors.black12),
           // Main Content
           Expanded(
             child: Container(
-              color: Colors.grey[50],
+              color: Theme.of(context).scaffoldBackgroundColor,
               child: _pages[_selectedIndex],
             ),
           ),

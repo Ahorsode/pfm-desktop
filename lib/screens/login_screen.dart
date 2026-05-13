@@ -195,19 +195,19 @@ class _LoginScreenState extends State<LoginScreen> {
     final cs = Theme.of(context).colorScheme;
 
     return Scaffold(
-      backgroundColor: Colors.grey[50],
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: Center(
         child: SingleChildScrollView(
           child: Container(
             width: 420,
             padding: const EdgeInsets.all(40),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: Theme.of(context).cardColor,
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Colors.grey.shade200),
+              border: Border.all(color: Theme.of(context).colorScheme.outline.withOpacity(0.2)),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.06),
+                  color: Colors.black.withOpacity(0.08),
                   blurRadius: 24,
                   offset: const Offset(0, 8),
                 ),
@@ -232,7 +232,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 const SizedBox(height: 6),
                 Text(
                   'Sign in to access your farm dashboard',
-                  style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+                  style: TextStyle(fontSize: 14, color: Theme.of(context).colorScheme.onSurfaceVariant),
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 28),
@@ -240,7 +240,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 // Email / Phone toggle
                 Container(
                   decoration: BoxDecoration(
-                    color: Colors.grey[100],
+                    color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3),
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Row(
@@ -339,7 +339,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   padding: const EdgeInsets.only(top: 6),
                   child: Text(
                     'Google-account holders: use 123456 as your first-time password.',
-                    style: TextStyle(fontSize: 11, color: Colors.grey[500]),
+                    style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurfaceVariant),
                   ),
                 ),
                 const SizedBox(height: 28),
@@ -394,12 +394,12 @@ class _LoginScreenState extends State<LoginScreen> {
                           height: 20,
                         ),
                         const SizedBox(width: 12),
-                        const Text(
+                        Text(
                           'Continue with Google',
                           style: TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w600,
-                            color: Colors.black87,
+                            color: Theme.of(context).colorScheme.onSurface,
                           ),
                         ),
                       ],
@@ -413,7 +413,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 TextButton(
                   onPressed: _isLoading ? null : _showUnbindConfirmation,
                   style: TextButton.styleFrom(
-                    foregroundColor: Colors.grey[600],
+                    foregroundColor: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
                   child: const Text('Switch Farm / Unbind Device'),
                 ),
@@ -526,12 +526,12 @@ class _ModeTab extends StatelessWidget {
           margin: const EdgeInsets.all(4),
           padding: const EdgeInsets.symmetric(vertical: 10),
           decoration: BoxDecoration(
-            color: selected ? Colors.white : Colors.transparent,
+            color: selected ? Theme.of(context).cardColor : Colors.transparent,
             borderRadius: BorderRadius.circular(8),
             boxShadow: selected
                 ? [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.08),
+                      color: Colors.black.withOpacity(0.12),
                       blurRadius: 6,
                       offset: const Offset(0, 2),
                     )
@@ -541,14 +541,14 @@ class _ModeTab extends StatelessWidget {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(icon, size: 15, color: selected ? const Color(0xFF16A34A) : Colors.grey[500]),
+              Icon(icon, size: 15, color: selected ? const Color(0xFF16A34A) : Theme.of(context).colorScheme.onSurfaceVariant),
               const SizedBox(width: 6),
               Text(
                 label,
                 style: TextStyle(
                   fontSize: 13,
                   fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
-                  color: selected ? const Color(0xFF16A34A) : Colors.grey[600],
+                  color: selected ? const Color(0xFF16A34A) : Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
               ),
             ],

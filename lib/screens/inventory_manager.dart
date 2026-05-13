@@ -12,12 +12,13 @@ class InventoryManager extends StatelessWidget {
     final db = Provider.of<AppDatabase>(context);
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        title: const Text('Inventory & Stock', 
-          style: TextStyle(fontWeight: FontWeight.w800, fontSize: 24)),
-        backgroundColor: Colors.white,
+        title: Text('Inventory & Stock',
+          style: TextStyle(fontWeight: FontWeight.w800, fontSize: 24, color: Theme.of(context).colorScheme.onSurface)),
+        backgroundColor: Theme.of(context).cardColor,
         elevation: 0,
+        surfaceTintColor: Colors.transparent,
         centerTitle: false,
         actions: [
           Padding(
@@ -66,13 +67,13 @@ class InventoryManager extends StatelessWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.warehouse_outlined, size: 100, color: Colors.blueGrey[100]),
+          Icon(Icons.warehouse_outlined, size: 100, color: Theme.of(context).colorScheme.outline),
           const SizedBox(height: 24),
           const Text('Inventory is Empty', 
             style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800)),
           const SizedBox(height: 8),
-          Text('Add feed, medication, or supplies to track your stock.', 
-            style: TextStyle(color: Colors.blueGrey[400])),
+          Text('Add feed, medication, or supplies to track your stock.',
+            style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
           const SizedBox(height: 40),
           ElevatedButton(
             onPressed: () => _showAddItemDialog(context, db),
@@ -194,7 +195,7 @@ class _InventoryItemTile extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 15, offset: const Offset(0, 8))
@@ -218,8 +219,8 @@ class _InventoryItemTile extends StatelessWidget {
               children: [
                 Text(item.itemName, 
                   style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
-                Text(item.category ?? 'Uncategorized', 
-                  style: TextStyle(color: Colors.blueGrey[300], fontSize: 13, fontWeight: FontWeight.w600)),
+                Text(item.category ?? 'Uncategorized',
+                  style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 13, fontWeight: FontWeight.w600)),
               ],
             ),
           ),
@@ -230,7 +231,7 @@ class _InventoryItemTile extends StatelessWidget {
                 style: TextStyle(
                   fontWeight: FontWeight.w900, 
                   fontSize: 20,
-                  color: isLow ? Colors.red[700] : Colors.blueGrey[800],
+                  color: isLow ? Colors.red[700] : Theme.of(context).colorScheme.onSurface,
                 )),
               if (isLow)
                 Text('LOW STOCK', 
