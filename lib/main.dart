@@ -11,7 +11,6 @@ import 'dart:io';
 
 import 'data/local_db.dart';
 import 'data/sync_engine.dart';
-import 'screens/main_scaffold.dart';
 import 'screens/login_screen.dart';
 import 'screens/device_setup_screen.dart';
 import 'theme/theme_provider.dart';
@@ -49,10 +48,10 @@ void main() async {
   }
 
   // Handle deep links (OAuth redirects)
-  final _appLinks = AppLinks();
+  final appLinks = AppLinks();
   
   // 1. Handle links when app is already running
-  _appLinks.uriLinkStream.listen((uri) async {
+  appLinks.uriLinkStream.listen((uri) async {
     debugPrint('Received deep link (stream): $uri');
     try {
       await Supabase.instance.client.auth.getSessionFromUrl(uri);
@@ -63,7 +62,7 @@ void main() async {
   });
 
   // 2. Handle link that opened the app
-  final initialUri = await _appLinks.getInitialLink();
+  final initialUri = await appLinks.getInitialLink();
   if (initialUri != null) {
     debugPrint('Received initial deep link: $initialUri');
     try {

@@ -31,6 +31,7 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> {
 
   Future<void> _showAddMemberDialog() async {
     final farmId = await _getFarmId();
+    if (!mounted) return;
     final nameCtrl = TextEditingController();
     final emailCtrl = TextEditingController();
     String selectedRole = 'WORKER';
@@ -41,9 +42,9 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> {
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDlg) => AlertDialog(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          backgroundColor: Theme.of(context).cardColor,
+          backgroundColor: Theme.of(ctx).cardColor,
           title: Text('Add Team Member',
-              style: TextStyle(fontWeight: FontWeight.w800, color: Theme.of(context).colorScheme.onSurface)),
+              style: TextStyle(fontWeight: FontWeight.w800, color: Theme.of(ctx).colorScheme.onSurface)),
           content: SizedBox(
             width: 400,
             child: Form(
@@ -54,7 +55,7 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> {
                 _buildField(emailCtrl, 'Email Address', Icons.email_rounded, ctx, required: true),
                 const SizedBox(height: 12),
                 DropdownButtonFormField<String>(
-                  value: selectedRole,
+                  initialValue: selectedRole,
                   decoration: InputDecoration(
                     labelText: 'Role',
                     prefixIcon: const Icon(Icons.badge_rounded, size: 20),
@@ -85,7 +86,9 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> {
                 ), mode: InsertMode.insertOrIgnore);
                 if (ctx.mounted) Navigator.pop(ctx);
                 setState(() {});
-                if (mounted) Provider.of<SyncEngine>(context, listen: false).syncNow();
+                if (mounted) {
+                  Provider.of<SyncEngine>(context, listen: false).syncNow();
+                }
               },
               style: FilledButton.styleFrom(backgroundColor: const Color(0xFF16A34A)),
               child: const Text('Add Member'),
@@ -170,9 +173,9 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> {
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                     decoration: BoxDecoration(
-                      color: _roleColor(role).withOpacity(0.1),
+                      color: _roleColor(role).withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: _roleColor(role).withOpacity(0.3)),
+                      border: Border.all(color: _roleColor(role).withValues(alpha: 0.3)),
                     ),
                     child: Row(children: [
                       Icon(_roleIcon(role), size: 14, color: _roleColor(role)),
@@ -215,7 +218,7 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> {
                     itemCount: members.length,
                     itemBuilder: (ctx, i) {
                       final m = members[i];
-                      final role = m.role ?? 'WORKER';
+                      final role = m.role;
                       final color = _roleColor(role);
                       return FutureBuilder<User?>(
                         future: (db.select(db.users)..where((u) => u.id.equals(m.userId))).getSingleOrNull(),
@@ -227,8 +230,8 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> {
                             decoration: BoxDecoration(
                               color: Theme.of(context).cardColor,
                               borderRadius: BorderRadius.circular(20),
-                              border: Border.all(color: color.withOpacity(isDark ? 0.3 : 0.15)),
-                              boxShadow: [BoxShadow(color: Colors.black.withOpacity(isDark ? 0.2 : 0.04), blurRadius: 12)],
+                              border: Border.all(color: color.withValues(alpha: isDark ? 0.3 : 0.15)),
+                              boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.04), blurRadius: 12)],
                             ),
                             child: Padding(
                               padding: const EdgeInsets.all(20),
@@ -238,9 +241,9 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> {
                                   Row(children: [
                                     CircleAvatar(
                                       radius: 20,
-                                      backgroundColor: color.withOpacity(0.15),
+                                      backgroundColor: color.withValues(alpha: 0.15),
                                       child: Text(
-                                        (name ?? 'U')[0].toUpperCase(),
+                                        name[0].toUpperCase(),
                                         style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 16),
                                       ),
                                     ),
@@ -248,7 +251,7 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> {
                                     Container(
                                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                                       decoration: BoxDecoration(
-                                        color: color.withOpacity(0.1),
+                                        color: color.withValues(alpha: 0.1),
                                         borderRadius: BorderRadius.circular(12),
                                       ),
                                       child: Row(children: [
@@ -285,7 +288,7 @@ class _TeamManagementScreenState extends State<TeamManagementScreen> {
                                     ),
                                   ]),
                                   const Spacer(),
-                                  Text(name ?? 'Unknown', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15, color: cs.onSurface), overflow: TextOverflow.ellipsis),
+                                  Text(name, style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15, color: cs.onSurface), overflow: TextOverflow.ellipsis),
                                   if (email.isNotEmpty) Text(email, style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12), overflow: TextOverflow.ellipsis),
                                   const SizedBox(height: 4),
                                   Text('Joined ${DateFormat('MMM dd, yyyy').format(m.joinedAt)}',

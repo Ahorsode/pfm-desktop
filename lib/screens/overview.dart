@@ -35,47 +35,77 @@ class OverviewPage extends StatelessWidget {
             const SizedBox(height: 40),
             const _PremiumStatsGrid(),
             const SizedBox(height: 48),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  flex: 3,
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    _buildSectionHeader(context, 'Active Batches', Icons.grid_view_rounded),
-                    const SizedBox(height: 20),
-                    StreamBuilder<List<Batch>>(
-                      stream: (db.select(db.batches)..where((t) => t.status.equals('active'))).watch(),
-                      builder: (context, snapshot) {
-                        if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
-                        final batches = snapshot.data!;
-                        if (batches.isEmpty) return _buildEmptyState(context);
-                        return GridView.builder(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: 2, crossAxisSpacing: 24, mainAxisSpacing: 24, childAspectRatio: 1.1,
-                          ),
-                          itemCount: batches.length,
-                          itemBuilder: (context, index) => _PremiumBatchCard(batch: batches[index]),
-                        );
-                      },
+            LayoutBuilder(
+              builder: (context, constraints) {
+                if (constraints.maxWidth < 1100) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildSectionHeader(context, 'Active Batches', Icons.grid_view_rounded),
+                      const SizedBox(height: 20),
+                      _buildBatchesGrid(db),
+                      const SizedBox(height: 48),
+                      _buildSectionHeader(context, 'Recent Activity', Icons.history_rounded),
+                      const SizedBox(height: 20),
+                      const _RecentActivityPanel(),
+                    ],
+                  );
+                }
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      flex: 3,
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        _buildSectionHeader(context, 'Active Batches', Icons.grid_view_rounded),
+                        const SizedBox(height: 20),
+                        _buildBatchesGrid(db),
+                      ]),
                     ),
-                  ]),
-                ),
-                const SizedBox(width: 40),
-                Expanded(
-                  flex: 2,
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    _buildSectionHeader(context, 'Recent Activity', Icons.history_rounded),
-                    const SizedBox(height: 20),
-                    const _RecentActivityPanel(),
-                  ]),
-                ),
-              ],
+                    const SizedBox(width: 40),
+                    Expanded(
+                      flex: 2,
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        _buildSectionHeader(context, 'Recent Activity', Icons.history_rounded),
+                        const SizedBox(height: 20),
+                        const _RecentActivityPanel(),
+                      ]),
+                    ),
+                  ],
+                );
+              },
             ),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildBatchesGrid(AppDatabase db) {
+    return StreamBuilder<List<Batch>>(
+      stream: (db.select(db.batches)..where((t) => t.status.equals('active'))).watch(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+        final batches = snapshot.data!;
+        if (batches.isEmpty) return _buildEmptyState(context);
+        return LayoutBuilder(
+          builder: (context, constraints) {
+            final crossAxisCount = constraints.maxWidth < 600 ? 1 : (constraints.maxWidth < 1200 ? 2 : 3);
+            return GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: crossAxisCount,
+                crossAxisSpacing: 24,
+                mainAxisSpacing: 24,
+                childAspectRatio: 1.1,
+              ),
+              itemCount: batches.length,
+              itemBuilder: (context, index) => _PremiumBatchCard(batch: batches[index]),
+            );
+          },
+        );
+      },
     );
   }
 
@@ -93,7 +123,7 @@ class OverviewPage extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF166534).withOpacity(0.3) : Colors.green[50],
+        color: isDark ? const Color(0xFF166534).withValues(alpha: 0.3) : Colors.green[50],
         borderRadius: BorderRadius.circular(30),
         border: Border.all(color: isDark ? const Color(0xFF166534) : Colors.green[100]!),
       ),
@@ -114,7 +144,7 @@ class OverviewPage extends StatelessWidget {
         color: Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(24),
         border: Border.all(color: cs.outline),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 20)],
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 20)],
       ),
       child: Column(children: [
         Icon(Icons.add_business_outlined, size: 80, color: cs.outline),
@@ -139,51 +169,88 @@ class _PremiumStatsGrid extends StatelessWidget {
       builder: (context, snapshot) {
         final batches = snapshot.data ?? [];
         final totalBirds = batches.fold(0, (sum, b) => sum + b.currentCount);
-        return Row(children: [
-          _buildStatCard(context, 'Total Birds', totalBirds.toString(), Icons.pets_rounded, Colors.orange),
-          const SizedBox(width: 24),
-          StreamBuilder<List<EggProduction>>(
-            stream: db.select(db.eggProductions).watch(),
-            builder: (context, eggSnap) {
-              final totalEggs = (eggSnap.data ?? []).fold(0, (sum, e) => sum + e.eggsCollected);
-              return _buildStatCard(context, 'Total Eggs', totalEggs.toString(), Icons.egg_rounded, Colors.amber);
-            },
-          ),
-          const SizedBox(width: 24),
-          StreamBuilder<List<InventoryItem>>(
-            stream: db.select(db.inventory).watch(),
-            builder: (context, invSnap) {
-              final feedItems = (invSnap.data ?? []).where((i) => i.category == 'FEED').length;
-              return _buildStatCard(context, 'Feed Types', feedItems.toString(), Icons.inventory_2_rounded, Colors.teal);
-            },
-          ),
-          const SizedBox(width: 24),
-          StreamBuilder<List<Mortality>>(
-            stream: db.select(db.mortalities).watch(),
-            builder: (context, mortSnap) {
-              final totalDeaths = (mortSnap.data ?? []).fold(0, (sum, m) => sum + m.count);
-              return _buildStatCard(context, 'Total Mortality', totalDeaths.toString(), Icons.warning_rounded, Colors.red);
-            },
-          ),
-        ]);
+        return LayoutBuilder(
+          builder: (context, constraints) {
+            final cardWidth = (constraints.maxWidth - (3 * 24)) / 4;
+            if (cardWidth < 200) {
+              return Wrap(
+                spacing: 24,
+                runSpacing: 24,
+                children: [
+                  _buildStatCard(context, 'Total Birds', totalBirds.toString(), Icons.pets_rounded, Colors.orange),
+                  StreamBuilder<List<EggProduction>>(
+                    stream: db.select(db.eggProductions).watch(),
+                    builder: (context, eggSnap) {
+                      final totalEggs = (eggSnap.data ?? []).fold(0, (sum, e) => sum + e.eggsCollected);
+                      return _buildStatCard(context, 'Total Eggs', totalEggs.toString(), Icons.egg_rounded, Colors.amber);
+                    },
+                  ),
+                  StreamBuilder<List<InventoryItem>>(
+                    stream: db.select(db.inventory).watch(),
+                    builder: (context, invSnap) {
+                      final feedItems = (invSnap.data ?? []).where((i) => i.category == 'FEED').length;
+                      return _buildStatCard(context, 'Feed Types', feedItems.toString(), Icons.inventory_2_rounded, Colors.teal);
+                    },
+                  ),
+                  StreamBuilder<List<Mortality>>(
+                    stream: db.select(db.mortalities).watch(),
+                    builder: (context, mortSnap) {
+                      final totalDeaths = (mortSnap.data ?? []).fold(0, (sum, m) => sum + m.count);
+                      return _buildStatCard(context, 'Total Mortality', totalDeaths.toString(), Icons.warning_rounded, Colors.red);
+                    },
+                  ),
+                ],
+              );
+            }
+            return Row(
+              children: [
+                _buildStatCard(context, 'Total Birds', totalBirds.toString(), Icons.pets_rounded, Colors.orange),
+                const SizedBox(width: 24),
+                StreamBuilder<List<EggProduction>>(
+                  stream: db.select(db.eggProductions).watch(),
+                  builder: (context, eggSnap) {
+                    final totalEggs = (eggSnap.data ?? []).fold(0, (sum, e) => sum + e.eggsCollected);
+                    return _buildStatCard(context, 'Total Eggs', totalEggs.toString(), Icons.egg_rounded, Colors.amber);
+                  },
+                ),
+                const SizedBox(width: 24),
+                StreamBuilder<List<InventoryItem>>(
+                  stream: db.select(db.inventory).watch(),
+                  builder: (context, invSnap) {
+                    final feedItems = (invSnap.data ?? []).where((i) => i.category == 'FEED').length;
+                    return _buildStatCard(context, 'Feed Types', feedItems.toString(), Icons.inventory_2_rounded, Colors.teal);
+                  },
+                ),
+                const SizedBox(width: 24),
+                StreamBuilder<List<Mortality>>(
+                  stream: db.select(db.mortalities).watch(),
+                  builder: (context, mortSnap) {
+                    final totalDeaths = (mortSnap.data ?? []).fold(0, (sum, m) => sum + m.count);
+                    return _buildStatCard(context, 'Total Mortality', totalDeaths.toString(), Icons.warning_rounded, Colors.red);
+                  },
+                ),
+              ],
+            );
+          },
+        );
       },
     );
   }
 
   Widget _buildStatCard(BuildContext context, String label, String value, IconData icon, Color color) {
     final cs = Theme.of(context).colorScheme;
-    return Expanded(
-      child: Container(
+    return Container(
+      width: 240,
         padding: const EdgeInsets.all(28),
         decoration: BoxDecoration(
           color: Theme.of(context).cardColor,
           borderRadius: BorderRadius.circular(24),
-          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.06), blurRadius: 24, offset: const Offset(0, 12))],
+          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 24, offset: const Offset(0, 12))],
         ),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Container(
             padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(color: color.withOpacity(0.12), borderRadius: BorderRadius.circular(16)),
+            decoration: BoxDecoration(color: color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(16)),
             child: Icon(icon, color: color, size: 28),
           ),
           const SizedBox(height: 24),
@@ -191,8 +258,7 @@ class _PremiumStatsGrid extends StatelessWidget {
           const SizedBox(height: 4),
           Text(label, style: TextStyle(color: cs.onSurfaceVariant, fontSize: 14, fontWeight: FontWeight.w600)),
         ]),
-      ),
-    );
+      );
   }
 }
 
@@ -213,13 +279,13 @@ class _PremiumBatchCard extends StatelessWidget {
         color: Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(24),
         border: Border.all(color: cs.outline),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 15, offset: const Offset(0, 8))],
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 15, offset: const Offset(0, 8))],
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(color: typeColor.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
+            decoration: BoxDecoration(color: typeColor.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
             child: Text(batch.type.split('_').last,
                 style: TextStyle(color: typeColor, fontWeight: FontWeight.w800, fontSize: 12)),
           ),
@@ -256,7 +322,7 @@ class _RecentActivityPanel extends StatelessWidget {
       decoration: BoxDecoration(
         color: Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(24),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 15, offset: const Offset(0, 8))],
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 15, offset: const Offset(0, 8))],
       ),
       child: StreamBuilder<List<dynamic>>(
         stream: CombineLatestStream.list([
@@ -265,7 +331,9 @@ class _RecentActivityPanel extends StatelessWidget {
           db.select(db.eggProductions).watch(),
         ]).map((lists) {
           final combined = <dynamic>[];
-          for (var list in lists) combined.addAll(list as List<dynamic>);
+          for (var list in lists) {
+            combined.addAll(list as List<dynamic>);
+          }
           combined.sort((a, b) {
             final dateA = (a is FeedingLog) ? a.logDate : (a is Mortality ? a.logDate : (a as EggProduction).logDate);
             final dateB = (b is FeedingLog) ? b.logDate : (b is Mortality ? b.logDate : (b as EggProduction).logDate);
@@ -309,7 +377,7 @@ class _RecentActivityPanel extends StatelessWidget {
                 contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 leading: Container(
                   padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(color: color.withOpacity(0.12), shape: BoxShape.circle),
+                  decoration: BoxDecoration(color: color.withValues(alpha: 0.12), shape: BoxShape.circle),
                   child: Icon(icon, color: color, size: 20),
                 ),
                 title: Text(title, style: TextStyle(fontWeight: FontWeight.w700, color: cs.onSurface)),

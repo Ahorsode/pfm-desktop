@@ -8,7 +8,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' hide User;
 import 'package:provider/provider.dart';
 import 'package:bcrypt/bcrypt.dart';
-import 'package:drift/drift.dart' as drift;
 import 'main_scaffold.dart';
 import 'change_password_screen.dart';
 import 'device_setup_screen.dart';
@@ -118,7 +117,20 @@ class _LoginScreenState extends State<LoginScreen> {
       }
 
       if (localUser == null) {
-        throw Exception('Account not found on this device. Please ensure you are synchronized.');
+        // Not found? Try to sync users from Supabase
+        debugPrint('User $identifier not found locally, performing emergency sync...');
+        final syncEngine = Provider.of<SyncEngine>(context, listen: false);
+        await syncEngine.performSync();
+        
+        if (_mode == _LoginMode.email) {
+          localUser = await (db.select(db.users)..where((t) => t.email.equals(identifier))).getSingleOrNull();
+        } else {
+          localUser = await (db.select(db.users)..where((t) => t.phoneNumber.equals(identifier))).getSingleOrNull();
+        }
+      }
+
+      if (localUser == null) {
+        throw Exception('Account not found. Please contact your farm administrator.');
       }
 
       bool isValid = false;
@@ -192,7 +204,6 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
@@ -204,10 +215,10 @@ class _LoginScreenState extends State<LoginScreen> {
             decoration: BoxDecoration(
               color: Theme.of(context).cardColor,
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Theme.of(context).colorScheme.outline.withOpacity(0.2)),
+              border: Border.all(color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.2)),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.08),
+                  color: Colors.black.withValues(alpha: 0.08),
                   blurRadius: 24,
                   offset: const Offset(0, 8),
                 ),
@@ -240,7 +251,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 // Email / Phone toggle
                 Container(
                   decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3),
+                    color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Row(
@@ -451,13 +462,12 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _unbindDevice() async {
+    // Get database and sync engine before they are potentially disposed by the cleanup
+    final syncEngine = context.read<SyncEngine>();
+    final database = context.read<AppDatabase>();
     setState(() => _isLoading = true);
     try {
       final prefs = await SharedPreferences.getInstance();
-      
-      // Get database and sync engine before they are potentially disposed by the cleanup
-      final syncEngine = context.read<SyncEngine>();
-      final database = context.read<AppDatabase>();
 
       // Stop any background activities
       syncEngine.dispose(); // Cancels timers
@@ -531,7 +541,7 @@ class _ModeTab extends StatelessWidget {
             boxShadow: selected
                 ? [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.12),
+                      color: Colors.black.withValues(alpha: 0.12),
                       blurRadius: 6,
                       offset: const Offset(0, 2),
                     )

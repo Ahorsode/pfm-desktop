@@ -111,7 +111,7 @@ class InventoryManager extends StatelessWidget {
               ),
               const SizedBox(height: 20),
               DropdownButtonFormField<String>(
-                value: selectedCategory,
+                initialValue: selectedCategory,
                 items: const [
                   DropdownMenuItem(value: 'FEED', child: Text('Poultry Feed')),
                   DropdownMenuItem(value: 'MEDICATION', child: Text('Medication/Vaccine')),
@@ -198,7 +198,7 @@ class _InventoryItemTile extends StatelessWidget {
         color: Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 15, offset: const Offset(0, 8))
+          BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 15, offset: const Offset(0, 8))
         ],
       ),
       child: Row(
@@ -206,7 +206,7 @@ class _InventoryItemTile extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: _getCategoryColor(item.category ?? 'OTHER').withOpacity(0.1),
+              color: _getCategoryColor(item.category ?? 'OTHER').withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Icon(_getCategoryIcon(item.category ?? 'OTHER'), 

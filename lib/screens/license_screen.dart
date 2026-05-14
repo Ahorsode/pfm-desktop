@@ -56,7 +56,7 @@ class _LicenseScreenState extends State<LicenseScreen> {
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.2),
+                    color: Colors.white.withValues(alpha: 0.2),
                     borderRadius: BorderRadius.circular(16),
                   ),
                   child: const Icon(Icons.workspace_premium_rounded, color: Colors.white, size: 32),
@@ -165,7 +165,7 @@ class _LicenseScreenState extends State<LicenseScreen> {
               decoration: BoxDecoration(
                 color: Theme.of(context).cardColor,
                 borderRadius: BorderRadius.circular(20),
-                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 12)],
+                boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 12)],
               ),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(20),
@@ -220,12 +220,12 @@ class _LicenseScreenState extends State<LicenseScreen> {
         color: Theme.of(ctx).cardColor,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
-          color: isCurrent ? color : isPopular ? color.withOpacity(0.3) : cs.outline,
+          color: isCurrent ? color : isPopular ? color.withValues(alpha: 0.3) : cs.outline,
           width: isCurrent ? 2 : 1,
         ),
         boxShadow: isPopular
-            ? [BoxShadow(color: color.withOpacity(0.15), blurRadius: 20, offset: const Offset(0, 8))]
-            : [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 12)],
+            ? [BoxShadow(color: color.withValues(alpha: 0.15), blurRadius: 20, offset: const Offset(0, 8))]
+            : [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 12)],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -233,7 +233,7 @@ class _LicenseScreenState extends State<LicenseScreen> {
           Container(
             padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(
-              color: color.withOpacity(0.06),
+              color: color.withValues(alpha: 0.06),
               borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
             ),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -249,7 +249,7 @@ class _LicenseScreenState extends State<LicenseScreen> {
                 if (isCurrent)
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(20), border: Border.all(color: color)),
+                    decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(20), border: Border.all(color: color)),
                     child: Text('ACTIVE', style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.bold)),
                   ),
               ]),
@@ -359,7 +359,7 @@ class _LicenseScreenState extends State<LicenseScreen> {
     final cs = Theme.of(context).colorScheme;
     final bg = Theme.of(context).cardColor;
     return TableRow(
-      decoration: BoxDecoration(color: bg, border: isLast ? null : Border(bottom: BorderSide(color: cs.outline.withOpacity(0.5)))),
+      decoration: BoxDecoration(color: bg, border: isLast ? null : Border(bottom: BorderSide(color: cs.outline.withValues(alpha: 0.5)))),
       children: [
         _cell(context, feature),
         _checkCell(context, free),

@@ -18,7 +18,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late ThemeProvider themeProvider;
 
   // Farm settings
-  String _currency = 'GHS';
+  String _currency = 'GH₵';
   int _eggsPerCrate = 30;
   String _eggReminderTime = '08:00';
   String _feedReminderTime = '07:00';
@@ -28,7 +28,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String _farmLocation = '';
   bool _loaded = false;
 
-  final _currencies = ['GHS', 'USD', 'EUR', 'GBP', 'NGN', 'KES', 'ZAR'];
+  final _currencies = ['GH₵', 'USD', 'EUR', 'GBP', 'NGN', 'KES', 'ZAR'];
 
   @override
   void initState() {
@@ -51,7 +51,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     setState(() {
       _farmName = farmRow?.name ?? '';
       _farmLocation = farmRow?.location ?? '';
-      _currency = settingsRow?.currency ?? 'GHS';
+      _currency = settingsRow?.currency ?? 'GH₵';
       _eggsPerCrate = settingsRow?.eggsPerCrate ?? 30;
       _eggReminderTime = settingsRow?.eggRecordReminderTime ?? '08:00';
       _feedReminderTime = settingsRow?.feedRecordReminderTime ?? '07:00';
@@ -156,7 +156,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   trailing: Switch(
                     value: theme.isDark,
                     onChanged: (_) => theme.toggle(),
-                    activeColor: cs.primary,
+                    activeThumbColor: cs.primary,
                   ),
                 ),
               ]),
@@ -210,7 +210,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     dropdownColor: Theme.of(context).cardColor,
                   ),
                 ),
-                Divider(color: cs.outline.withOpacity(0.5)),
+                Divider(color: cs.outline.withValues(alpha: 0.5)),
                 _settingRow(
                   context: context,
                   label: 'Eggs per Crate',
@@ -262,7 +262,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                   ),
                 ),
-                Divider(color: cs.outline.withOpacity(0.5)),
+                Divider(color: cs.outline.withValues(alpha: 0.5)),
                 _settingRow(
                   context: context,
                   label: 'Feeding Log Reminder',
@@ -302,11 +302,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   trailing: Switch(
                     value: _autoSync,
                     onChanged: (v) => setState(() => _autoSync = v),
-                    activeColor: cs.primary,
+                    activeThumbColor: cs.primary,
                   ),
                 ),
                 if (_autoSync) ...[
-                  Divider(color: cs.outline.withOpacity(0.5)),
+                  Divider(color: cs.outline.withValues(alpha: 0.5)),
                   _settingRow(
                     context: context,
                     label: 'Sync Interval',
@@ -322,7 +322,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                   ),
                 ],
-                Divider(color: cs.outline.withOpacity(0.5)),
+                Divider(color: cs.outline.withValues(alpha: 0.5)),
                 _settingRow(
                   context: context,
                   label: 'Sync Now',
@@ -384,7 +384,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       decoration: BoxDecoration(
         color: Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(20),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 12)],
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 12)],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -394,14 +394,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
             child: Row(children: [
               Container(
                 padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(10)),
+                decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(10)),
                 child: Icon(icon, color: color, size: 20),
               ),
               const SizedBox(width: 12),
               Text(title, style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: cs.onSurface)),
             ]),
           ),
-          Divider(height: 1, color: cs.outline.withOpacity(0.5)),
+          Divider(height: 1, color: cs.outline.withValues(alpha: 0.5)),
           Padding(padding: const EdgeInsets.all(20), child: child),
         ],
       ),
