@@ -397,6 +397,149 @@ class SyncEngine extends ChangeNotifier {
         debugPrint("Egg push error: $e");
       }
     }
+    // 4. Push Customers
+    final pendingCustomers = await (db.select(db.customers)..where((t) => t.synced.equals(false))).get();
+    for (var c in pendingCustomers) {
+      try {
+        final response = await _supabase.from('customers').upsert({
+          'id': c.id,
+          'farmId': c.farmId,
+          'name': c.name,
+          'phone': c.phone,
+          'email': c.email,
+          'address': c.address,
+          'customerType': c.customerType,
+          'balanceOwed': c.balanceOwed,
+          'updatedAt': DateTime.now().toUtc().toIso8601String(),
+        }).select().single();
+        
+        final newId = response['id'] as int;
+        await (db.update(db.customers)..where((t) => t.id.equals(c.id))).write(CustomersCompanion(id: Value(newId), synced: const Value(true)));
+      } catch (e) {
+        debugPrint("Customer push error: $e");
+      }
+    }
+
+    // 5. Push Sales
+    final pendingSales = await (db.select(db.sales)..where((t) => t.synced.equals(false))).get();
+    for (var s in pendingSales) {
+      try {
+        final response = await _supabase.from('sales').insert({
+          'farmId': s.farmId,
+          'batchId': s.batchId,
+          'customerId': s.customerId,
+          'quantity': s.quantity,
+          'unitPrice': s.unitPrice,
+          'totalAmount': s.totalAmount,
+          'saleDate': s.saleDate.toIso8601String(),
+          'userId': s.userId ?? legacyUserId,
+        }).select().single();
+        
+        final newId = response['id'] as int;
+        await (db.update(db.sales)..where((t) => t.id.equals(s.id))).write(SalesCompanion(id: Value(newId), synced: const Value(true)));
+      } catch (e) {
+        debugPrint("Sale push error: $e");
+      }
+    }
+
+    // 7. Push Inventory
+    final pendingInv = await (db.select(db.inventory)..where((t) => t.synced.equals(false))).get();
+    for (var i in pendingInv) {
+      try {
+        final response = await _supabase.from('inventory').upsert({
+          'id': i.id,
+          'farmId': i.farmId,
+          'userId': i.userId ?? legacyUserId,
+          'itemName': i.itemName,
+          'stockLevel': i.stockLevel,
+          'reorderLevel': i.reorderLevel,
+          'unit': i.unit,
+          'category': i.category,
+          'costPerUnit': i.costPerUnit,
+          'updatedAt': DateTime.now().toUtc().toIso8601String(),
+        }).select().single();
+        
+        final newId = response['id'] as int;
+        await (db.update(db.inventory)..where((t) => t.id.equals(i.id))).write(InventoryCompanion(id: Value(newId), synced: const Value(true)));
+      } catch (e) {
+        debugPrint("Inventory push error: $e");
+      }
+    }
+
+    // 8. Push Weight Records
+    final pendingWeights = await (db.select(db.weightRecords)..where((t) => t.synced.equals(false))).get();
+    for (var w in pendingWeights) {
+      try {
+        final response = await _supabase.from('weight_records').insert({
+          'farmId': w.farmId,
+          'batchId': w.batchId,
+          'averageWeight': w.averageWeight,
+          'logDate': w.logDate.toIso8601String(),
+          'userId': w.userId ?? legacyUserId,
+        }).select().single();
+        
+        final newId = response['id'] as int;
+        await (db.update(db.weightRecords)..where((t) => t.id.equals(w.id))).write(WeightRecordsCompanion(id: Value(newId), synced: const Value(true)));
+      } catch (e) {
+        debugPrint("Weight push error: $e");
+      }
+    }
+
+    // 9. Push Farm Settings
+    final pendingSettings = await (db.select(db.farmSettings)..where((t) => t.synced.equals(false))).get();
+    for (var s in pendingSettings) {
+      try {
+        await _supabase.from('farm_settings').upsert({
+          'farmId': s.farmId,
+          'currency': s.currency,
+          'eggRecordReminderTime': s.eggRecordReminderTime,
+          'feedRecordReminderTime': s.feedRecordReminderTime,
+          'growthTargetStandard': s.growthTargetStandard,
+          'eggsPerCrate': s.eggsPerCrate,
+        });
+        await (db.update(db.farmSettings)..where((t) => t.farmId.equals(s.farmId))).write(const FarmSettingsCompanion(synced: Value(true)));
+      } catch (e) {
+        debugPrint("Settings push error: $e");
+      }
+    }
+
+    // 10. Push Users
+    final pendingUsers = await (db.select(db.users)..where((t) => t.synced.equals(false))).get();
+    for (var u in pendingUsers) {
+      try {
+        await _supabase.from('users').upsert({
+          'id': u.id,
+          'firstname': u.firstname,
+          'surname': u.surname,
+          'middleName': u.middleName,
+          'name': u.name,
+          'email': u.email,
+          'phoneNumber': u.phoneNumber,
+          'role': u.role,
+          'mustChangePassword': u.mustChangePassword,
+          'updatedAt': DateTime.now().toUtc().toIso8601String(),
+        });
+        await (db.update(db.users)..where((t) => t.id.equals(u.id))).write(const UsersCompanion(synced: Value(true)));
+      } catch (e) {
+        debugPrint("User push error: $e");
+      }
+    }
+
+    // 11. Push Farm Members
+    final pendingMembers = await (db.select(db.farmMembers)..where((t) => t.synced.equals(false))).get();
+    for (var m in pendingMembers) {
+      try {
+        await _supabase.from('farm_members').upsert({
+          'farmId': m.farmId,
+          'userId': m.userId,
+          'role': m.role,
+          'joinedAt': m.joinedAt.toIso8601String(),
+        });
+        await (db.update(db.farmMembers)..where((t) => t.id.equals(m.id))).write(const FarmMembersCompanion(synced: Value(true)));
+      } catch (e) {
+        debugPrint("Member push error: $e");
+      }
+    }
   }
 
   Future<void> _pullChanges() async {
@@ -476,6 +619,7 @@ class SyncEngine extends ChangeNotifier {
           phone: Value(c['phone'] as String?),
           email: Value(c['email'] as String?),
           address: Value(c['address'] as String?),
+          customerType: Value(c['customerType'] as String? ?? 'CUSTOMER'),
           balanceOwed: Value(c['balanceOwed'] != null ? double.parse(c['balanceOwed'].toString()) : 0.0),
           synced: const Value(true),
         ));
@@ -545,6 +689,35 @@ class SyncEngine extends ChangeNotifier {
         ));
       }
       debugPrint('Pull: synced ${remoteFeeds.length} feeding logs');
+
+      // 10. Pull Users and Farm Members
+      final teamData = await _supabase.from('users').select('*, farm_members(*)').eq('farm_members.farmId', farmId);
+      for (var u in teamData) {
+        final userId = u['id'] as String;
+        await db.into(db.users).insertOnConflictUpdate(UsersCompanion.insert(
+          id: userId,
+          firstname: u['firstname'] ?? '',
+          surname: u['surname'] ?? '',
+          name: u['name'] ?? '',
+          email: u['email'] ?? '',
+          phoneNumber: u['phoneNumber'] ?? '',
+          role: u['role'] ?? 'worker',
+          mustChangePassword: Value(u['mustChangePassword'] ?? false),
+          synced: const Value(true),
+        ));
+
+        final members = u['farm_members'] as List;
+        for (var m in members) {
+          await db.into(db.farmMembers).insertOnConflictUpdate(FarmMembersCompanion.insert(
+            farmId: farmId,
+            userId: userId,
+            role: m['role'] ?? 'worker',
+            joinedAt: Value(DateTime.parse(m['joinedAt'])),
+            synced: const Value(true),
+          ));
+        }
+      }
+      debugPrint("Pull: synced ${teamData.length} team members");
 
       notifyListeners();
     } catch (e) {

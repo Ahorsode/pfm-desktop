@@ -3,7 +3,6 @@ import 'package:drift/native.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import 'dart:io';
-import 'package:flutter/foundation.dart';
 
 part 'local_db.g.dart';
 
@@ -26,6 +25,7 @@ class Users extends Table {
   TextColumn get role => text().withDefault(const Constant('OWNER'))();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
   DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
+  BoolColumn get synced => boolean().withDefault(const Constant(false))();
   
   @override
   Set<Column> get primaryKey => {id};
@@ -69,7 +69,7 @@ class Batches extends Table {
   TextColumn get growthTarget => text().nullable()();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
   DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
-  BoolColumn get synced => boolean().withDefault(const Constant(true))();
+  BoolColumn get synced => boolean().withDefault(const Constant(false))();
 }
 
 // 4. Inventory Table
@@ -90,7 +90,7 @@ class Inventory extends Table {
   IntColumn get supplierId => integer().nullable()();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
   DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
-  BoolColumn get synced => boolean().withDefault(const Constant(true))();
+  BoolColumn get synced => boolean().withDefault(const Constant(false))();
 }
 
 // 5. Feeding Logs (Updated field names to camelCase but matching Supabase snake_case in sync)
@@ -166,7 +166,7 @@ class Houses extends Table {
   BoolColumn get isIsolation => boolean().withDefault(const Constant(false))();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
   DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
-  BoolColumn get synced => boolean().withDefault(const Constant(true))();
+  BoolColumn get synced => boolean().withDefault(const Constant(false))();
 }
 
 // 9. Customers
@@ -184,7 +184,8 @@ class Customers extends Table {
   RealColumn get balanceOwed => real().withDefault(const Constant(0.0))();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
   DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
-  BoolColumn get synced => boolean().withDefault(const Constant(true))();
+  TextColumn get customerType => text().withDefault(const Constant('CUSTOMER'))(); // 'CUSTOMER' or 'SUPPLIER'
+  BoolColumn get synced => boolean().withDefault(const Constant(false))();
 }
 
 // 10. Farm Settings
@@ -200,6 +201,7 @@ class FarmSettings extends Table {
   TextColumn get feedRecordReminderTime => text().nullable()();
   IntColumn get growthTargetStandard => integer().nullable()();
   IntColumn get eggsPerCrate => integer().withDefault(const Constant(30))();
+  BoolColumn get synced => boolean().withDefault(const Constant(true))();
 }
 
 // 11. Weight Records
@@ -246,6 +248,7 @@ class FarmMembers extends Table {
   TextColumn get userId => text()();
   TextColumn get role => text().withDefault(const Constant('WORKER'))();
   DateTimeColumn get joinedAt => dateTime().withDefault(currentDateAndTime)();
+  BoolColumn get synced => boolean().withDefault(const Constant(false))();
 }
 
 // 14. Feed Types
@@ -304,6 +307,24 @@ class MedicationSchedules extends Table {
   BoolColumn get synced => boolean().withDefault(const Constant(false))();
 }
 
+// 18. Sales Table
+@DataClassName('Sale')
+class Sales extends Table {
+  @override
+  String get tableName => 'sales';
+  
+  IntColumn get id => integer().autoIncrement()();
+  IntColumn get farmId => integer()();
+  IntColumn get batchId => integer().nullable()();
+  IntColumn get customerId => integer().nullable()();
+  IntColumn get quantity => integer()();
+  RealColumn get unitPrice => real()();
+  RealColumn get totalAmount => real()();
+  DateTimeColumn get saleDate => dateTime().withDefault(currentDateAndTime)();
+  TextColumn get userId => text().nullable()();
+  BoolColumn get synced => boolean().withDefault(const Constant(false))();
+}
+
 LazyDatabase _openConnection() {
   return LazyDatabase(() async {
     final dbFolder = await getApplicationDocumentsDirectory();
@@ -330,13 +351,14 @@ LazyDatabase _openConnection() {
   FeedTypes,
   FeedFormulations,
   VaccinationSchedules,
-  MedicationSchedules
+  MedicationSchedules,
+  Sales
 ])
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 6; // Bumped to include Vaccination & Medication schedules
+  int get schemaVersion => 10;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -344,12 +366,11 @@ class AppDatabase extends _$AppDatabase {
           await m.createAll();
         },
         onUpgrade: (m, from, to) async {
-          if (from < 6) {
-            // Significant schema change
+          if (from < 10) {
             for (final table in allTables) {
-              await m.deleteTable(table.actualTableName);
+              await m.drop(table);
+              await m.create(table);
             }
-            await m.createAll();
           }
         },
       );

@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import 'package:drift/drift.dart' hide Column, Batch;
 import '../data/local_db.dart';
 import '../utils/farm_utils.dart';
-import '../theme/constants.dart';
+import 'financial_init_dialog.dart';
 
 class RegisterUnitDialog extends StatefulWidget {
   const RegisterUnitDialog({super.key});
@@ -28,20 +29,18 @@ class _RegisterUnitDialogState extends State<RegisterUnitDialog> {
   final List<String> _categories = [
     'Poultry (Meat)',
     'Poultry (Egg)',
-    'Poultry (Dual Purpose)',
     'Turkey',
     'Duck',
     'Other'
   ];
 
-  final List<String> _breeds = [
-    'Cobb 500',
-    'Ross 308',
-    'Lohmann Brown',
-    'Isa Brown',
-    'Local Breed',
-    'Other'
-  ];
+  final Map<String, List<String>> _breedsMap = {
+    'Poultry (Meat)': ['Cobb 500', 'Ross 308', 'Arbor Acres', 'Marshall', 'Hubbard', 'Local Breed', 'Other'],
+    'Poultry (Egg)': ['Lohmann Brown', 'Isa Brown', 'Hy-Line', 'Bovans', 'Local Breed', 'Other'],
+    'Turkey': ['Broad Breasted White', 'Bronze', 'Beltsville Small White', 'Local Breed', 'Other'],
+    'Duck': ['Pekin', 'Muscovy', 'Khaki Campbell', 'Local Breed', 'Other'],
+    'Other': ['Local Breed', 'Other'],
+  };
 
   @override
   void dispose() {
@@ -54,214 +53,269 @@ class _RegisterUnitDialogState extends State<RegisterUnitDialog> {
   @override
   Widget build(BuildContext context) {
     final db = Provider.of<AppDatabase>(context);
-    
+
     return Dialog(
-      backgroundColor: const Color(0xFF121417),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
       child: Container(
-        width: 500,
-        padding: const EdgeInsets.all(32),
-        child: SingleChildScrollView(
-          child: Form(
-            key: _formKey,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text(
-                      'REGISTER NEW UNIT',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        fontStyle: FontStyle.italic,
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.close, color: Colors.white),
-                      onPressed: () => Navigator.pop(context),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 32),
-                
-                Row(
-                  children: [
-                    Expanded(
-                      child: _buildTextField(
-                        label: 'UNIT NAME / IDENTITY',
-                        hint: 'e.g., Q1-Broiler-Alpha',
-                        controller: _nameController,
-                        validator: (v) => v?.isEmpty ?? true ? 'Required' : null,
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: _buildDropdownField<String>(
-                        label: 'LIVESTOCK CATEGORY',
-                        value: _selectedCategory,
-                        items: _categories,
-                        onChanged: (v) => setState(() => _selectedCategory = v),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 24),
-                
-                Row(
-                  children: [
-                    Expanded(
-                      child: _buildDropdownField<String>(
-                        label: 'PRIMARY BREED / SPECIE',
-                        value: _selectedBreed,
-                        items: _breeds,
-                        onChanged: (v) => setState(() => _selectedBreed = v),
-                        hint: 'Select Breed',
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: _buildTextField(
-                        label: 'INITIAL QUANTITY',
-                        hint: '1000',
-                        controller: _quantityController,
-                        keyboardType: TextInputType.number,
-                        validator: (v) {
-                          if (v == null || v.isEmpty) return 'Required';
-                          if (int.tryParse(v) == null) return 'Invalid number';
-                          return null;
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 24),
-                
-                _buildHouseDropdown(db),
-                const SizedBox(height: 24),
-                
-                _buildDateField(
-                  label: 'ARRIVAL / HATCH DATE',
-                  value: _arrivalDate,
-                  onTap: () async {
-                    final picked = await showDatePicker(
-                      context: context,
-                      initialDate: _arrivalDate,
-                      firstDate: DateTime(2020),
-                      lastDate: DateTime(2100),
-                    );
-                    if (picked != null) setState(() => _arrivalDate = picked);
-                  },
-                ),
-                
-                const SizedBox(height: 32),
-                const Text(
-                  'OPTIONAL INITIAL SCHEDULE',
-                  style: TextStyle(
-                    color: Colors.orange,
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                    fontStyle: FontStyle.italic,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                
-                Row(
-                  children: [
-                    Expanded(
-                      child: _buildDateField(
-                        label: '1ST VACCINATION DATE',
-                        value: _vaccinationDate,
-                        onTap: () async {
-                          final picked = await showDatePicker(
-                            context: context,
-                            initialDate: DateTime.now(),
-                            firstDate: DateTime.now(),
-                            lastDate: DateTime(2100),
-                          );
-                          if (picked != null) setState(() => _vaccinationDate = picked);
-                        },
-                        isOptional: true,
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: _buildTextField(
-                        label: 'VACCINE NAME',
-                        hint: 'e.g., Gumboro',
-                        controller: _vaccineNameController,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 40),
-                
-                SizedBox(
-                  width: double.infinity,
-                  height: 56,
-                  child: ElevatedButton(
-                    onPressed: () => _handleSubmit(db),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF00C853),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                    ),
-                    child: const Text(
-                      'REGISTER UNIT & CONTINUE',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
-                      ),
+        width: 650,
+        decoration: BoxDecoration(
+          color: const Color(0xFF0F172A),
+          borderRadius: BorderRadius.circular(28),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.5),
+              blurRadius: 40,
+              offset: const Offset(0, 20),
+            )
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Header
+              _buildHeader(context),
+
+              Flexible(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(32, 8, 32, 32),
+                  child: Form(
+                    key: _formKey,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const SizedBox(height: 24),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: _buildInputField(
+                                label: 'UNIT NAME / IDENTITY',
+                                hint: 'e.g., Q1-Broiler-Alpha',
+                                controller: _nameController,
+                                icon: Icons.badge_outlined,
+                                validator: (v) => v?.isEmpty ?? true ? 'Required' : null,
+                              ),
+                            ),
+                            const SizedBox(width: 24),
+                            Expanded(
+                              child: _buildDropdownField<String>(
+                                label: 'LIVESTOCK CATEGORY',
+                                value: _selectedCategory,
+                                items: _categories,
+                                icon: Icons.category_outlined,
+                                onChanged: (v) {
+                                  setState(() {
+                                    _selectedCategory = v;
+                                    _selectedBreed = null;
+                                  });
+                                },
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 24),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: _buildDropdownField<String>(
+                                label: 'SPECIES / BREED',
+                                value: _selectedBreed,
+                                items: _breedsMap[_selectedCategory] ?? ['Other'],
+                                icon: Icons.pets_outlined,
+                                onChanged: (v) => setState(() => _selectedBreed = v),
+                                hint: 'Select Breed',
+                              ),
+                            ),
+                            const SizedBox(width: 24),
+                            Expanded(
+                              child: _buildInputField(
+                                label: 'ARRIVAL QUANTITY',
+                                hint: '1000',
+                                controller: _quantityController,
+                                icon: Icons.numbers_rounded,
+                                keyboardType: TextInputType.number,
+                                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                                validator: (v) {
+                                  if (v == null || v.isEmpty) return 'Required';
+                                  if (int.tryParse(v) == null) return 'Invalid';
+                                  return null;
+                                },
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 24),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(child: _buildHouseDropdown(db)),
+                            const SizedBox(width: 24),
+                            Expanded(
+                              child: _buildDateField(
+                                label: 'ARRIVAL / HATCH DATE',
+                                value: _arrivalDate,
+                                icon: Icons.calendar_today_rounded,
+                                onTap: () async {
+                                  final picked = await showDatePicker(
+                                    context: context,
+                                    initialDate: _arrivalDate,
+                                    firstDate: DateTime(2020),
+                                    lastDate: DateTime(2100),
+                                    builder: (context, child) => _darkDatePickerTheme(context, child!),
+                                  );
+                                  if (picked != null) setState(() => _arrivalDate = picked);
+                                },
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 32),
+                        _buildSectionHeader('INITIAL HEALTH RECORD', Icons.health_and_safety_outlined, Colors.amber),
+                        const SizedBox(height: 20),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: _buildDateField(
+                                label: '1ST VACCINATION DATE',
+                                value: _vaccinationDate,
+                                icon: Icons.event_note_rounded,
+                                isOptional: true,
+                                onTap: () async {
+                                  final picked = await showDatePicker(
+                                    context: context,
+                                    initialDate: DateTime.now(),
+                                    firstDate: DateTime(2020),
+                                    lastDate: DateTime(2100),
+                                    builder: (context, child) => _darkDatePickerTheme(context, child!),
+                                  );
+                                  if (picked != null) setState(() => _vaccinationDate = picked);
+                                },
+                              ),
+                            ),
+                            const SizedBox(width: 24),
+                            Expanded(
+                              child: _buildInputField(
+                                label: 'VACCINE NAME',
+                                hint: 'e.g., Gumboro',
+                                controller: _vaccineNameController,
+                                icon: Icons.medication_outlined,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 48),
+                        _buildFooterActions(db),
+                      ],
                     ),
                   ),
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),
     );
   }
 
-  Widget _buildTextField({
+  Widget _buildHeader(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E293B).withValues(alpha: 0.5),
+        border: Border(bottom: BorderSide(color: Colors.white.withValues(alpha: 0.05))),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: const Color(0xFF10B981).withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: const Icon(Icons.add_business_rounded, color: Color(0xFF10B981), size: 28),
+          ),
+          const SizedBox(width: 20),
+          const Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'REGISTER NEW LIVESTOCK UNIT',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 0.5,
+                ),
+              ),
+              SizedBox(height: 4),
+              Text(
+                'START TRACKING PERFORMANCE & GROWTH',
+                style: TextStyle(
+                  color: Color(0xFF94A3B8),
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 1.2,
+                ),
+              ),
+            ],
+          ),
+          const Spacer(),
+          IconButton(
+            onPressed: () => Navigator.pop(context),
+            icon: const Icon(Icons.close_rounded, color: Color(0xFF94A3B8)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSectionHeader(String title, IconData icon, Color color) {
+    return Row(
+      children: [
+        Icon(icon, size: 18, color: color),
+        const SizedBox(width: 10),
+        Text(
+          title,
+          style: TextStyle(
+            color: color,
+            fontSize: 12,
+            fontWeight: FontWeight.w900,
+            letterSpacing: 1,
+          ),
+        ),
+        const SizedBox(width: 16),
+        Expanded(child: Divider(color: color.withValues(alpha: 0.2))),
+      ],
+    );
+  }
+
+  Widget _buildInputField({
     required String label,
     required String hint,
     required TextEditingController controller,
+    required IconData icon,
     TextInputType keyboardType = TextInputType.text,
+    List<TextInputFormatter>? inputFormatters,
     String? Function(String?)? validator,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          label,
-          style: const TextStyle(
-            color: Color(0xFF00C853),
-            fontSize: 12,
-            fontWeight: FontWeight.bold,
-            fontStyle: FontStyle.italic,
-          ),
-        ),
-        const SizedBox(height: 8),
+        Text(label, style: _labelStyle()),
+        const SizedBox(height: 10),
         TextFormField(
           controller: controller,
           keyboardType: keyboardType,
+          inputFormatters: inputFormatters,
           validator: validator,
-          style: const TextStyle(color: Colors.white),
-          decoration: InputDecoration(
-            hintText: hint,
-            hintStyle: const TextStyle(color: Colors.grey),
-            fillColor: const Color(0xFF23262B),
-            filled: true,
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
-              borderSide: BorderSide.none,
-            ),
-            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-          ),
+          style: _inputTextStyle(),
+          decoration: _inputDecoration(hint, icon),
         ),
       ],
     );
@@ -272,37 +326,21 @@ class _RegisterUnitDialogState extends State<RegisterUnitDialog> {
     required T? value,
     required List<T> items,
     required void Function(T?) onChanged,
+    required IconData icon,
     String? hint,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          label,
-          style: const TextStyle(
-            color: Color(0xFF00C853),
-            fontSize: 12,
-            fontWeight: FontWeight.bold,
-            fontStyle: FontStyle.italic,
-          ),
-        ),
-        const SizedBox(height: 8),
+        Text(label, style: _labelStyle()),
+        const SizedBox(height: 10),
         DropdownButtonFormField<T>(
-          value: value,
+          initialValue: value,
           onChanged: onChanged,
-          dropdownColor: const Color(0xFF121417),
-          style: const TextStyle(color: Colors.white),
-          decoration: InputDecoration(
-            hintText: hint,
-            hintStyle: const TextStyle(color: Colors.grey),
-            fillColor: const Color(0xFF23262B),
-            filled: true,
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
-              borderSide: BorderSide.none,
-            ),
-            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-          ),
+          dropdownColor: const Color(0xFF1E293B),
+          icon: const Icon(Icons.keyboard_arrow_down_rounded, color: Color(0xFF94A3B8)),
+          style: _inputTextStyle(),
+          decoration: _inputDecoration(hint ?? '', icon),
           items: items.map((e) => DropdownMenuItem<T>(
             value: e,
             child: Text(e.toString()),
@@ -318,17 +356,29 @@ class _RegisterUnitDialogState extends State<RegisterUnitDialog> {
       builder: (context, farmSnapshot) {
         if (!farmSnapshot.hasData) return const SizedBox();
         final farmId = farmSnapshot.data!;
-        
+
         return StreamBuilder<List<House>>(
           stream: (db.select(db.houses)..where((t) => t.farmId.equals(farmId))).watch(),
           builder: (context, snapshot) {
             final houses = snapshot.data ?? [];
-            return _buildDropdownField<int>(
-              label: 'FARM HOUSE',
-              value: _selectedHouseId,
-              items: houses.map((h) => h.id).toList(),
-              onChanged: (v) => setState(() => _selectedHouseId = v),
-              hint: houses.isEmpty ? 'No Houses Available' : 'Select House Location',
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('ALLOCATE FARM HOUSE', style: _labelStyle()),
+                const SizedBox(height: 10),
+                DropdownButtonFormField<int>(
+                  initialValue: _selectedHouseId,
+                  onChanged: (v) => setState(() => _selectedHouseId = v),
+                  dropdownColor: const Color(0xFF1E293B),
+                  icon: const Icon(Icons.keyboard_arrow_down_rounded, color: Color(0xFF94A3B8)),
+                  style: _inputTextStyle(),
+                  decoration: _inputDecoration('Select Location', Icons.home_work_outlined),
+                  items: houses.map((h) => DropdownMenuItem<int>(
+                    value: h.id,
+                    child: Text(h.name),
+                  )).toList(),
+                ),
+              ],
             );
           },
         );
@@ -339,40 +389,37 @@ class _RegisterUnitDialogState extends State<RegisterUnitDialog> {
   Widget _buildDateField({
     required String label,
     required DateTime? value,
+    required IconData icon,
     required VoidCallback onTap,
     bool isOptional = false,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          label,
-          style: const TextStyle(
-            color: Color(0xFF00C853),
-            fontSize: 12,
-            fontWeight: FontWeight.bold,
-            fontStyle: FontStyle.italic,
-          ),
-        ),
-        const SizedBox(height: 8),
+        Text(label, style: _labelStyle()),
+        const SizedBox(height: 10),
         InkWell(
           onTap: onTap,
+          borderRadius: BorderRadius.circular(12),
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
             decoration: BoxDecoration(
-              color: const Color(0xFF23262B),
-              borderRadius: BorderRadius.circular(8),
+              color: const Color(0xFF1E293B),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
             ),
             child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
+                Icon(icon, size: 20, color: const Color(0xFF94A3B8)),
+                const SizedBox(width: 14),
                 Text(
-                  value != null ? DateFormat('MM/dd/yyyy').format(value) : 'mm/dd/yyyy',
+                  value != null ? DateFormat('dd MMM yyyy').format(value) : 'Select Date',
                   style: TextStyle(
-                    color: value != null ? Colors.white : Colors.grey,
+                    color: value != null ? Colors.white : const Color(0xFF64748B),
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
-                const Icon(Icons.calendar_today, color: Colors.grey, size: 18),
               ],
             ),
           ),
@@ -381,10 +428,96 @@ class _RegisterUnitDialogState extends State<RegisterUnitDialog> {
     );
   }
 
+  Widget _buildFooterActions(AppDatabase db) {
+    return Row(
+      children: [
+        Expanded(
+          child: OutlinedButton(
+            onPressed: () => Navigator.pop(context),
+            style: OutlinedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(vertical: 18),
+              side: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            child: const Text(
+              'DISCARD',
+              style: TextStyle(color: Color(0xFF94A3B8), fontWeight: FontWeight.w800, fontSize: 13, letterSpacing: 1),
+            ),
+          ),
+        ),
+        const SizedBox(width: 20),
+        Expanded(
+          flex: 2,
+          child: FilledButton(
+            onPressed: () => _handleSubmit(db),
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFF10B981),
+              padding: const EdgeInsets.symmetric(vertical: 18),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            child: const Text(
+              'SAVE UNIT & CONTINUE',
+              style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 14, letterSpacing: 0.5),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  TextStyle _labelStyle() => const TextStyle(
+    color: Color(0xFF10B981),
+    fontSize: 10,
+    fontWeight: FontWeight.w900,
+    letterSpacing: 1,
+  );
+
+  TextStyle _inputTextStyle() => const TextStyle(
+    color: Colors.white,
+    fontSize: 14,
+    fontWeight: FontWeight.w600,
+  );
+
+  InputDecoration _inputDecoration(String hint, IconData icon) => InputDecoration(
+    hintText: hint,
+    hintStyle: const TextStyle(color: Color(0xFF64748B), fontSize: 13),
+    prefixIcon: Icon(icon, size: 20, color: const Color(0xFF94A3B8)),
+    filled: true,
+    fillColor: const Color(0xFF1E293B),
+    border: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(12),
+      borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.08)),
+    ),
+    enabledBorder: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(12),
+      borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.08)),
+    ),
+    focusedBorder: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(12),
+      borderSide: const BorderSide(color: Color(0xFF10B981), width: 1.5),
+    ),
+    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+  );
+
+  Widget _darkDatePickerTheme(BuildContext context, Widget child) {
+    return Theme(
+      data: ThemeData.dark().copyWith(
+        colorScheme: const ColorScheme.dark(
+          primary: Color(0xFF10B981),
+          onPrimary: Colors.white,
+          surface: Color(0xFF0F172A),
+          onSurface: Colors.white,
+        ),
+      ),
+      child: child,
+    );
+  }
+
   Future<void> _handleSubmit(AppDatabase db) async {
     if (!_formKey.currentState!.validate()) return;
     
     final farmId = await FarmUtils.getBoundFarmId();
+    if (!mounted) return;
     if (farmId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('No farm bound to this device.')),
@@ -396,7 +529,6 @@ class _RegisterUnitDialogState extends State<RegisterUnitDialog> {
     
     try {
       await db.transaction(() async {
-        // 1. Create Batch
         final batchId = await db.into(db.batches).insert(
           BatchesCompanion.insert(
             farmId: farmId,
@@ -411,7 +543,6 @@ class _RegisterUnitDialogState extends State<RegisterUnitDialog> {
           ),
         );
 
-        // 2. Optional Vaccination
         if (_vaccinationDate != null && _vaccineNameController.text.isNotEmpty) {
           await db.into(db.vaccinationSchedules).insert(
             VaccinationSchedulesCompanion.insert(
@@ -425,7 +556,19 @@ class _RegisterUnitDialogState extends State<RegisterUnitDialog> {
         }
       });
 
-      if (mounted) Navigator.pop(context);
+      if (mounted) {
+        Navigator.pop(context);
+        final newBatch = await (db.select(db.batches)
+          ..orderBy([(t) => OrderingTerm.desc(t.id)])
+          ..limit(1)).getSingleOrNull();
+        if (newBatch != null && mounted) {
+          showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (_) => FinancialInitDialog(batch: newBatch),
+          );
+        }
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

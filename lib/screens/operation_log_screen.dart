@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:drift/drift.dart' hide Column, Batch;
+import 'package:flutter/services.dart';
 import '../data/local_db.dart';
 import '../utils/farm_utils.dart';
 
@@ -17,6 +18,8 @@ class OperationLogScreen extends StatefulWidget {
 class _OperationLogScreenState extends State<OperationLogScreen> {
   final _valueController = TextEditingController();
   int? _selectedBatchId;
+  int? _selectedFeedTypeId;
+  int? _selectedFormulationId;
 
   @override
   Widget build(BuildContext context) {
@@ -25,124 +28,268 @@ class _OperationLogScreenState extends State<OperationLogScreen> {
     final theme = _getTheme();
 
     return Scaffold(
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
         title: Text(theme.title, style: TextStyle(fontWeight: FontWeight.w800, fontSize: 24, color: cs.onSurface)),
-        backgroundColor: Theme.of(context).cardColor,
+        backgroundColor: Colors.white,
         elevation: 0,
         centerTitle: false,
         surfaceTintColor: Colors.transparent,
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(1),
-          child: Divider(height: 1, color: cs.outline),
-        ),
       ),
-      body: Center(
-        child: Container(
-          constraints: const BoxConstraints(maxWidth: 600),
-          padding: const EdgeInsets.all(40),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(theme.subtitle, style: TextStyle(color: cs.onSurfaceVariant, fontSize: 16)),
-              const SizedBox(height: 40),
-              Container(
-                decoration: BoxDecoration(
-                  color: Theme.of(context).cardColor,
-                  borderRadius: BorderRadius.circular(24),
-                  border: Border.all(color: cs.outline),
-                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 20)],
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.all(32),
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text('Select Active Batch', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: cs.onSurface)),
-                    const SizedBox(height: 12),
-                    StreamBuilder<List<Batch>>(
-                      stream: (db.select(db.batches)..where((t) => t.status.equals('active'))).watch(),
-                      builder: (context, snapshot) {
-                        final batches = snapshot.data ?? [];
-                        return DropdownButtonFormField<int>(
-                          value: _selectedBatchId,
-                          hint: Text('Choose a batch', style: TextStyle(color: cs.onSurfaceVariant)),
-                          dropdownColor: Theme.of(context).cardColor,
-                          items: batches.map((b) => DropdownMenuItem<int>(value: b.id, child: Text(b.batchName, style: TextStyle(color: cs.onSurface)))).toList(),
-                          onChanged: (v) => setState(() => _selectedBatchId = v),
-                          decoration: _inputDecoration(Icons.layers_rounded, context),
-                        );
-                      },
-                    ),
-                    const SizedBox(height: 32),
-                    Text(theme.valueLabel, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: cs.onSurface)),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: _valueController,
-                      keyboardType: TextInputType.number,
-                      style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: cs.onSurface),
-                      decoration: _inputDecoration(theme.icon, context),
-                    ),
-                    const SizedBox(height: 48),
-                    SizedBox(
-                      width: double.infinity,
-                      height: 56,
-                      child: FilledButton(
-                        onPressed: () => _submitLog(db),
-                        style: FilledButton.styleFrom(
-                          backgroundColor: theme.color,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      body: SingleChildScrollView(
+        child: Center(
+          child: Container(
+            constraints: const BoxConstraints(maxWidth: 800),
+            padding: const EdgeInsets.all(40),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Header Info
+                Text(theme.subtitle, style: TextStyle(color: cs.onSurfaceVariant, fontSize: 16)),
+                const SizedBox(height: 32),
+
+                // Form Card
+                Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(24),
+                    boxShadow: [
+                      BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 20, offset: const Offset(0, 10))
+                    ],
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(40),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Row 1: Batch Selection
+                        _buildLabel('Select Target Batch'),
+                        const SizedBox(height: 12),
+                        StreamBuilder<List<Batch>>(
+                          stream: (db.select(db.batches)..where((t) => t.status.equals('active'))).watch(),
+                          builder: (context, snapshot) {
+                            final batches = snapshot.data ?? [];
+                            return DropdownButtonFormField<int>(
+                              initialValue: _selectedBatchId,
+                              hint: Text('Choose an active batch', style: TextStyle(color: cs.onSurfaceVariant, fontSize: 14)),
+                              dropdownColor: Colors.white,
+                              alignment: AlignmentDirectional.bottomStart,
+                              menuMaxHeight: 300,
+                              items: batches.map((b) => DropdownMenuItem<int>(
+                                value: b.id, 
+                                child: Text(b.batchName, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14))
+                              )).toList(),
+                              onChanged: (v) => setState(() => _selectedBatchId = v),
+                              decoration: _inputDecoration(Icons.layers_rounded, context),
+                            );
+                          },
                         ),
-                        child: Text('Save ${theme.title} Log',
-                            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                      ),
+                        const SizedBox(height: 32),
+
+                        // Conditional Feeding Fields
+                        if (widget.type == OperationType.feeding) ...[
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    _buildLabel('Feed Type'),
+                                    const SizedBox(height: 12),
+                                    StreamBuilder<List<FeedType>>(
+                                      stream: db.select(db.feedTypes).watch(),
+                                      builder: (context, snapshot) {
+                                        final types = snapshot.data ?? [];
+                                        return DropdownButtonFormField<int>(
+                                          initialValue: _selectedFeedTypeId,
+                                          hint: const Text('Select Feed', style: TextStyle(fontSize: 14)),
+                                          dropdownColor: Colors.white,
+                                          alignment: AlignmentDirectional.bottomStart,
+                                          menuMaxHeight: 300,
+                                          items: types.map((t) => DropdownMenuItem<int>(
+                                            value: t.id, 
+                                            child: Text(t.name, style: const TextStyle(fontSize: 14))
+                                          )).toList(),
+                                          onChanged: (v) => setState(() => _selectedFeedTypeId = v),
+                                          decoration: _inputDecoration(Icons.restaurant_menu_rounded, context),
+                                        );
+                                      },
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 24),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    _buildLabel('Feed Formulation'),
+                                    const SizedBox(height: 12),
+                                    StreamBuilder<List<FeedFormulation>>(
+                                      stream: db.select(db.feedFormulations).watch(),
+                                      builder: (context, snapshot) {
+                                        final forms = snapshot.data ?? [];
+                                        return DropdownButtonFormField<int>(
+                                          initialValue: _selectedFormulationId,
+                                          hint: const Text('Select Formula', style: TextStyle(fontSize: 14)),
+                                          dropdownColor: Colors.white,
+                                          alignment: AlignmentDirectional.bottomStart,
+                                          menuMaxHeight: 300,
+                                          items: forms.map((f) => DropdownMenuItem<int>(
+                                            value: f.id, 
+                                            child: Text(f.name, style: const TextStyle(fontSize: 14))
+                                          )).toList(),
+                                          onChanged: (v) => setState(() => _selectedFormulationId = v),
+                                          decoration: _inputDecoration(Icons.science_rounded, context),
+                                        );
+                                      },
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 32),
+                        ],
+
+                        // Row 2: Value Input
+                        _buildLabel(theme.valueLabel),
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: _valueController,
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*'))],
+                          style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: Color(0xFF1E293B)),
+                          decoration: _inputDecoration(theme.icon, context, suffix: widget.type == OperationType.feeding ? 'KG' : null),
+                        ),
+                        
+                        const SizedBox(height: 48),
+
+                        // Submit Button
+                        SizedBox(
+                          width: double.infinity,
+                          height: 64,
+                          child: FilledButton(
+                            onPressed: () => _submitLog(db),
+                            style: FilledButton.styleFrom(
+                              backgroundColor: theme.color,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                              elevation: 4,
+                              shadowColor: theme.color.withValues(alpha: 0.4),
+                            ),
+                            child: Text('LOG ${theme.title.toUpperCase()}',
+                                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900, letterSpacing: 1)),
+                          ),
+                        ),
+                      ],
                     ),
-                  ]),
+                  ),
                 ),
-              ),
-            ],
+                
+                const SizedBox(height: 40),
+                
+                // Helper Card
+                if (widget.type == OperationType.feeding)
+                  Container(
+                    padding: const EdgeInsets.all(24),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.shade50,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: Colors.blue.shade100),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.lightbulb_outline_rounded, color: Colors.blue.shade700),
+                        const SizedBox(width: 16),
+                        const Expanded(
+                          child: Text(
+                            'Logging feed correctly helps track cost-per-bird and growth efficiency accurately.',
+                            style: TextStyle(color: Color(0xFF1E40AF), fontWeight: FontWeight.w600, fontSize: 13),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
           ),
         ),
       ),
     );
   }
 
-  InputDecoration _inputDecoration(IconData icon, BuildContext context) {
+  Widget _buildLabel(String text) {
+    return Text(text, 
+      style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 13, color: Color(0xFF64748B), letterSpacing: 0.5));
+  }
+
+  InputDecoration _inputDecoration(IconData icon, BuildContext context, {String? suffix}) {
     final cs = Theme.of(context).colorScheme;
     return InputDecoration(
-      prefixIcon: Icon(icon, color: cs.onSurfaceVariant),
+      prefixIcon: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16.0),
+        child: Icon(icon, color: const Color(0xFF64748B), size: 20),
+      ),
+      suffixText: suffix,
+      suffixStyle: const TextStyle(fontWeight: FontWeight.w900, color: Color(0xFF64748B)),
       filled: true,
-      fillColor: cs.surfaceContainerHighest,
-      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: cs.outline)),
-      contentPadding: const EdgeInsets.all(16),
+      fillColor: const Color(0xFFF1F5F9),
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
+      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: cs.primary, width: 2)),
+      contentPadding: const EdgeInsets.all(20),
     );
   }
 
   _OperationTheme _getTheme() {
     switch (widget.type) {
       case OperationType.feeding:
-        return _OperationTheme(title: 'Feeding Log', subtitle: 'Record daily feed consumption per batch',
-            valueLabel: 'Amount Consumed (kg)', icon: Icons.restaurant_rounded, color: const Color(0xFF2563EB));
+        return _OperationTheme(title: 'Feeding Log', subtitle: 'Record daily feed consumption and formulation details.',
+            valueLabel: 'AMOUNT CONSUMED', icon: Icons.scale_rounded, color: const Color(0xFF2563EB));
       case OperationType.mortality:
-        return _OperationTheme(title: 'Mortality Record', subtitle: 'Track bird losses to monitor flock health',
-            valueLabel: 'Number of Birds Lost', icon: Icons.cancel_rounded, color: const Color(0xFFDC2626));
+        return _OperationTheme(title: 'Mortality Record', subtitle: 'Track bird losses to monitor flock health.',
+            valueLabel: 'NUMBER OF BIRDS LOST', icon: Icons.remove_circle_outline_rounded, color: const Color(0xFFDC2626));
       case OperationType.eggs:
-        return _OperationTheme(title: 'Egg Production', subtitle: 'Log daily egg collection and quality',
-            valueLabel: 'Total Eggs Collected', icon: Icons.egg_rounded, color: const Color(0xFFD97706));
+        return _OperationTheme(title: 'Egg Production', subtitle: 'Log daily egg collection and quality grades.',
+            valueLabel: 'TOTAL EGGS COLLECTED', icon: Icons.egg_outlined, color: const Color(0xFFD97706));
     }
   }
 
   Future<void> _submitLog(AppDatabase db) async {
-    if (_selectedBatchId == null) return;
+    if (_selectedBatchId == null) {
+      _showError('Please select a batch');
+      return;
+    }
+    
+    final valueStr = _valueController.text;
+    if (valueStr.isEmpty) {
+      _showError('Please enter a value');
+      return;
+    }
+
     final farmId = await FarmUtils.getBoundFarmId();
-    if (farmId == null) return;
-    final value = double.tryParse(_valueController.text) ?? 0;
-    if (value <= 0) return;
+    if (farmId == null) {
+      _showError('Farm ID not found');
+      return;
+    }
+
+    final value = double.tryParse(valueStr) ?? 0;
+    if (value <= 0) {
+      _showError('Value must be greater than zero');
+      return;
+    }
 
     try {
       switch (widget.type) {
         case OperationType.feeding:
           await db.into(db.feedingLogs).insert(FeedingLogsCompanion.insert(
-              farmId: farmId, batchId: Value(_selectedBatchId), amountConsumed: value, logDate: DateTime.now(), synced: const Value(false)));
+              farmId: farmId, 
+              batchId: Value(_selectedBatchId), 
+              feedTypeId: Value(_selectedFeedTypeId),
+              formulationId: Value(_selectedFormulationId),
+              amountConsumed: value, 
+              logDate: DateTime.now(), 
+              synced: const Value(false)));
           break;
         case OperationType.mortality:
           await db.into(db.mortalities).insert(MortalitiesCompanion.insert(
@@ -153,9 +300,14 @@ class _OperationLogScreenState extends State<OperationLogScreen> {
               farmId: farmId, batchId: _selectedBatchId!, eggsCollected: value.toInt(), logDate: DateTime.now(), synced: const Value(false)));
           break;
       }
+      
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: const Row(children: [Icon(Icons.check_circle_rounded, color: Colors.white), SizedBox(width: 12), Text('Log saved successfully')]),
+          content: Row(children: [
+            const Icon(Icons.check_circle_rounded, color: Colors.white, size: 20),
+            const SizedBox(width: 12),
+            Text('${_getTheme().title} saved successfully', style: const TextStyle(fontWeight: FontWeight.bold)),
+          ]),
           backgroundColor: const Color(0xFF16A34A),
           behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -164,8 +316,18 @@ class _OperationLogScreenState extends State<OperationLogScreen> {
         _valueController.clear();
       }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+      _showError('Error: $e');
     }
+  }
+
+  void _showError(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(message),
+      backgroundColor: Colors.redAccent,
+      behavior: SnackBarBehavior.floating,
+      margin: const EdgeInsets.all(20),
+    ));
   }
 }
 

@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../data/local_db.dart';
+import '../widgets/financial_init_dialog.dart';
 
 class FinancialControlScreen extends StatefulWidget {
   const FinancialControlScreen({super.key});
@@ -13,16 +14,67 @@ class FinancialControlScreen extends StatefulWidget {
 
 class _FinancialControlScreenState extends State<FinancialControlScreen> {
   late AppDatabase db;
+  bool _hasCheckedInit = false;
 
   @override
   void initState() {
     super.initState();
     db = Provider.of<AppDatabase>(context, listen: false);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _checkUninitializedBatches());
+  }
+
+  Future<void> _checkUninitializedBatches() async {
+    if (_hasCheckedInit) return;
+    _hasCheckedInit = true;
+    final batches = await db.select(db.batches).get();
+    final uninitialized = batches.where((b) => b.initialActualCost == null).toList();
+    if (uninitialized.isNotEmpty && mounted) {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Row(children: [
+            Icon(Icons.warning_amber_rounded, color: Color(0xFFF59E0B), size: 28),
+            SizedBox(width: 12),
+            Text('Financial Setup Required', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18)),
+          ]),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('The following batches need initial cost data before financial reports can be accurate:',
+                style: TextStyle(fontSize: 13, color: Colors.grey)),
+              const SizedBox(height: 16),
+              ...uninitialized.map((b) => ListTile(
+                dense: true,
+                leading: const Icon(Icons.circle, size: 8, color: Color(0xFFF59E0B)),
+                title: Text(b.batchName, style: const TextStyle(fontWeight: FontWeight.w700)),
+                trailing: FilledButton(
+                  onPressed: () {
+                    Navigator.pop(context);
+                    showDialog(context: context, barrierDismissible: false, builder: (_) => FinancialInitDialog(batch: b));
+                  },
+                  style: FilledButton.styleFrom(backgroundColor: const Color(0xFF16A34A)),
+                  child: const Text('Initialize', style: TextStyle(fontSize: 12)),
+                ),
+              )),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('REMIND ME LATER', style: TextStyle(color: Colors.grey)),
+            ),
+          ],
+        ),
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final currency = NumberFormat.currency(symbol: 'GHS ', decimalDigits: 2);
+    final currency = NumberFormat.currency(symbol: 'GH₵ ', decimalDigits: 2);
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
@@ -42,7 +94,7 @@ class _FinancialControlScreenState extends State<FinancialControlScreen> {
                       final inventory = invSnap.data ?? [];
                       final customers = custSnap.data ?? [];
 
-                      // Revenue: proxy = total eggs collected × avg price (we'll use a flat GHS 0.40/egg)
+                      // Revenue: proxy = total eggs collected × avg price (we'll use a flat GH₵ 0.40/egg)
                       const pricePerEgg = 0.40;
                       final totalEggs = eggs.fold(0, (s, e) => s + e.eggsCollected);
                       final totalRevenue = totalEggs * pricePerEgg;
@@ -51,7 +103,7 @@ class _FinancialControlScreenState extends State<FinancialControlScreen> {
                       final stockValue = inventory.fold(0.0, (s, i) => s + (i.stockLevel * (i.costPerUnit ?? 0.0)));
 
                       // Outstanding receivables
-                      final outstanding = customers.fold(0.0, (s, c) => s + (c.balanceOwed ?? 0.0));
+                      final outstanding = customers.fold(0.0, (s, c) => s + c.balanceOwed);
 
                       // Monthly egg data for chart (last 6 months)
                       final now = DateTime.now();
@@ -103,7 +155,7 @@ class _FinancialControlScreenState extends State<FinancialControlScreen> {
                                 currency.format(outstanding),
                                 Icons.payments_rounded,
                                 const Color(0xFFF59E0B),
-                                '${customers.where((c) => (c.balanceOwed ?? 0) > 0).length} customers with balance',
+                                '${customers.where((c) => c.balanceOwed > 0).length} customers with balance',
                               )),
                             ]),
                             const SizedBox(height: 28),
@@ -114,7 +166,7 @@ class _FinancialControlScreenState extends State<FinancialControlScreen> {
                               decoration: BoxDecoration(
                                 color: Theme.of(context).cardColor,
                                 borderRadius: BorderRadius.circular(20),
-                                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 15)],
+                                boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 15)],
                               ),
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -125,7 +177,7 @@ class _FinancialControlScreenState extends State<FinancialControlScreen> {
                                     Container(
                                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                                       decoration: BoxDecoration(
-                                        color: const Color(0xFF16A34A).withOpacity(0.1),
+                                        color: const Color(0xFF16A34A).withValues(alpha: 0.1),
                                         borderRadius: BorderRadius.circular(8),
                                       ),
                                       child: const Text('Egg Revenue', style: TextStyle(color: Color(0xFF16A34A), fontWeight: FontWeight.w700, fontSize: 12)),
@@ -144,7 +196,7 @@ class _FinancialControlScreenState extends State<FinancialControlScreen> {
                                         leftTitles: AxisTitles(sideTitles: SideTitles(
                                           showTitles: true,
                                           reservedSize: 60,
-                                          getTitlesWidget: (v, _) => Text('GHS ${v.toInt()}', style: const TextStyle(fontSize: 10, color: Color(0xFF94A3B8))),
+                                          getTitlesWidget: (v, _) => Text('GH₵ ${v.toInt()}', style: const TextStyle(fontSize: 10, color: Color(0xFF94A3B8))),
                                         )),
                                         bottomTitles: AxisTitles(sideTitles: SideTitles(
                                           showTitles: true,
@@ -166,10 +218,10 @@ class _FinancialControlScreenState extends State<FinancialControlScreen> {
                                           barWidth: 3,
                                           belowBarData: BarAreaData(
                                             show: true,
-                                            color: const Color(0xFF16A34A).withOpacity(0.08),
+                                            color: const Color(0xFF16A34A).withValues(alpha: 0.08),
                                           ),
                                           dotData: FlDotData(
-                                            getDotPainter: (_, __, ___, ____) => FlDotCirclePainter(
+                                            getDotPainter: (_, _, _, _) => FlDotCirclePainter(
                                               radius: 4,
                                               color: const Color(0xFF16A34A),
                                               strokeWidth: 2,
@@ -191,7 +243,7 @@ class _FinancialControlScreenState extends State<FinancialControlScreen> {
                               decoration: BoxDecoration(
                                 color: Theme.of(context).cardColor,
                                 borderRadius: BorderRadius.circular(20),
-                                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 15)],
+                                boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 15)],
                               ),
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -240,7 +292,7 @@ class _FinancialControlScreenState extends State<FinancialControlScreen> {
                                               child: LinearProgressIndicator(
                                                 value: pct,
                                                 minHeight: 6,
-                                                backgroundColor: Theme.of(context).colorScheme.outline.withOpacity(0.3),
+                                                backgroundColor: Theme.of(context).colorScheme.outline.withValues(alpha: 0.3),
                                                 valueColor: AlwaysStoppedAnimation(isLow ? Colors.red[400]! : const Color(0xFF16A34A)),
                                               ),
                                             ),
@@ -273,12 +325,12 @@ class _FinancialControlScreenState extends State<FinancialControlScreen> {
       decoration: BoxDecoration(
         color: Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(20),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 15)],
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 15)],
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Container(
           padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(12)),
+          decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(12)),
           child: Icon(icon, color: color, size: 24),
         ),
         const SizedBox(height: 16),

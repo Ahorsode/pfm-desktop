@@ -28,7 +28,7 @@ class _SalesScreenState extends State<SalesScreen> {
   }
 
   Future<void> _showSaleDialog(List<Customer> customers, List<Batch> batches) async {
-    final farmId = await _getFarmId();
+    if (!context.mounted) return;
     Customer? selectedCustomer;
     Batch? selectedBatch;
     final qtyCtrl = TextEditingController();
@@ -36,6 +36,7 @@ class _SalesScreenState extends State<SalesScreen> {
     final noteCtrl = TextEditingController();
     final formKey = GlobalKey<FormState>();
 
+    if (!context.mounted) return;
     await showDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(builder: (ctx, setDlgState) => AlertDialog(
@@ -65,7 +66,7 @@ class _SalesScreenState extends State<SalesScreen> {
                     prefixIcon: const Icon(Icons.inventory_2_rounded, size: 20),
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                   ),
-                  items: batches.map((b) => DropdownMenuItem<Batch>(value: b, child: Text(b.batchName ?? 'Unnamed'))).toList(),
+                  items: batches.map((b) => DropdownMenuItem<Batch>(value: b, child: Text(b.batchName))).toList(),
                   onChanged: (v) => setDlgState(() => selectedBatch = v),
                   validator: (v) => v == null ? 'Please select a batch' : null,
                 ),
@@ -116,15 +117,30 @@ class _SalesScreenState extends State<SalesScreen> {
               final price = double.tryParse(priceCtrl.text) ?? 0.0;
               final total = qty * price;
 
-              // Update customer's balance
+              final syncEngine = Provider.of<SyncEngine>(context, listen: false);
+              final farmId = await _getFarmId();
+
+              // 1. Insert sale record
+              await db.into(db.sales).insert(SalesCompanion.insert(
+                farmId: farmId,
+                batchId: Value(selectedBatch!.id),
+                customerId: Value(selectedCustomer!.id),
+                quantity: qty,
+                unitPrice: price,
+                totalAmount: total,
+                saleDate: Value(DateTime.now()),
+                synced: const Value(false),
+              ));
+
+              // 2. Update customer's balance
               if (selectedCustomer != null) {
                 await (db.update(db.customers)..where((t) => t.id.equals(selectedCustomer!.id))).write(
-                  CustomersCompanion(balanceOwed: Value((selectedCustomer!.balanceOwed ?? 0.0) + total), synced: const Value(false)),
+                  CustomersCompanion(balanceOwed: Value(selectedCustomer!.balanceOwed + total), synced: const Value(false)),
                 );
               }
               if (ctx.mounted) Navigator.pop(ctx);
               setState(() {});
-              if (mounted) Provider.of<SyncEngine>(context, listen: false).syncNow();
+              syncEngine.syncNow();
             },
             style: FilledButton.styleFrom(backgroundColor: const Color(0xFF16A34A)),
             child: const Text('Record Sale'),
@@ -136,7 +152,7 @@ class _SalesScreenState extends State<SalesScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final currency = NumberFormat.currency(symbol: 'GHS ', decimalDigits: 2);
+    final currency = NumberFormat.currency(symbol: 'GH₵ ', decimalDigits: 2);
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
@@ -190,8 +206,8 @@ class _SalesScreenState extends State<SalesScreen> {
                 stream: db.select(db.customers).watch(),
                 builder: (context, snapshot) {
                   final customers = snapshot.data ?? [];
-                  final totalBalance = customers.fold(0.0, (s, c) => s + (c.balanceOwed ?? 0.0));
-                  final overdue = customers.where((c) => (c.balanceOwed ?? 0.0) > 0).toList();
+                  final totalBalance = customers.fold(0.0, (s, c) => s + (c.balanceOwed));
+                  final overdue = customers.where((c) => (c.balanceOwed) > 0).toList();
 
                   return Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -223,25 +239,25 @@ class _SalesScreenState extends State<SalesScreen> {
                               )
                             : ListView.separated(
                                 itemCount: customers.length,
-                                separatorBuilder: (_, __) => const SizedBox(height: 10),
+                                separatorBuilder: (_, _) => const SizedBox(height: 10),
                                 itemBuilder: (context, i) {
                                   final c = customers[i];
-                                  final balance = c.balanceOwed ?? 0.0;
+                                  final balance = c.balanceOwed;
                                   return Container(
                                     padding: const EdgeInsets.all(20),
                                     decoration: BoxDecoration(
                                       color: Theme.of(context).cardColor,
                                       borderRadius: BorderRadius.circular(16),
                                       border: Border.all(
-                                        color: balance > 0 ? Colors.orange.withOpacity(0.3) : Theme.of(context).colorScheme.outline,
+                                        color: balance > 0 ? Colors.orange.withValues(alpha: 0.3) : Theme.of(context).colorScheme.outline,
                                       ),
-                                      boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 8)],
+                                      boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 8)],
                                     ),
                                     child: Row(
                                       children: [
                                         CircleAvatar(
                                           radius: 24,
-                                          backgroundColor: const Color(0xFF16A34A).withOpacity(0.1),
+                                          backgroundColor: const Color(0xFF16A34A).withValues(alpha: 0.1),
                                           child: Text(c.name[0].toUpperCase(),
                                               style: const TextStyle(color: Color(0xFF16A34A), fontWeight: FontWeight.bold, fontSize: 18)),
                                         ),
@@ -301,12 +317,12 @@ class _SalesScreenState extends State<SalesScreen> {
       decoration: BoxDecoration(
         color: Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(16),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 10)],
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 10)],
       ),
       child: Row(children: [
         Container(
           padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(12)),
+          decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(12)),
           child: Icon(icon, color: color, size: 22),
         ),
         const SizedBox(width: 16),

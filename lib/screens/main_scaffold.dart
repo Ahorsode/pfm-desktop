@@ -9,7 +9,6 @@ import 'livestock_manager.dart';
 import 'inventory_manager.dart';
 import 'houses_screen.dart';
 import 'operation_log_screen.dart';
-import 'upcoming_feature_screen.dart';
 import 'sales_screen.dart';
 import 'customer_directory_screen.dart';
 import 'financial_control_screen.dart';
@@ -27,6 +26,7 @@ class MainScaffold extends StatefulWidget {
 
 class _MainScaffoldState extends State<MainScaffold> {
   int _selectedIndex = 0;
+  bool _isCollapsed = false;
 
   final List<Widget> _pages = [
     const OverviewPage(), // 0
@@ -71,57 +71,67 @@ class _MainScaffoldState extends State<MainScaffold> {
     final syncEngine = Provider.of<SyncEngine>(context);
 
     return Scaffold(
-      body: Row(
-        children: [
-          // Navigation Sidebar
-          AppSidebar(
-            selectedIndex: _selectedIndex,
-            onDestinationSelected: (index) => setState(() => _selectedIndex = index),
-            onLogout: () => _logout(context),
-            syncStatus: StreamBuilder<bool>(
-              stream: syncEngine.syncStatus,
-              initialData: syncEngine.isSyncing,
-              builder: (context, snapshot) {
-                final isSyncing = snapshot.data ?? false;
-                return Tooltip(
-                  message: isSyncing ? 'Synchronizing data...' : 'Click to sync now',
-                  child: InkWell(
-                    onTap: isSyncing ? null : () => syncEngine.syncNow(),
-                    borderRadius: BorderRadius.circular(8),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          if (isSyncing)
-                            const SizedBox(
-                              height: 16,
-                              width: 16,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                valueColor: AlwaysStoppedAnimation<Color>(Colors.white70),
-                              ),
-                            )
-                          else
-                            const Icon(Icons.cloud_done_rounded, color: Color(0xFF22C55E), size: 16),
-                          const SizedBox(width: 8),
-                          Text(
-                            isSyncing ? 'SYNCING...' : 'CLOUD SYNCED',
-                            style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w900,
-                              letterSpacing: 0.5,
-                              color: isSyncing ? Colors.white70 : const Color(0xFF22C55E),
-                            ),
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          // Auto-collapse on small screens
+          final bool shouldCollapse = constraints.maxWidth < 1200;
+          final bool effectiveCollapsed = _isCollapsed || shouldCollapse;
+
+          return Row(
+            children: [
+              // Navigation Sidebar
+              AppSidebar(
+                selectedIndex: _selectedIndex,
+                isCollapsed: effectiveCollapsed,
+                onToggleCollapse: () => setState(() => _isCollapsed = !_isCollapsed),
+                onDestinationSelected: (index) => setState(() => _selectedIndex = index),
+                onLogout: () => _logout(context),
+                syncStatus: StreamBuilder<bool>(
+                  stream: syncEngine.syncStatus,
+                  initialData: syncEngine.isSyncing,
+                  builder: (context, snapshot) {
+                    final isSyncing = snapshot.data ?? false;
+                    return Tooltip(
+                      message: isSyncing ? 'Synchronizing data...' : 'Click to sync now',
+                      child: InkWell(
+                        onTap: isSyncing ? null : () => syncEngine.syncNow(),
+                        borderRadius: BorderRadius.circular(8),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (isSyncing)
+                                const SizedBox(
+                                  height: 16,
+                                  width: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white70),
+                                  ),
+                                )
+                              else
+                                const Icon(Icons.cloud_done_rounded, color: Color(0xFF22C55E), size: 16),
+                              if (!effectiveCollapsed) ...[
+                                const SizedBox(width: 8),
+                                Text(
+                                  isSyncing ? 'SYNCING...' : 'CLOUD SYNCED',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w900,
+                                    letterSpacing: 0.5,
+                                    color: isSyncing ? Colors.white70 : const Color(0xFF22C55E),
+                                  ),
+                                ),
+                              ],
+                            ],
                           ),
-                        ],
+                        ),
                       ),
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
+                    );
+                  },
+                ),
+              ),
           const VerticalDivider(thickness: 1, width: 1, color: Colors.black12),
           // Main Content
           Expanded(
@@ -130,8 +140,10 @@ class _MainScaffoldState extends State<MainScaffold> {
               child: _pages[_selectedIndex],
             ),
           ),
-        ],
-      ),
-    );
-  }
+          ],
+        );
+      },
+    ),
+  );
+}
 }

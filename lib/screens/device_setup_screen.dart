@@ -4,7 +4,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:device_info_plus/device_info_plus.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'dart:io' show Platform;
 import '../data/sync_engine.dart';
 import 'login_screen.dart';
@@ -227,7 +226,7 @@ class _DeviceSetupScreenState extends State<DeviceSetupScreen> {
             borderRadius: BorderRadius.circular(24),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.08),
+                color: Colors.black.withValues(alpha: 0.08),
                 blurRadius: 30,
                 offset: const Offset(0, 15),
               )
@@ -290,7 +289,7 @@ class _DeviceSetupScreenState extends State<DeviceSetupScreen> {
                       Text(
                         "Debug ID: ${Supabase.instance.client.auth.currentUser?.id ?? 'Not Logged In'}",
                         style: TextStyle(
-                          color: const Color(0xFF9F1239).withOpacity(0.6),
+                          color: const Color(0xFF9F1239).withValues(alpha: 0.6),
                           fontSize: 10,
                           fontFamily: 'monospace',
                         ),
@@ -348,7 +347,7 @@ class _DeviceSetupScreenState extends State<DeviceSetupScreen> {
                     prefixIcon: const Icon(LucideIcons.layoutGrid, size: 20),
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                     filled: true,
-                    fillColor: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3),
+                    fillColor: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
                   ),
                   keyboardType: TextInputType.number,
                   autofocus: true,
