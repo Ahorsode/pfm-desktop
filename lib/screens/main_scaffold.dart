@@ -15,6 +15,7 @@ import 'financial_control_screen.dart';
 import 'team_management_screen.dart';
 import 'license_screen.dart';
 import 'settings_screen.dart';
+import 'audit_log_screen.dart';
 import '../widgets/app_sidebar.dart';
 
 class MainScaffold extends StatefulWidget {
@@ -42,6 +43,7 @@ class _MainScaffoldState extends State<MainScaffold> {
     const TeamManagementScreen(), // 10
     const LicenseScreen(), // 11
     const SettingsScreen(), // 12
+    const AuditLogScreen(), // 13
   ];
 
   Future<void> _logout(BuildContext context) async {

@@ -147,6 +147,13 @@ class AppSidebar extends StatelessWidget {
                     'Settings',
                     sidebarAccent,
                   ),
+                  _buildMenuItem(
+                    context,
+                    13,
+                    Icons.shield_outlined,
+                    'Audit Logs',
+                    sidebarAccent,
+                  ),
                 ],
               ),
             ),

@@ -399,7 +399,12 @@ class EditBatchDialog extends StatefulWidget {
 class _EditBatchDialogState extends State<EditBatchDialog> {
   late TextEditingController _nameController;
   late TextEditingController _countController;
+  late TextEditingController _breedController;
   late String _status;
+  late String _type;
+  late String _selectedBenchmark;
+  late DateTime _arrivalDate;
+  int? _selectedHouseId;
   final _formKey = GlobalKey<FormState>();
 
   @override
@@ -407,7 +412,12 @@ class _EditBatchDialogState extends State<EditBatchDialog> {
     super.initState();
     _nameController = TextEditingController(text: widget.batch.batchName);
     _countController = TextEditingController(text: widget.batch.currentCount.toString());
+    _breedController = TextEditingController(text: widget.batch.breedType ?? '');
+    _selectedBenchmark = widget.batch.growthTarget ?? 'Default (From Breed)';
     _status = widget.batch.status;
+    _type = widget.batch.type;
+    _arrivalDate = widget.batch.arrivalDate;
+    _selectedHouseId = widget.batch.houseId;
   }
 
   @override
@@ -416,40 +426,94 @@ class _EditBatchDialogState extends State<EditBatchDialog> {
       backgroundColor: const Color(0xFF121417),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       title: const Text('Edit Unit Details', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-      content: Form(
-        key: _formKey,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextFormField(
-              controller: _nameController,
-              style: const TextStyle(color: Colors.white),
-              decoration: _inputDecoration('Unit Name', Icons.edit),
-              validator: (v) => (v == null || v.isEmpty) ? 'Required' : null,
-            ),
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: _countController,
-              keyboardType: TextInputType.number,
-              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-              style: const TextStyle(color: Colors.white),
-              decoration: _inputDecoration('Current Count', Icons.numbers),
-              validator: (v) => (v == null || v.isEmpty) ? 'Required' : null,
-            ),
-            const SizedBox(height: 16),
-            DropdownButtonFormField<String>(
-              initialValue: _status,
-              dropdownColor: const Color(0xFF23262B),
-              style: const TextStyle(color: Colors.white),
-              decoration: _inputDecoration('Status', Icons.info_outline),
-              items: const [
-                DropdownMenuItem(value: 'active', child: Text('ACTIVE')),
-                DropdownMenuItem(value: 'completed', child: Text('COMPLETED')),
-                DropdownMenuItem(value: 'archived', child: Text('ARCHIVED')),
+      content: SizedBox(
+        width: 450,
+        child: SingleChildScrollView(
+          child: Form(
+            key: _formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextFormField(
+                  controller: _nameController,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: _inputDecoration('Unit Name / Identity', Icons.edit),
+                  validator: (v) => (v == null || v.isEmpty) ? 'Required' : null,
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextFormField(
+                        controller: _countController,
+                        keyboardType: TextInputType.number,
+                        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                        style: const TextStyle(color: Colors.white),
+                        decoration: _inputDecoration('Current Count', Icons.numbers),
+                        validator: (v) => (v == null || v.isEmpty) ? 'Required' : null,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _buildDatePicker(context),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                _buildHouseDropdown(context),
+                const SizedBox(height: 16),
+                DropdownButtonFormField<String>(
+                  initialValue: _type,
+                  dropdownColor: const Color(0xFF23262B),
+                  style: const TextStyle(color: Colors.white),
+                  decoration: _inputDecoration('Batch Type', Icons.category_outlined),
+                  items: const [
+                    DropdownMenuItem(value: 'POULTRY_BROILER', child: Text('BROILER')),
+                    DropdownMenuItem(value: 'POULTRY_LAYER', child: Text('LAYER')),
+                    DropdownMenuItem(value: 'POULTRY_TURKEY', child: Text('TURKEY')),
+                    DropdownMenuItem(value: 'POULTRY_DUCK', child: Text('DUCK')),
+                    DropdownMenuItem(value: 'POULTRY_OTHER', child: Text('OTHER')),
+                  ],
+                  onChanged: (v) => setState(() => _type = v!),
+                ),
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: _breedController,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: _inputDecoration('Breed (e.g. Cobb 500)', Icons.pets),
+                ),
+                const SizedBox(height: 16),
+                DropdownButtonFormField<String>(
+                  initialValue: _selectedBenchmark,
+                  dropdownColor: const Color(0xFF23262B),
+                  style: const TextStyle(color: Colors.white),
+                  decoration: _inputDecoration('Benchmark Override', Icons.speed),
+                  items: const [
+                    DropdownMenuItem(value: 'Default (From Breed)', child: Text('Default (From Breed)')),
+                    DropdownMenuItem(value: 'Ross 308 (Meat)', child: Text('Ross 308 (Meat)')),
+                    DropdownMenuItem(value: 'Cobb 500 (Meat)', child: Text('Cobb 500 (Meat)')),
+                    DropdownMenuItem(value: 'ISA Brown (Eggs)', child: Text('ISA Brown (Eggs)')),
+                    DropdownMenuItem(value: 'Lohmann (Eggs)', child: Text('Lohmann (Eggs)')),
+                    DropdownMenuItem(value: 'Ankole (Cattle)', child: Text('Ankole (Cattle)')),
+                  ],
+                  onChanged: (v) => setState(() => _selectedBenchmark = v!),
+                ),
+                const SizedBox(height: 16),
+                DropdownButtonFormField<String>(
+                  initialValue: _status,
+                  dropdownColor: const Color(0xFF23262B),
+                  style: const TextStyle(color: Colors.white),
+                  decoration: _inputDecoration('Status', Icons.info_outline),
+                  items: const [
+                    DropdownMenuItem(value: 'active', child: Text('ACTIVE')),
+                    DropdownMenuItem(value: 'completed', child: Text('COMPLETED')),
+                    DropdownMenuItem(value: 'archived', child: Text('ARCHIVED')),
+                  ],
+                  onChanged: (v) => setState(() => _status = v!),
+                ),
               ],
-              onChanged: (v) => setState(() => _status = v!),
             ),
-          ],
+          ),
         ),
       ),
       actions: [
@@ -477,6 +541,64 @@ class _EditBatchDialogState extends State<EditBatchDialog> {
     );
   }
 
+  Widget _buildDatePicker(BuildContext context) {
+    return InkWell(
+      onTap: () async {
+        final d = await showDatePicker(
+          context: context,
+          initialDate: _arrivalDate,
+          firstDate: DateTime(2020),
+          lastDate: DateTime.now().add(const Duration(days: 365)),
+        );
+        if (d != null) setState(() => _arrivalDate = d);
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 15),
+        decoration: BoxDecoration(
+          color: const Color(0xFF23262B),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.calendar_today, color: Colors.grey, size: 20),
+            const SizedBox(width: 12),
+            Text(
+              DateFormat('MMM dd, yyyy').format(_arrivalDate),
+              style: const TextStyle(color: Colors.white, fontSize: 14),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHouseDropdown(BuildContext context) {
+    final db = context.watch<AppDatabase>();
+    return FutureBuilder<int?>(
+      future: FarmUtils.getBoundFarmId(),
+      builder: (context, farm) {
+        if (!farm.hasData) return const SizedBox.shrink();
+        return StreamBuilder<List<House>>(
+          stream: (db.select(db.houses)..where((t) => t.farmId.equals(farm.data!))).watch(),
+          builder: (context, snapshot) {
+            final houses = snapshot.data ?? [];
+            return DropdownButtonFormField<int?>(
+              initialValue: _selectedHouseId,
+              dropdownColor: const Color(0xFF23262B),
+              style: const TextStyle(color: Colors.white),
+              decoration: _inputDecoration('Assign House', Icons.house_outlined),
+              items: [
+                const DropdownMenuItem(value: null, child: Text('No House Assigned')),
+                ...houses.map((h) => DropdownMenuItem(value: h.id, child: Text(h.name))),
+              ],
+              onChanged: (v) => setState(() => _selectedHouseId = v),
+            );
+          },
+        );
+      },
+    );
+  }
+
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
     
@@ -487,6 +609,11 @@ class _EditBatchDialogState extends State<EditBatchDialog> {
           batchName: Value(_nameController.text),
           currentCount: Value(int.parse(_countController.text)),
           status: Value(_status),
+          type: Value(_type),
+          arrivalDate: Value(_arrivalDate),
+          houseId: Value(_selectedHouseId),
+          breedType: Value(_breedController.text),
+          growthTarget: Value(_selectedBenchmark),
           synced: const Value(false),
         ),
       );
