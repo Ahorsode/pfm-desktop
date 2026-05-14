@@ -156,181 +156,225 @@ class _SalesScreenState extends State<SalesScreen> {
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      body: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Header
-            StreamBuilder<List<Customer>>(
-              stream: db.select(db.customers).watch(),
-              builder: (context, custSnap) {
-                return StreamBuilder<List<Batch>>(
-                  stream: db.select(db.batches).watch(),
-                  builder: (context, batchSnap) {
-                    final customers = custSnap.data ?? [];
-                    final batches = batchSnap.data ?? [];
-                    return Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final bool isNarrow = constraints.maxWidth < 850;
+
+          return Padding(
+            padding: EdgeInsets.all(isNarrow ? 16 : 32),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Header
+                StreamBuilder<List<Customer>>(
+                  stream: db.select(db.customers).watch(),
+                  builder: (context, custSnap) {
+                    return StreamBuilder<List<Batch>>(
+                      stream: db.select(db.batches).watch(),
+                      builder: (context, batchSnap) {
+                        final customers = custSnap.data ?? [];
+                        final batches = batchSnap.data ?? [];
+                        
+                        if (isNarrow) {
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text('Sales Management',
+                                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900)),
+                              const SizedBox(height: 8),
+                              SizedBox(
+                                width: double.infinity,
+                                child: FilledButton.icon(
+                                  onPressed: customers.isEmpty ? null : () => _showSaleDialog(customers, batches),
+                                  icon: const Icon(Icons.add),
+                                  label: const Text('Record Sale'),
+                                  style: FilledButton.styleFrom(
+                                    backgroundColor: const Color(0xFF16A34A),
+                                    padding: const EdgeInsets.symmetric(vertical: 14),
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          );
+                        }
+
+                        return Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            const Text('Sales Management',
-                                style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900)),
-                            Text('Track transactions and outstanding balances',
-                                style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 14)),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text('Sales Management',
+                                    style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900)),
+                                Text('Track transactions and outstanding balances',
+                                    style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 14)),
+                              ],
+                            ),
+                            FilledButton.icon(
+                              onPressed: customers.isEmpty ? null : () => _showSaleDialog(customers, batches),
+                              icon: const Icon(Icons.add),
+                              label: const Text('Record Sale'),
+                              style: FilledButton.styleFrom(
+                                backgroundColor: const Color(0xFF16A34A),
+                                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              ),
+                            ),
                           ],
-                        ),
-                        FilledButton.icon(
-                          onPressed: customers.isEmpty ? null : () => _showSaleDialog(customers, batches),
-                          icon: const Icon(Icons.add),
-                          label: const Text('Record Sale'),
-                          style: FilledButton.styleFrom(
-                            backgroundColor: const Color(0xFF16A34A),
-                            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                          ),
-                        ),
-                      ],
+                        );
+                      },
                     );
                   },
-                );
-              },
-            ),
-            const SizedBox(height: 28),
+                ),
+                const SizedBox(height: 28),
 
-            // Customer balance cards
-            Expanded(
-              child: StreamBuilder<List<Customer>>(
-                stream: db.select(db.customers).watch(),
-                builder: (context, snapshot) {
-                  final customers = snapshot.data ?? [];
-                  final totalBalance = customers.fold(0.0, (s, c) => s + (c.balanceOwed));
-                  final overdue = customers.where((c) => (c.balanceOwed) > 0).toList();
+                // Customer balance cards
+                Expanded(
+                  child: StreamBuilder<List<Customer>>(
+                    stream: db.select(db.customers).watch(),
+                    builder: (context, snapshot) {
+                      final customers = snapshot.data ?? [];
+                      final totalBalance = customers.fold(0.0, (s, c) => s + (c.balanceOwed));
+                      final overdue = customers.where((c) => (c.balanceOwed) > 0).toList();
 
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Summary strip
-                      Row(children: [
-                        Expanded(child: _statCard('Total Customers', '${customers.length}', Icons.people_rounded, const Color(0xFF3B82F6))),
-                        const SizedBox(width: 16),
-                        Expanded(child: _statCard('Customers with Balance', '${overdue.length}', Icons.warning_amber_rounded, const Color(0xFFF59E0B))),
-                        const SizedBox(width: 16),
-                        Expanded(child: _statCard('Total Outstanding', currency.format(totalBalance), Icons.payments_rounded, const Color(0xFF16A34A))),
-                      ]),
-                      const SizedBox(height: 24),
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Summary strip
+                          Wrap(
+                            spacing: 16,
+                            runSpacing: 16,
+                            children: [
+                              _statCard('Total Customers', '${customers.length}', Icons.people_rounded, const Color(0xFF3B82F6), isNarrow),
+                              _statCard('Customers with Balance', '${overdue.length}', Icons.warning_amber_rounded, const Color(0xFFF59E0B), isNarrow),
+                              _statCard('Total Outstanding', currency.format(totalBalance), Icons.payments_rounded, const Color(0xFF16A34A), isNarrow),
+                            ],
+                          ),
+                          const SizedBox(height: 24),
 
-                      Text('Outstanding Balances',
-                          style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: Theme.of(context).colorScheme.onSurface)),
-                      const SizedBox(height: 12),
+                          Text('Outstanding Balances',
+                              style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: Theme.of(context).colorScheme.onSurface)),
+                          const SizedBox(height: 12),
 
-                      // List
-                      Expanded(
-                        child: customers.isEmpty
-                            ? Center(
-                                child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                                  Icon(Icons.receipt_long_rounded, size: 64, color: Theme.of(context).colorScheme.outline),
-                                  const SizedBox(height: 16),
-                                  Text('No customers found. Add customers in the Customer Directory.',
-                                      style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 15)),
-                                ]),
-                              )
-                            : ListView.separated(
-                                itemCount: customers.length,
-                                separatorBuilder: (_, _) => const SizedBox(height: 10),
-                                itemBuilder: (context, i) {
-                                  final c = customers[i];
-                                  final balance = c.balanceOwed;
-                                  return Container(
-                                    padding: const EdgeInsets.all(20),
-                                    decoration: BoxDecoration(
-                                      color: Theme.of(context).cardColor,
-                                      borderRadius: BorderRadius.circular(16),
-                                      border: Border.all(
-                                        color: balance > 0 ? Colors.orange.withValues(alpha: 0.3) : Theme.of(context).colorScheme.outline,
-                                      ),
-                                      boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 8)],
-                                    ),
-                                    child: Row(
-                                      children: [
-                                        CircleAvatar(
-                                          radius: 24,
-                                          backgroundColor: const Color(0xFF16A34A).withValues(alpha: 0.1),
-                                          child: Text(c.name[0].toUpperCase(),
-                                              style: const TextStyle(color: Color(0xFF16A34A), fontWeight: FontWeight.bold, fontSize: 18)),
-                                        ),
-                                        const SizedBox(width: 16),
-                                        Expanded(
-                                          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                                            Text(c.name, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
-                                            Text(c.phone ?? c.email ?? 'No contact info',
-                                                style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 13)),
-                                          ]),
-                                        ),
-                                        Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-                                          Text(currency.format(balance),
-                                              style: TextStyle(
-                                                fontWeight: FontWeight.w800,
-                                                fontSize: 16,
-                                                color: balance > 0 ? Colors.orange[700] : Colors.green[700],
-                                              )),
-                                          Text(balance > 0 ? 'Outstanding' : 'Settled',
-                                              style: TextStyle(
-                                                fontSize: 12,
-                                                color: balance > 0 ? Colors.orange[400] : Colors.green[500],
-                                              )),
-                                        ]),
-                                        const SizedBox(width: 16),
-                                        if (balance > 0)
-                                          IconButton(
-                                            icon: const Icon(Icons.check_circle_rounded, color: Color(0xFF16A34A)),
-                                            tooltip: 'Mark as Settled',
-                                            onPressed: () async {
-                                              await (db.update(db.customers)..where((t) => t.id.equals(c.id))).write(
-                                                const CustomersCompanion(balanceOwed: Value(0.0), synced: Value(false)),
-                                              );
-                                              setState(() {});
-                                            },
+                          // List
+                          Expanded(
+                            child: customers.isEmpty
+                                ? Center(
+                                    child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                                      Icon(Icons.receipt_long_rounded, size: 64, color: Theme.of(context).colorScheme.outline),
+                                      const SizedBox(height: 16),
+                                      Text('No customers found. Add customers in the Customer Directory.',
+                                          textAlign: TextAlign.center,
+                                          style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 15)),
+                                    ]),
+                                  )
+                                : ListView.separated(
+                                    itemCount: customers.length,
+                                    separatorBuilder: (_, _) => const SizedBox(height: 10),
+                                    itemBuilder: (context, i) {
+                                      final c = customers[i];
+                                      final balance = c.balanceOwed;
+                                      return Container(
+                                        padding: const EdgeInsets.all(20),
+                                        decoration: BoxDecoration(
+                                          color: Theme.of(context).cardColor,
+                                          borderRadius: BorderRadius.circular(16),
+                                          border: Border.all(
+                                            color: balance > 0 ? Colors.orange.withValues(alpha: 0.3) : Theme.of(context).colorScheme.outline,
                                           ),
-                                      ],
-                                    ),
-                                  );
-                                },
-                              ),
-                      ),
-                    ],
-                  );
-                },
-              ),
+                                          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 8)],
+                                        ),
+                                        child: Row(
+                                          children: [
+                                            CircleAvatar(
+                                              radius: 20,
+                                              backgroundColor: const Color(0xFF16A34A).withValues(alpha: 0.1),
+                                              child: Text(c.name[0].toUpperCase(),
+                                                  style: const TextStyle(color: Color(0xFF16A34A), fontWeight: FontWeight.bold, fontSize: 16)),
+                                            ),
+                                            const SizedBox(width: 16),
+                                            Expanded(
+                                              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                                Text(c.name, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15), overflow: TextOverflow.ellipsis),
+                                                Text(c.phone ?? c.email ?? 'No contact info',
+                                                    style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12), overflow: TextOverflow.ellipsis),
+                                              ]),
+                                            ),
+                                            const SizedBox(width: 8),
+                                            Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                                              Text(currency.format(balance),
+                                                  style: TextStyle(
+                                                    fontWeight: FontWeight.w800,
+                                                    fontSize: 14,
+                                                    color: balance > 0 ? Colors.orange[700] : Colors.green[700],
+                                                  )),
+                                              Text(balance > 0 ? 'Outstanding' : 'Settled',
+                                                  style: TextStyle(
+                                                    fontSize: 11,
+                                                    color: balance > 0 ? Colors.orange[400] : Colors.green[500],
+                                                  )),
+                                            ]),
+                                            const SizedBox(width: 8),
+                                            if (balance > 0)
+                                              IconButton(
+                                                icon: const Icon(Icons.check_circle_rounded, color: Color(0xFF16A34A), size: 20),
+                                                tooltip: 'Mark as Settled',
+                                                padding: EdgeInsets.zero,
+                                                constraints: const BoxConstraints(),
+                                                onPressed: () async {
+                                                  await (db.update(db.customers)..where((t) => t.id.equals(c.id))).write(
+                                                    const CustomersCompanion(balanceOwed: Value(0.0), synced: Value(false)),
+                                                  );
+                                                  setState(() {});
+                                                },
+                                              ),
+                                          ],
+                                        ),
+                                      );
+                                    },
+                                  ),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                ),
+              ],
             ),
-          ],
-        ),
+          );
+        },
       ),
     );
   }
 
-  Widget _statCard(String label, String value, IconData icon, Color color) {
+  Widget _statCard(String label, String value, IconData icon, Color color, bool isCompact) {
     return Container(
+      width: isCompact ? double.infinity : 280,
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(16),
         boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 10)],
       ),
-      child: Row(children: [
-        Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(12)),
-          child: Icon(icon, color: color, size: 22),
-        ),
-        const SizedBox(width: 16),
-        Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(label, style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12)),
-          Text(value, style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18, color: Theme.of(context).colorScheme.onSurface)),
-        ]),
-      ]),
+      child: Row(
+        mainAxisSize: isCompact ? MainAxisSize.max : MainAxisSize.min,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(12)),
+            child: Icon(icon, color: color, size: 22),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(label, style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12), overflow: TextOverflow.ellipsis),
+              Text(value, style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18, color: Theme.of(context).colorScheme.onSurface), overflow: TextOverflow.ellipsis),
+            ]),
+          ),
+        ],
+      ),
     );
   }
+
 }

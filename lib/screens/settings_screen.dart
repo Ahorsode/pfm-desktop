@@ -116,30 +116,56 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(40),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('Settings', style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900, color: cs.onSurface)),
-                const SizedBox(height: 4),
-                Text('Configure your farm and application preferences',
-                    style: TextStyle(color: cs.onSurfaceVariant, fontSize: 14)),
-              ]),
-              FilledButton.icon(
-                onPressed: _saveSettings,
-                icon: const Icon(Icons.save_rounded),
-                label: const Text('Save Changes'),
-                style: FilledButton.styleFrom(
-                  backgroundColor: cs.primary,
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-              ),
-            ]),
-            const SizedBox(height: 36),
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final isNarrow = constraints.maxWidth < 850;
+          return SingleChildScrollView(
+            padding: EdgeInsets.all(isNarrow ? 16 : 40),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (isNarrow)
+                  Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text('Settings', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: cs.onSurface)),
+                    const SizedBox(height: 4),
+                    Text('Configure your farm preferences',
+                        style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13)),
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton.icon(
+                        onPressed: _saveSettings,
+                        icon: const Icon(Icons.save_rounded),
+                        label: const Text('Save Changes'),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: cs.primary,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                      ),
+                    ),
+                  ])
+                else
+                  Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                    Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text('Settings', style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900, color: cs.onSurface)),
+                      const SizedBox(height: 4),
+                      Text('Configure your farm and application preferences',
+                          style: TextStyle(color: cs.onSurfaceVariant, fontSize: 14)),
+                    ]),
+                    FilledButton.icon(
+                      onPressed: _saveSettings,
+                      icon: const Icon(Icons.save_rounded),
+                      label: const Text('Save Changes'),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: cs.primary,
+                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                    ),
+                  ]),
+                const SizedBox(height: 36),
+
 
             // Appearance
             _sectionCard(
@@ -366,11 +392,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
               ),
             ),
-          ],
-        ),
+              ],
+            ),
+          );
+        },
       ),
     );
   }
+
+
 
   Widget _sectionCard({
     required BuildContext context,
@@ -416,19 +446,41 @@ class _SettingsScreenState extends State<SettingsScreen> {
     required Widget trailing,
   }) {
     final cs = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(children: [
-        Icon(icon, size: 20, color: cs.onSurfaceVariant),
-        const SizedBox(width: 14),
-        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(label, style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: cs.onSurface)),
-          Text(subtitle, style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12)),
-        ])),
-        const SizedBox(width: 16),
-        trailing,
-      ]),
-    );
+    return LayoutBuilder(builder: (context, constraints) {
+      final isNarrow = constraints.maxWidth < 400;
+      if (isNarrow) {
+        return Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(children: [
+                Icon(icon, size: 20, color: cs.onSurfaceVariant),
+                const SizedBox(width: 14),
+                Expanded(child: Text(label, style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: cs.onSurface))),
+              ]),
+              const SizedBox(height: 4),
+              Text(subtitle, style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12)),
+              const SizedBox(height: 8),
+              SizedBox(width: double.infinity, child: trailing),
+            ],
+          ),
+        );
+      }
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Row(children: [
+          Icon(icon, size: 20, color: cs.onSurfaceVariant),
+          const SizedBox(width: 14),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(label, style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: cs.onSurface)),
+            Text(subtitle, style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12)),
+          ])),
+          const SizedBox(width: 16),
+          trailing,
+        ]),
+      );
+    });
   }
 
   Widget _inputRow({
@@ -439,26 +491,56 @@ class _SettingsScreenState extends State<SettingsScreen> {
     required Function(String) onChanged,
   }) {
     final cs = Theme.of(context).colorScheme;
-    return Row(children: [
-      Icon(icon, size: 20, color: cs.onSurfaceVariant),
-      const SizedBox(width: 14),
-      Expanded(child: Text(label, style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: cs.onSurface))),
-      const SizedBox(width: 16),
-      SizedBox(
-        width: 250,
-        child: TextFormField(
-          initialValue: value,
-          onChanged: onChanged,
-          decoration: InputDecoration(
-            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-            hintText: 'Enter $label',
+    return LayoutBuilder(builder: (context, constraints) {
+      final isNarrow = constraints.maxWidth < 400;
+      if (isNarrow) {
+        return Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(children: [
+                Icon(icon, size: 20, color: cs.onSurfaceVariant),
+                const SizedBox(width: 14),
+                Expanded(child: Text(label, style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: cs.onSurface))),
+              ]),
+              const SizedBox(height: 8),
+              TextFormField(
+                initialValue: value,
+                onChanged: onChanged,
+                decoration: InputDecoration(
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                  hintText: 'Enter $label',
+                ),
+                style: TextStyle(color: cs.onSurface),
+              ),
+            ],
           ),
-          style: TextStyle(color: cs.onSurface),
+        );
+      }
+      return Row(children: [
+        Icon(icon, size: 20, color: cs.onSurfaceVariant),
+        const SizedBox(width: 14),
+        Expanded(child: Text(label, style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: cs.onSurface))),
+        const SizedBox(width: 16),
+        SizedBox(
+          width: 250,
+          child: TextFormField(
+            initialValue: value,
+            onChanged: onChanged,
+            decoration: InputDecoration(
+              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+              hintText: 'Enter $label',
+            ),
+            style: TextStyle(color: cs.onSurface),
+          ),
         ),
-      ),
-    ]);
+      ]);
+    });
   }
+
 
   Future<void> _confirmClearData() async {
     final ok = await showDialog<bool>(

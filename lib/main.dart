@@ -83,6 +83,7 @@ void main() async {
     title: 'Agri-ERP Desktop',
   );
   windowManager.waitUntilReadyToShow(windowOptions, () async {
+    await windowManager.setMinimumSize(const Size(800, 600));
     await windowManager.show();
     await windowManager.focus();
   });

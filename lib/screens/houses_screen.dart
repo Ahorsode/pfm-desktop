@@ -26,43 +26,46 @@ class HousesScreen extends StatelessWidget {
           child: Divider(height: 1, color: cs.outline),
         ),
       ),
-      body: FutureBuilder<int?>(
-        future: FarmUtils.getBoundFarmId(),
-        builder: (context, farmSnapshot) {
-          if (!farmSnapshot.hasData) return const Center(child: CircularProgressIndicator());
-          final farmId = farmSnapshot.data!;
-          final housesStream = (db.select(db.houses)..where((t) => t.farmId.equals(farmId))).watch();
-          final activeBatchesStream = (db.select(db.batches)..where((t) => t.farmId.equals(farmId) & t.status.equals('active'))).watch();
-
-          return StreamBuilder<List<House>>(
-            stream: housesStream,
-            builder: (context, housesSnapshot) {
-              final houses = housesSnapshot.data ?? [];
-              if (houses.isEmpty) return _buildEmptyState(context);
-
-              return StreamBuilder<List<Batch>>(
-                stream: activeBatchesStream,
-                builder: (context, batchesSnapshot) {
-                  final activeBatches = batchesSnapshot.data ?? [];
-                  final screenWidth = MediaQuery.of(context).size.width;
-                  final crossAxisCount = screenWidth > 1200 ? 4 : (screenWidth > 800 ? 3 : (screenWidth > 600 ? 2 : 1));
-
-                  return GridView.builder(
-                    padding: const EdgeInsets.all(24),
-                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: crossAxisCount,
-                      crossAxisSpacing: 24,
-                      mainAxisSpacing: 24,
-                      childAspectRatio: 1.5,
-                    ),
-                    itemCount: houses.length,
-                    itemBuilder: (context, index) {
-                      final house = houses[index];
-                      final houseBatches = activeBatches.where((b) => b.houseId == house.id).toList();
-                      final currentBirds = houseBatches.fold<int>(0, (sum, b) => sum + b.currentCount);
-                      final occupancyPercent = house.capacity > 0 ? (currentBirds / house.capacity) : 0.0;
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final isNarrow = constraints.maxWidth < 850;
+          return FutureBuilder<int?>(
+            future: FarmUtils.getBoundFarmId(),
+            builder: (context, farmSnapshot) {
+              if (!farmSnapshot.hasData) return const Center(child: CircularProgressIndicator());
+              final farmId = farmSnapshot.data!;
+              final housesStream = (db.select(db.houses)..where((t) => t.farmId.equals(farmId))).watch();
+              final activeBatchesStream = (db.select(db.batches)..where((t) => t.farmId.equals(farmId) & t.status.equals('active'))).watch();
+    
+              return StreamBuilder<List<House>>(
+                stream: housesStream,
+                builder: (context, housesSnapshot) {
+                  final houses = housesSnapshot.data ?? [];
+                  if (houses.isEmpty) return _buildEmptyState(context);
+    
+                  return StreamBuilder<List<Batch>>(
+                    stream: activeBatchesStream,
+                    builder: (context, batchesSnapshot) {
+                      final activeBatches = batchesSnapshot.data ?? [];
                       
-                      return _buildHouseCard(context, house, occupancyPercent, currentBirds);
+                      return GridView.builder(
+                        padding: EdgeInsets.all(isNarrow ? 16 : 24),
+                        gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+                          maxCrossAxisExtent: 450,
+                          crossAxisSpacing: isNarrow ? 16 : 24,
+                          mainAxisSpacing: isNarrow ? 16 : 24,
+                          childAspectRatio: isNarrow ? 1.4 : 1.6,
+                        ),
+                        itemCount: houses.length,
+                        itemBuilder: (context, index) {
+                          final house = houses[index];
+                          final houseBatches = activeBatches.where((b) => b.houseId == house.id).toList();
+                          final currentBirds = houseBatches.fold<int>(0, (sum, b) => sum + b.currentCount);
+                          final occupancyPercent = house.capacity > 0 ? (currentBirds / house.capacity) : 0.0;
+                          
+                          return _buildHouseCard(context, house, occupancyPercent, currentBirds, isNarrow);
+                        },
+                      );
                     },
                   );
                 },
@@ -71,6 +74,7 @@ class HousesScreen extends StatelessWidget {
           );
         },
       ),
+
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _showAddHouseDialog(context, db),
         backgroundColor: const Color(0xFF16A34A),
@@ -91,7 +95,7 @@ class HousesScreen extends StatelessWidget {
     ]));
   }
 
-  Widget _buildHouseCard(BuildContext context, House house, double occupancy, int currentBirds) {
+  Widget _buildHouseCard(BuildContext context, House house, double occupancy, int currentBirds, bool isNarrow) {
     final db = Provider.of<AppDatabase>(context, listen: false);
     final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -112,7 +116,7 @@ class HousesScreen extends StatelessWidget {
       child: Stack(
         children: [
           Padding(
-            padding: const EdgeInsets.all(24),
+            padding: EdgeInsets.all(isNarrow ? 16 : 24),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -120,47 +124,50 @@ class HousesScreen extends StatelessWidget {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            house.name,
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w900,
-                              color: cs.onSurface,
-                              letterSpacing: -0.5,
-                            ),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ],
+                      child: Text(
+                        house.name,
+                        style: TextStyle(
+                          fontSize: isNarrow ? 16 : 18,
+                          fontWeight: FontWeight.w900,
+                          color: cs.onSurface,
+                          letterSpacing: -0.5,
+                        ),
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
                     _buildHouseActions(context, house, db),
                   ],
                 ),
-                const SizedBox(height: 20),
-                _buildStatBadge(
-                  Icons.groups_rounded,
-                  'Total Birds',
-                  '$currentBirds / ${house.capacity}',
-                  const Color(0xFF3B82F6),
+                SizedBox(height: isNarrow ? 12 : 20),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    _buildStatBadge(
+                      Icons.groups_rounded,
+                      'Birds',
+                      '$currentBirds/${house.capacity}',
+                      const Color(0xFF3B82F6),
+                      isNarrow,
+                    ),
+                    if (house.isIsolation)
+                      _buildStatBadge(
+                        Icons.health_and_safety_rounded,
+                        'Type',
+                        'Isolation',
+                        const Color(0xFFF59E0B),
+                        isNarrow,
+                      )
+                    else
+                      _buildStatBadge(
+                        Icons.home_work_rounded,
+                        'Type',
+                        'Standard',
+                        const Color(0xFF10B981),
+                        isNarrow,
+                      ),
+                  ],
                 ),
-                const SizedBox(height: 12),
-                if (house.isIsolation)
-                  _buildStatBadge(
-                    Icons.health_and_safety_rounded,
-                    'Type',
-                    'Isolation Unit',
-                    const Color(0xFFF59E0B),
-                  )
-                else
-                  _buildStatBadge(
-                    Icons.home_work_rounded,
-                    'Type',
-                    'Standard Unit',
-                    const Color(0xFF10B981),
-                  ),
                 const Spacer(),
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -208,9 +215,10 @@ class HousesScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildStatBadge(IconData icon, String label, String value, Color color) {
+
+  Widget _buildStatBadge(IconData icon, String label, String value, Color color, bool isNarrow) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      padding: EdgeInsets.symmetric(horizontal: isNarrow ? 8 : 12, vertical: isNarrow ? 6 : 8),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(12),
@@ -219,7 +227,7 @@ class HousesScreen extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 16, color: color),
+          Icon(icon, size: isNarrow ? 14 : 16, color: color),
           const SizedBox(width: 8),
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -227,7 +235,7 @@ class HousesScreen extends StatelessWidget {
               Text(
                 label,
                 style: TextStyle(
-                  fontSize: 9,
+                  fontSize: isNarrow ? 8 : 9,
                   fontWeight: FontWeight.w700,
                   color: color.withValues(alpha: 0.7),
                   letterSpacing: 0.5,
@@ -236,7 +244,7 @@ class HousesScreen extends StatelessWidget {
               Text(
                 value,
                 style: TextStyle(
-                  fontSize: 12,
+                  fontSize: isNarrow ? 11 : 12,
                   fontWeight: FontWeight.w800,
                   color: color,
                 ),
@@ -247,6 +255,7 @@ class HousesScreen extends StatelessWidget {
       ),
     );
   }
+
 
   Widget _buildHouseActions(BuildContext context, House house, AppDatabase db) {
     return PopupMenuButton<String>(

@@ -232,35 +232,50 @@ class _LivestockManagerState extends State<LivestockManager> {
           }
 
           return LayoutBuilder(
-            builder: (context, constraints) {
-              return SingleChildScrollView(
-                scrollDirection: Axis.vertical,
-                child: SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: ConstrainedBox(
-                    constraints: BoxConstraints(minWidth: constraints.maxWidth),
-                    child: DataTable(
-                      headingRowColor: WidgetStateProperty.all(const Color(0xFF1E293B)),
-                      headingRowHeight: 52,
-                      dataRowMinHeight: 72,
-                      dataRowMaxHeight: 72,
-                      horizontalMargin: 20,
-                      columnSpacing: 24,
-                      columns: [
-                        _col('#'),
-                        _col('UNIT NAME / IDENTITY'),
-                        _col('TYPE & SPECIES'),
-                        _col('GROWTH BENCHMARK'),
-                        _col('QUANTITY'),
-                        _col('ARRIVAL DATE'),
-                        _col('STATUS'),
-                        _col('ACTIONS'),
-                      ],
-                      rows: batches.asMap().entries.map((entry) {
-                        final index = entry.key;
-                        final batch = entry.value;
-                        return _row(batch, index, db, cs);
-                      }).toList(),
+            builder: (context, tableConstraints) {
+              return Theme(
+                data: Theme.of(context).copyWith(
+                  scrollbarTheme: ScrollbarThemeData(
+                    thumbColor: WidgetStateProperty.all(cs.primary.withValues(alpha: 0.5)),
+                    thickness: WidgetStateProperty.all(8),
+                    radius: const Radius.circular(4),
+                  ),
+                ),
+                child: Scrollbar(
+                  controller: ScrollController(), // Optional: for persistent scrollbar
+                  thumbVisibility: true,
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.vertical,
+                      child: ConstrainedBox(
+                        constraints: BoxConstraints(
+                          minWidth: tableConstraints.maxWidth > 1000 ? tableConstraints.maxWidth : 1000,
+                        ),
+                        child: DataTable(
+                          headingRowColor: WidgetStateProperty.all(const Color(0xFF1E293B)),
+                          headingRowHeight: 52,
+                          dataRowMinHeight: 72,
+                          dataRowMaxHeight: 72,
+                          horizontalMargin: 20,
+                          columnSpacing: 24,
+                          columns: [
+                            _col('#'),
+                            _col('UNIT NAME / IDENTITY'),
+                            _col('TYPE & SPECIES'),
+                            _col('WORKER STAMPS'),
+                            _col('QUANTITY'),
+                            _col('ARRIVAL DATE'),
+                            _col('STATUS'),
+                            _col('ACTIONS'),
+                          ],
+                          rows: batches.asMap().entries.map((entry) {
+                            final index = entry.key;
+                            final batch = entry.value;
+                            return _row(batch, index, db, cs);
+                          }).toList(),
+                        ),
+                      ),
                     ),
                   ),
                 ),
@@ -348,19 +363,19 @@ class _LivestockManagerState extends State<LivestockManager> {
             ],
           ),
         ),
-        // Growth Benchmark
+        // Worker Stamps
         DataCell(
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF5F3FF),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: const Color(0xFFDDD6FE)),
-            ),
-            child: Text(
-              benchmark,
-              style: const TextStyle(color: Color(0xFF7C3AED), fontWeight: FontWeight.w900, fontSize: 10, fontStyle: FontStyle.italic),
-            ),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _workerStamp('SYS', Colors.blue),
+              const SizedBox(width: 4),
+              _workerStamp('VET', Colors.orange),
+              if (batch.currentCount < 100) ...[
+                const SizedBox(width: 4),
+                _workerStamp('MGR', Colors.red),
+              ],
+            ],
           ),
         ),
         // Quantity
@@ -418,6 +433,21 @@ class _LivestockManagerState extends State<LivestockManager> {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _workerStamp(String label, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 9),
+      ),
     );
   }
 

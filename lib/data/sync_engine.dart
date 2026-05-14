@@ -22,6 +22,12 @@ class SyncEngine extends ChangeNotifier {
   final _syncStatusController = StreamController<bool>.broadcast();
   Stream<bool> get syncStatus => _syncStatusController.stream;
 
+  void _updateSyncStatus(bool syncing) {
+    if (!_syncStatusController.isClosed) {
+      _syncStatusController.add(syncing);
+    }
+  }
+
   Timer? _syncTimer;
 
   SyncEngine(this.db) {
@@ -66,7 +72,7 @@ class SyncEngine extends ChangeNotifier {
     if (farmId == null) return;
     
     _isSyncing = true;
-    _syncStatusController.add(true);
+    _updateSyncStatus(true);
     notifyListeners();
 
     try {
@@ -81,11 +87,9 @@ class SyncEngine extends ChangeNotifier {
       await _pushChanges(userId);
       await _pullChanges();
       
-    } catch (e) {
-      debugPrint("Sync error: $e");
     } finally {
       _isSyncing = false;
-      _syncStatusController.add(false);
+      _updateSyncStatus(false);
       notifyListeners();
     }
   }
@@ -94,7 +98,7 @@ class SyncEngine extends ChangeNotifier {
     if (!_isOnline) throw Exception("No internet connection for initial sync");
 
     _isSyncing = true;
-    _syncStatusController.add(true);
+    _updateSyncStatus(true);
     notifyListeners();
 
     try {
@@ -251,7 +255,7 @@ class SyncEngine extends ChangeNotifier {
       rethrow;
     } finally {
       _isSyncing = false;
-      _syncStatusController.add(false);
+      _updateSyncStatus(false);
       notifyListeners();
     }
   }

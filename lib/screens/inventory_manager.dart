@@ -23,43 +23,54 @@ class InventoryManager extends StatelessWidget {
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 24.0),
-            child: ElevatedButton.icon(
-              onPressed: () => _showAddItemDialog(context, db),
-              icon: const Icon(Icons.add_shopping_cart_rounded, size: 20),
-              label: const Text('Add Stock Item', style: TextStyle(fontWeight: FontWeight.bold)),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.teal[600],
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                elevation: 0,
-              ),
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final isNarrow = MediaQuery.of(context).size.width < 850;
+                return ElevatedButton.icon(
+                  onPressed: () => _showAddItemDialog(context, db),
+                  icon: const Icon(Icons.add_shopping_cart_rounded, size: 20),
+                  label: isNarrow ? const Text('Add') : const Text('Add Stock Item', style: TextStyle(fontWeight: FontWeight.bold)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.teal[600],
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    elevation: 0,
+                  ),
+                );
+              }
             ),
           ),
         ],
       ),
-      body: StreamBuilder<List<InventoryItem>>(
-        stream: db.select(db.inventory).watch(),
-        builder: (context, snapshot) {
-          if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
-          final items = snapshot.data!;
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final isNarrow = constraints.maxWidth < 850;
+          return StreamBuilder<List<InventoryItem>>(
+            stream: db.select(db.inventory).watch(),
+            builder: (context, snapshot) {
+              if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+              final items = snapshot.data!;
 
-          if (items.isEmpty) {
-            return _buildEmptyState(context, db);
-          }
+              if (items.isEmpty) {
+                return _buildEmptyState(context, db);
+              }
 
-          return ListView.separated(
-            padding: const EdgeInsets.all(32),
-            itemCount: items.length,
-            separatorBuilder: (context, index) => const SizedBox(height: 16),
-            itemBuilder: (context, index) {
-              final item = items[index];
-              return _InventoryItemTile(item: item);
+              return ListView.separated(
+                padding: EdgeInsets.all(isNarrow ? 16 : 32),
+                itemCount: items.length,
+                separatorBuilder: (context, index) => const SizedBox(height: 16),
+                itemBuilder: (context, index) {
+                  final item = items[index];
+                  return _InventoryItemTile(item: item, isNarrow: isNarrow);
+                },
+              );
             },
           );
-        },
+        }
       ),
     );
+
   }
 
   Widget _buildEmptyState(BuildContext context, AppDatabase db) {
@@ -186,14 +197,15 @@ class InventoryManager extends StatelessWidget {
 
 class _InventoryItemTile extends StatelessWidget {
   final InventoryItem item;
-  const _InventoryItemTile({required this.item});
+  final bool isNarrow;
+  const _InventoryItemTile({required this.item, required this.isNarrow});
 
   @override
   Widget build(BuildContext context) {
     final isLow = item.stockLevel < (item.reorderLevel ?? 10);
     
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: EdgeInsets.all(isNarrow ? 16 : 20),
       decoration: BoxDecoration(
         color: Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(20),
@@ -210,27 +222,30 @@ class _InventoryItemTile extends StatelessWidget {
               borderRadius: BorderRadius.circular(12),
             ),
             child: Icon(_getCategoryIcon(item.category ?? 'OTHER'), 
-              color: _getCategoryColor(item.category ?? 'OTHER')),
+              color: _getCategoryColor(item.category ?? 'OTHER'),
+              size: isNarrow ? 20 : 24),
           ),
-          const SizedBox(width: 20),
+          SizedBox(width: isNarrow ? 12 : 20),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(item.itemName, 
-                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
+                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: isNarrow ? 16 : 18),
+                  overflow: TextOverflow.ellipsis),
                 Text(item.category ?? 'Uncategorized',
-                  style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 13, fontWeight: FontWeight.w600)),
+                  style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12, fontWeight: FontWeight.w600)),
               ],
             ),
           ),
+          const SizedBox(width: 8),
           Column(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Text('${item.stockLevel} ${item.unit}', 
                 style: TextStyle(
                   fontWeight: FontWeight.w900, 
-                  fontSize: 20,
+                  fontSize: isNarrow ? 16 : 20,
                   color: isLow ? Colors.red[700] : Theme.of(context).colorScheme.onSurface,
                 )),
               if (isLow)
@@ -238,15 +253,18 @@ class _InventoryItemTile extends StatelessWidget {
                   style: TextStyle(color: Colors.red[700], fontSize: 10, fontWeight: FontWeight.w900)),
             ],
           ),
-          const SizedBox(width: 24),
-          IconButton(
-            icon: const Icon(Icons.add_box_rounded, color: Colors.blueAccent),
-            onPressed: () {},
-          ),
+          if (!isNarrow) ...[
+            const SizedBox(width: 24),
+            IconButton(
+              icon: const Icon(Icons.add_box_rounded, color: Colors.blueAccent),
+              onPressed: () {},
+            ),
+          ],
         ],
       ),
     );
   }
+
 
   IconData _getCategoryIcon(String cat) {
     switch (cat) {

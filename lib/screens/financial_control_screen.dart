@@ -78,15 +78,15 @@ class _FinancialControlScreenState extends State<FinancialControlScreen> {
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      body: StreamBuilder<List<EggProduction>>(
-        stream: db.select(db.eggProductions).watch(),
-        builder: (context, eggSnap) {
-          return StreamBuilder<List<InventoryItem>>(
-            stream: db.select(db.inventory).watch(),
-            builder: (context, invSnap) {
-              return StreamBuilder<List<Mortality>>(
-                stream: db.select(db.mortalities).watch(),
-                builder: (context, mortSnap) {
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final isNarrow = constraints.maxWidth < 850;
+          return StreamBuilder<List<EggProduction>>(
+            stream: db.select(db.eggProductions).watch(),
+            builder: (context, eggSnap) {
+              return StreamBuilder<List<InventoryItem>>(
+                stream: db.select(db.inventory).watch(),
+                builder: (context, invSnap) {
                   return StreamBuilder<List<Customer>>(
                     stream: db.select(db.customers).watch(),
                     builder: (context, custSnap) {
@@ -121,48 +121,59 @@ class _FinancialControlScreenState extends State<FinancialControlScreen> {
                       });
 
                       return SingleChildScrollView(
-                        padding: const EdgeInsets.all(32),
+                        padding: EdgeInsets.all(isNarrow ? 16 : 32),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             // Header
-                            const Text('Financial Control',
-                                style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900)),
+                            Text('Financial Control',
+                                style: TextStyle(fontSize: isNarrow ? 24 : 28, fontWeight: FontWeight.w900)),
                             Text('Farm revenue, stock value, and receivables overview',
                                 style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 14)),
                             const SizedBox(height: 28),
 
-                            // KPI Cards
-                            Row(children: [
-                              Expanded(child: _kpiCard(
-                                'Est. Revenue',
-                                currency.format(totalRevenue),
-                                Icons.trending_up_rounded,
-                                const Color(0xFF16A34A),
-                                '+${totalEggs.toStringAsFixed(0)} eggs collected',
-                              )),
-                              const SizedBox(width: 16),
-                              Expanded(child: _kpiCard(
-                                'Stock Value',
-                                currency.format(stockValue),
-                                Icons.inventory_2_rounded,
-                                const Color(0xFF3B82F6),
-                                '${inventory.length} inventory items',
-                              )),
-                              const SizedBox(width: 16),
-                              Expanded(child: _kpiCard(
-                                'Outstanding Receivables',
-                                currency.format(outstanding),
-                                Icons.payments_rounded,
-                                const Color(0xFFF59E0B),
-                                '${customers.where((c) => c.balanceOwed > 0).length} customers with balance',
-                              )),
-                            ]),
+                            // KPI Cards - Responsive Wrap
+                            Wrap(
+                              spacing: 16,
+                              runSpacing: 16,
+                              children: [
+                                SizedBox(
+                                  width: isNarrow ? (constraints.maxWidth - 32) : (constraints.maxWidth - 96) / 3,
+                                  child: _kpiCard(
+                                    'Est. Revenue',
+                                    currency.format(totalRevenue),
+                                    Icons.trending_up_rounded,
+                                    const Color(0xFF16A34A),
+                                    '+${totalEggs.toStringAsFixed(0)} eggs collected',
+                                  ),
+                                ),
+                                SizedBox(
+                                  width: isNarrow ? (constraints.maxWidth - 32) : (constraints.maxWidth - 96) / 3,
+                                  child: _kpiCard(
+                                    'Stock Value',
+                                    currency.format(stockValue),
+                                    Icons.inventory_2_rounded,
+                                    const Color(0xFF3B82F6),
+                                    '${inventory.length} inventory items',
+                                  ),
+                                ),
+                                SizedBox(
+                                  width: isNarrow ? (constraints.maxWidth - 32) : (constraints.maxWidth - 96) / 3,
+                                  child: _kpiCard(
+                                    'Outstanding Receivables',
+                                    currency.format(outstanding),
+                                    Icons.payments_rounded,
+                                    const Color(0xFFF59E0B),
+                                    '${customers.where((c) => c.balanceOwed > 0).length} customers with balance',
+                                  ),
+                                ),
+                              ],
+                            ),
                             const SizedBox(height: 28),
 
                             // Revenue Chart
                             Container(
-                              padding: const EdgeInsets.all(28),
+                              padding: EdgeInsets.all(isNarrow ? 16 : 28),
                               decoration: BoxDecoration(
                                 color: Theme.of(context).cardColor,
                                 borderRadius: BorderRadius.circular(20),
@@ -172,8 +183,10 @@ class _FinancialControlScreenState extends State<FinancialControlScreen> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-                                    Text('Revenue Trend (Last 6 Months)',
-                                        style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: Theme.of(context).colorScheme.onSurface)),
+                                    Expanded(
+                                      child: Text('Revenue Trend (Last 6 Months)',
+                                          style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: Theme.of(context).colorScheme.onSurface)),
+                                    ),
                                     Container(
                                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                                       decoration: BoxDecoration(
@@ -194,7 +207,7 @@ class _FinancialControlScreenState extends State<FinancialControlScreen> {
                                       ),
                                       titlesData: FlTitlesData(
                                         leftTitles: AxisTitles(sideTitles: SideTitles(
-                                          showTitles: true,
+                                          showTitles: !isNarrow,
                                           reservedSize: 60,
                                           getTitlesWidget: (v, _) => Text('GH₵ ${v.toInt()}', style: const TextStyle(fontSize: 10, color: Color(0xFF94A3B8))),
                                         )),
@@ -269,20 +282,22 @@ class _FinancialControlScreenState extends State<FinancialControlScreen> {
                                           crossAxisAlignment: CrossAxisAlignment.start,
                                           children: [
                                             Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-                                              Row(children: [
-                                                Text(item.itemName, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-                                                if (isLow) ...[
-                                                  const SizedBox(width: 8),
-                                                  Container(
-                                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                                    decoration: BoxDecoration(
-                                                      color: Colors.red[50],
-                                                      borderRadius: BorderRadius.circular(6),
+                                              Expanded(
+                                                child: Row(children: [
+                                                  Flexible(child: Text(item.itemName, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13), overflow: TextOverflow.ellipsis)),
+                                                  if (isLow) ...[
+                                                    const SizedBox(width: 8),
+                                                    Container(
+                                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                                      decoration: BoxDecoration(
+                                                        color: Colors.red[50],
+                                                        borderRadius: BorderRadius.circular(6),
+                                                      ),
+                                                      child: Text('Low Stock', style: TextStyle(color: Colors.red[600], fontSize: 10, fontWeight: FontWeight.bold)),
                                                     ),
-                                                    child: Text('Low Stock', style: TextStyle(color: Colors.red[600], fontSize: 10, fontWeight: FontWeight.bold)),
-                                                  ),
-                                                ],
-                                              ]),
+                                                  ],
+                                                ]),
+                                              ),
                                               Text('${item.stockLevel.toStringAsFixed(1)} ${item.unit}',
                                                   style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant)),
                                             ]),
@@ -315,6 +330,7 @@ class _FinancialControlScreenState extends State<FinancialControlScreen> {
         },
       ),
     );
+
   }
 
   Widget _kpiCard(String label, String value, IconData icon, Color color, String subtitle) {

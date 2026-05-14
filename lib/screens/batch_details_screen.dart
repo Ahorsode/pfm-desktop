@@ -62,27 +62,38 @@ class _BatchDetailsScreenState extends State<BatchDetailsScreen> {
           const SizedBox(width: 16),
         ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildHeroHeader(age),
-            const SizedBox(height: 24),
-            Row(
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final isNarrow = constraints.maxWidth < 850;
+          return SingleChildScrollView(
+            padding: EdgeInsets.all(isNarrow ? 16 : 24),
+            child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(flex: 3, child: _buildMainStats()),
-                const SizedBox(width: 24),
-                Expanded(flex: 2, child: _buildSideInfo()),
+                _buildHeroHeader(age, isNarrow),
+                const SizedBox(height: 24),
+                if (isNarrow) ...[
+                  _buildMainStats(isNarrow),
+                  const SizedBox(height: 24),
+                  _buildSideInfo(isNarrow),
+                ] else
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(flex: 3, child: _buildMainStats(isNarrow)),
+                      const SizedBox(width: 24),
+                      Expanded(flex: 2, child: _buildSideInfo(isNarrow)),
+                    ],
+                  ),
+                const SizedBox(height: 24),
+                _buildActivitySection(),
               ],
             ),
-            const SizedBox(height: 24),
-            _buildActivitySection(),
-          ],
-        ),
+          );
+        }
       ),
     );
+
   }
 
   Widget _buildStatusChip(String status) {
@@ -101,7 +112,27 @@ class _BatchDetailsScreenState extends State<BatchDetailsScreen> {
     );
   }
 
-  Widget _buildHeroHeader(int age) {
+  Widget _buildHeroHeader(int age, bool isNarrow) {
+    if (isNarrow) {
+      return Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: const Color(0xFF1A1D21),
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+        ),
+        child: Wrap(
+          spacing: 16,
+          runSpacing: 16,
+          children: [
+            _heroStat('Stock', '${widget.batch.currentCount}', Icons.inventory_2_outlined),
+            _heroStat('Age', '$age Days', Icons.calendar_today_outlined),
+            _heroStat('Initial', '${widget.batch.initialCount}', Icons.add_circle_outline),
+            _heroStat('Breed', widget.batch.breedType ?? 'N/A', Icons.pets_outlined),
+          ],
+        ),
+      );
+    }
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
@@ -128,34 +159,32 @@ class _BatchDetailsScreenState extends State<BatchDetailsScreen> {
   }
 
   Widget _heroStat(String label, String value, IconData icon) {
-    return Expanded(
-      child: Column(
-        children: [
-          Icon(icon, color: Colors.grey, size: 20),
-          const SizedBox(height: 8),
-          Text(label, style: const TextStyle(color: Colors.grey, fontSize: 11)),
-          Text(value, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w900)),
-        ],
-      ),
+    return Column(
+      children: [
+        Icon(icon, color: Colors.grey, size: 20),
+        const SizedBox(height: 8),
+        Text(label, style: const TextStyle(color: Colors.grey, fontSize: 11)),
+        Text(value, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w900)),
+      ],
     );
   }
 
   Widget _divider() => Container(width: 1, height: 40, color: Colors.white12);
 
-  Widget _buildMainStats() {
+  Widget _buildMainStats(bool isNarrow) {
     return Column(
       children: [
-        _buildChartCard('Growth vs Benchmark', Icons.show_chart),
+        _buildChartCard('Growth vs Benchmark', Icons.show_chart, isNarrow),
         const SizedBox(height: 24),
         _buildLogTable(),
       ],
     );
   }
 
-  Widget _buildChartCard(String title, IconData icon) {
+  Widget _buildChartCard(String title, IconData icon, bool isNarrow) {
     return Container(
       height: 300,
-      padding: const EdgeInsets.all(24),
+      padding: EdgeInsets.all(isNarrow ? 16 : 24),
       decoration: BoxDecoration(
         color: const Color(0xFF1A1D21),
         borderRadius: BorderRadius.circular(24),
@@ -219,7 +248,7 @@ class _BatchDetailsScreenState extends State<BatchDetailsScreen> {
     );
   }
 
-  Widget _buildSideInfo() {
+  Widget _buildSideInfo(bool isNarrow) {
     final currency = NumberFormat.currency(symbol: 'GH₵ ', decimalDigits: 2);
     return Column(
       children: [

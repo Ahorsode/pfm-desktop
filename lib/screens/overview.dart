@@ -37,7 +37,10 @@ class OverviewPage extends StatelessWidget {
             const SizedBox(height: 48),
             LayoutBuilder(
               builder: (context, constraints) {
-                if (constraints.maxWidth < 1100) {
+                // Breakpoint for stacking the layout
+                final bool isNarrow = constraints.maxWidth < 1100;
+
+                if (isNarrow) {
                   return Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -56,20 +59,26 @@ class OverviewPage extends StatelessWidget {
                   children: [
                     Expanded(
                       flex: 3,
-                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        _buildSectionHeader(context, 'Active Batches', Icons.grid_view_rounded),
-                        const SizedBox(height: 20),
-                        _buildBatchesGrid(db),
-                      ]),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildSectionHeader(context, 'Active Batches', Icons.grid_view_rounded),
+                          const SizedBox(height: 20),
+                          _buildBatchesGrid(db),
+                        ],
+                      ),
                     ),
                     const SizedBox(width: 40),
                     Expanded(
                       flex: 2,
-                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        _buildSectionHeader(context, 'Recent Activity', Icons.history_rounded),
-                        const SizedBox(height: 20),
-                        const _RecentActivityPanel(),
-                      ]),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildSectionHeader(context, 'Recent Activity', Icons.history_rounded),
+                          const SizedBox(height: 20),
+                          const _RecentActivityPanel(),
+                        ],
+                      ),
                     ),
                   ],
                 );
@@ -171,62 +180,31 @@ class _PremiumStatsGrid extends StatelessWidget {
         final totalBirds = batches.fold(0, (sum, b) => sum + b.currentCount);
         return LayoutBuilder(
           builder: (context, constraints) {
-            final cardWidth = (constraints.maxWidth - (3 * 24)) / 4;
-            if (cardWidth < 200) {
-              return Wrap(
-                spacing: 24,
-                runSpacing: 24,
-                children: [
-                  _buildStatCard(context, 'Total Birds', totalBirds.toString(), Icons.pets_rounded, Colors.orange),
-                  StreamBuilder<List<EggProduction>>(
-                    stream: db.select(db.eggProductions).watch(),
-                    builder: (context, eggSnap) {
-                      final totalEggs = (eggSnap.data ?? []).fold(0, (sum, e) => sum + e.eggsCollected);
-                      return _buildStatCard(context, 'Total Eggs', totalEggs.toString(), Icons.egg_rounded, Colors.amber);
-                    },
-                  ),
-                  StreamBuilder<List<InventoryItem>>(
-                    stream: db.select(db.inventory).watch(),
-                    builder: (context, invSnap) {
-                      final feedItems = (invSnap.data ?? []).where((i) => i.category == 'FEED').length;
-                      return _buildStatCard(context, 'Feed Types', feedItems.toString(), Icons.inventory_2_rounded, Colors.teal);
-                    },
-                  ),
-                  StreamBuilder<List<Mortality>>(
-                    stream: db.select(db.mortalities).watch(),
-                    builder: (context, mortSnap) {
-                      final totalDeaths = (mortSnap.data ?? []).fold(0, (sum, m) => sum + m.count);
-                      return _buildStatCard(context, 'Total Mortality', totalDeaths.toString(), Icons.warning_rounded, Colors.red);
-                    },
-                  ),
-                ],
-              );
-            }
-            return Row(
+            // Flexible grid for stats cards
+            return Wrap(
+              spacing: 24,
+              runSpacing: 24,
               children: [
-                _buildStatCard(context, 'Total Birds', totalBirds.toString(), Icons.pets_rounded, Colors.orange),
-                const SizedBox(width: 24),
+                _buildStatCard(context, 'Total Birds', totalBirds.toString(), Icons.pets_rounded, Colors.orange, constraints.maxWidth),
                 StreamBuilder<List<EggProduction>>(
                   stream: db.select(db.eggProductions).watch(),
                   builder: (context, eggSnap) {
                     final totalEggs = (eggSnap.data ?? []).fold(0, (sum, e) => sum + e.eggsCollected);
-                    return _buildStatCard(context, 'Total Eggs', totalEggs.toString(), Icons.egg_rounded, Colors.amber);
+                    return _buildStatCard(context, 'Total Eggs', totalEggs.toString(), Icons.egg_rounded, Colors.amber, constraints.maxWidth);
                   },
                 ),
-                const SizedBox(width: 24),
                 StreamBuilder<List<InventoryItem>>(
                   stream: db.select(db.inventory).watch(),
                   builder: (context, invSnap) {
                     final feedItems = (invSnap.data ?? []).where((i) => i.category == 'FEED').length;
-                    return _buildStatCard(context, 'Feed Types', feedItems.toString(), Icons.inventory_2_rounded, Colors.teal);
+                    return _buildStatCard(context, 'Feed Types', feedItems.toString(), Icons.inventory_2_rounded, Colors.teal, constraints.maxWidth);
                   },
                 ),
-                const SizedBox(width: 24),
                 StreamBuilder<List<Mortality>>(
                   stream: db.select(db.mortalities).watch(),
                   builder: (context, mortSnap) {
                     final totalDeaths = (mortSnap.data ?? []).fold(0, (sum, m) => sum + m.count);
-                    return _buildStatCard(context, 'Total Mortality', totalDeaths.toString(), Icons.warning_rounded, Colors.red);
+                    return _buildStatCard(context, 'Total Mortality', totalDeaths.toString(), Icons.warning_rounded, Colors.red, constraints.maxWidth);
                   },
                 ),
               ],
@@ -237,28 +215,68 @@ class _PremiumStatsGrid extends StatelessWidget {
     );
   }
 
-  Widget _buildStatCard(BuildContext context, String label, String value, IconData icon, Color color) {
+  Widget _buildStatCard(BuildContext context, String label, String value, IconData icon, Color color, double parentWidth) {
     final cs = Theme.of(context).colorScheme;
+    
+    // Calculate adaptive width: 4 cards on wide screens, 2 on medium, 1 on narrow
+    double width;
+    if (parentWidth > 1200) {
+      width = (parentWidth - (3 * 24)) / 4;
+    } else if (parentWidth > 800) {
+      width = (parentWidth - 24) / 2;
+    } else {
+      width = parentWidth;
+    }
+
     return Container(
-      width: 240,
-        padding: const EdgeInsets.all(28),
-        decoration: BoxDecoration(
-          color: Theme.of(context).cardColor,
-          borderRadius: BorderRadius.circular(24),
-          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 24, offset: const Offset(0, 12))],
-        ),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      width: width,
+      padding: const EdgeInsets.all(28),
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardColor,
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.06),
+            blurRadius: 24,
+            offset: const Offset(0, 12),
+          )
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
           Container(
             padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(color: color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(16)),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(16),
+            ),
             child: Icon(icon, color: color, size: 28),
           ),
           const SizedBox(height: 24),
-          Text(value, style: TextStyle(fontWeight: FontWeight.w900, fontSize: 32, letterSpacing: -1, color: cs.onSurface)),
+          Text(
+            value,
+            style: TextStyle(
+              fontWeight: FontWeight.w900,
+              fontSize: 32,
+              letterSpacing: -1,
+              color: cs.onSurface,
+            ),
+            overflow: TextOverflow.ellipsis,
+          ),
           const SizedBox(height: 4),
-          Text(label, style: TextStyle(color: cs.onSurfaceVariant, fontSize: 14, fontWeight: FontWeight.w600)),
-        ]),
-      );
+          Text(
+            label,
+            style: TextStyle(
+              color: cs.onSurfaceVariant,
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+            ),
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
+      ),
+    );
   }
 }
 

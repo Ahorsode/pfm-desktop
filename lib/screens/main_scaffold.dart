@@ -73,9 +73,12 @@ class _MainScaffoldState extends State<MainScaffold> {
     return Scaffold(
       body: LayoutBuilder(
         builder: (context, constraints) {
-          // Auto-collapse on small screens
-          final bool shouldCollapse = constraints.maxWidth < 1200;
-          final bool effectiveCollapsed = _isCollapsed || shouldCollapse;
+          // Breakpoints for Desktop Responsiveness
+          final bool isNarrow = constraints.maxWidth < 1000;
+          final bool isMini = constraints.maxWidth < 850;
+          
+          // Auto-collapse sidebar on narrow screens
+          final bool effectiveCollapsed = _isCollapsed || isNarrow;
 
           return Row(
             children: [
@@ -114,13 +117,16 @@ class _MainScaffoldState extends State<MainScaffold> {
                                 const Icon(Icons.cloud_done_rounded, color: Color(0xFF22C55E), size: 16),
                               if (!effectiveCollapsed) ...[
                                 const SizedBox(width: 8),
-                                Text(
-                                  isSyncing ? 'SYNCING...' : 'CLOUD SYNCED',
-                                  style: TextStyle(
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w900,
-                                    letterSpacing: 0.5,
-                                    color: isSyncing ? Colors.white70 : const Color(0xFF22C55E),
+                                Flexible(
+                                  child: Text(
+                                    isSyncing ? 'SYNCING...' : 'CLOUD SYNCED',
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w900,
+                                      letterSpacing: 0.5,
+                                      color: isSyncing ? Colors.white70 : const Color(0xFF22C55E),
+                                    ),
                                   ),
                                 ),
                               ],
@@ -132,18 +138,18 @@ class _MainScaffoldState extends State<MainScaffold> {
                   },
                 ),
               ),
-          const VerticalDivider(thickness: 1, width: 1, color: Colors.black12),
-          // Main Content
-          Expanded(
-            child: Container(
-              color: Theme.of(context).scaffoldBackgroundColor,
-              child: _pages[_selectedIndex],
-            ),
-          ),
-          ],
-        );
-      },
-    ),
+              const VerticalDivider(thickness: 1, width: 1, color: Colors.black12),
+              // Main Content
+              Expanded(
+                child: Container(
+                  color: Theme.of(context).scaffoldBackgroundColor,
+                  child: _pages[_selectedIndex],
+                ),
+              ),
+            ],
+          );
+        },
+      ),
   );
 }
 }
