@@ -55,7 +55,10 @@ class _SalesScreenState extends State<SalesScreen> {
                     prefixIcon: const Icon(Icons.person_rounded, size: 20),
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                   ),
-                  items: customers.map((c) => DropdownMenuItem<Customer>(value: c, child: Text(c.name))).toList(),
+                  items: customers.map((c) => DropdownMenuItem<Customer>(
+                    value: c, 
+                    child: Text(c.name),
+                  )).toList(),
                   onChanged: (v) => setDlgState(() => selectedCustomer = v),
                   validator: (v) => v == null ? 'Please select a customer' : null,
                 ),
@@ -150,6 +153,161 @@ class _SalesScreenState extends State<SalesScreen> {
     );
   }
 
+  Future<void> _showSettleDialog(Customer customer) async {
+    final balance = customer.balanceOwed;
+    final paymentCtrl = TextEditingController();
+    double amountToPay = 0.0;
+    final formKey = GlobalKey<FormState>();
+    final currency = NumberFormat.currency(symbol: 'GH₵ ', decimalDigits: 2);
+
+    await showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDlgState) => AlertDialog(
+          backgroundColor: Theme.of(context).cardColor,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          title: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.orange.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(Icons.account_balance_wallet_rounded, color: Colors.orange, size: 22),
+              ),
+              const SizedBox(width: 16),
+              const Text('Settle Balance', style: TextStyle(fontWeight: FontWeight.w900)),
+            ],
+          ),
+          content: SizedBox(
+            width: 400,
+            child: Form(
+              key: formKey,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(customer.name, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+                  const SizedBox(height: 4),
+                  Text('Current Balance: ${currency.format(balance)}', 
+                    style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 13)),
+                  const SizedBox(height: 24),
+                  
+                  Text('PAYMENT AMOUNT', style: TextStyle(color: Colors.orange[700], fontWeight: FontWeight.w900, fontSize: 11, letterSpacing: 1)),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: paymentCtrl,
+                    autofocus: true,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 24),
+                    decoration: InputDecoration(
+                      prefixText: 'GH₵ ',
+                      hintText: '0.00',
+                      filled: true,
+                      fillColor: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+                      suffixIcon: IconButton(
+                        icon: const Icon(Icons.auto_fix_high_rounded, color: Colors.orange),
+                        tooltip: 'Pay Full Amount',
+                        onPressed: () {
+                          paymentCtrl.text = balance.toStringAsFixed(2);
+                          setDlgState(() => amountToPay = balance);
+                        },
+                      ),
+                    ),
+                    onChanged: (v) {
+                      setDlgState(() => amountToPay = double.tryParse(v) ?? 0.0);
+                    },
+                    validator: (v) {
+                      final val = double.tryParse(v ?? '') ?? 0.0;
+                      if (val <= 0) return 'Enter a valid amount';
+                      if (val > balance + 0.01) return 'Cannot pay more than balance';
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 24),
+                  
+                  // Live math preview
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.2),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.1)),
+                    ),
+                    child: Column(
+                      children: [
+                        _dialogMathRow('Original Balance', currency.format(balance)),
+                        const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 8.0),
+                          child: Divider(height: 1),
+                        ),
+                        _dialogMathRow('Payment Amount', '- ${currency.format(amountToPay)}', isNegative: true),
+                        const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 8.0),
+                          child: Divider(height: 1, thickness: 2),
+                        ),
+                        _dialogMathRow('New Balance', currency.format(balance - amountToPay), isBold: true),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: Text('CANCEL', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontWeight: FontWeight.w800)),
+            ),
+            const SizedBox(width: 8),
+            FilledButton(
+              onPressed: () async {
+                if (!formKey.currentState!.validate()) return;
+                
+                final newBalance = balance - amountToPay;
+                final syncEngine = Provider.of<SyncEngine>(context, listen: false);
+
+                await (db.update(db.customers)..where((t) => t.id.equals(customer.id))).write(
+                  CustomersCompanion(
+                    balanceOwed: Value(newBalance < 0.01 ? 0.0 : newBalance),
+                    synced: const Value(false),
+                    updatedAt: Value(DateTime.now()),
+                  ),
+                );
+                
+                if (ctx.mounted) Navigator.pop(ctx);
+                setState(() {});
+                syncEngine.syncNow();
+              },
+              style: FilledButton.styleFrom(
+                backgroundColor: Colors.orange[700],
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              child: const Text('CONFIRM PAYMENT', style: TextStyle(fontWeight: FontWeight.w900)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _dialogMathRow(String label, String value, {bool isNegative = false, bool isBold = false}) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(label, style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 13, fontWeight: isBold ? FontWeight.w700 : FontWeight.normal)),
+        Text(value, style: TextStyle(
+          color: isNegative ? Colors.redAccent : (isBold ? Theme.of(context).colorScheme.onSurface : Theme.of(context).colorScheme.onSurfaceVariant),
+          fontWeight: isBold ? FontWeight.w900 : FontWeight.w700,
+          fontSize: isBold ? 15 : 13,
+        )),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final currency = NumberFormat.currency(symbol: 'GH₵ ', decimalDigits: 2);
@@ -167,7 +325,7 @@ class _SalesScreenState extends State<SalesScreen> {
               children: [
                 // Header
                 StreamBuilder<List<Customer>>(
-                  stream: db.select(db.customers).watch(),
+                  stream: (db.select(db.customers)..where((t) => t.customerType.equals('CUSTOMER'))).watch(),
                   builder: (context, custSnap) {
                     return StreamBuilder<List<Batch>>(
                       stream: db.select(db.batches).watch(),
@@ -232,7 +390,7 @@ class _SalesScreenState extends State<SalesScreen> {
                 // Customer balance cards
                 Expanded(
                   child: StreamBuilder<List<Customer>>(
-                    stream: db.select(db.customers).watch(),
+                    stream: (db.select(db.customers)..where((t) => t.customerType.equals('CUSTOMER'))).watch(),
                     builder: (context, snapshot) {
                       final customers = snapshot.data ?? [];
                       final totalBalance = customers.fold(0.0, (s, c) => s + (c.balanceOwed));
@@ -318,16 +476,11 @@ class _SalesScreenState extends State<SalesScreen> {
                                             const SizedBox(width: 8),
                                             if (balance > 0)
                                               IconButton(
-                                                icon: const Icon(Icons.check_circle_rounded, color: Color(0xFF16A34A), size: 20),
-                                                tooltip: 'Mark as Settled',
+                                                icon: const Icon(Icons.payment_rounded, color: Colors.orange, size: 20),
+                                                tooltip: 'Settle Balance',
                                                 padding: EdgeInsets.zero,
                                                 constraints: const BoxConstraints(),
-                                                onPressed: () async {
-                                                  await (db.update(db.customers)..where((t) => t.id.equals(c.id))).write(
-                                                    const CustomersCompanion(balanceOwed: Value(0.0), synced: Value(false)),
-                                                  );
-                                                  setState(() {});
-                                                },
+                                                onPressed: () => _showSettleDialog(c),
                                               ),
                                           ],
                                         ),

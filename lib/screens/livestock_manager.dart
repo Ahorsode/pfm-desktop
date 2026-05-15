@@ -210,76 +210,67 @@ class _LivestockManagerState extends State<LivestockManager> {
           final allBatches = snapshot.data!;
           if (allBatches.isEmpty) return _buildEmptyState(context, db, cs);
 
-          // Apply filter
-          final batches = _applyFilter(allBatches);
+          return StreamBuilder<List<Mortality>>(
+            stream: db.select(db.mortalities).watch(),
+            builder: (context, mortSnapshot) {
+              final mortalities = mortSnapshot.data ?? [];
+              final mortalityMap = <int, int>{};
+              for (var m in mortalities) {
+                mortalityMap[m.batchId] = (mortalityMap[m.batchId] ?? 0) + m.count;
+              }
 
-          if (batches.isEmpty) {
-            return Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.filter_alt_outlined, size: 48, color: cs.onSurfaceVariant.withValues(alpha: 0.4)),
-                  const SizedBox(height: 12),
-                  Text('No batches match "$_selectedFilter"',
-                    style: TextStyle(color: cs.onSurfaceVariant, fontWeight: FontWeight.w600)),
-                  const SizedBox(height: 8),
-                  TextButton(
-                    onPressed: () => setState(() => _selectedFilter = 'All'),
-                    child: const Text('Show All'),
-                  ),
-                ],
-              ),
-            );
-          }
+              final batches = _applyFilter(allBatches);
 
-          return LayoutBuilder(
-            builder: (context, tableConstraints) {
-              return Theme(
-                data: Theme.of(context).copyWith(
-                  scrollbarTheme: ScrollbarThemeData(
-                    thumbColor: WidgetStateProperty.all(cs.primary.withValues(alpha: 0.5)),
-                    thickness: WidgetStateProperty.all(8),
-                    radius: const Radius.circular(4),
-                  ),
-                ),
-                child: Scrollbar(
-                  controller: ScrollController(), // Optional: for persistent scrollbar
-                  thumbVisibility: true,
-                  child: SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: SingleChildScrollView(
-                      scrollDirection: Axis.vertical,
-                      child: ConstrainedBox(
-                        constraints: BoxConstraints(
-                          minWidth: tableConstraints.maxWidth > 1000 ? tableConstraints.maxWidth : 1000,
-                        ),
-                        child: DataTable(
-                          headingRowColor: WidgetStateProperty.all(const Color(0xFF1E293B)),
-                          headingRowHeight: 52,
-                          dataRowMinHeight: 72,
-                          dataRowMaxHeight: 72,
-                          horizontalMargin: 20,
-                          columnSpacing: 24,
-                          columns: [
-                            _col('#'),
-                            _col('UNIT NAME / IDENTITY'),
-                            _col('TYPE & SPECIES'),
-                            _col('WORKER STAMPS'),
-                            _col('STOCK (START / NOW)'),
-                            _col('ARRIVAL DATE'),
-                            _col('STATUS'),
-                            _col('ACTIONS'),
-                          ],
-                          rows: batches.asMap().entries.map((entry) {
-                            final index = entry.key;
-                            final batch = entry.value;
-                            return _row(batch, index, db, cs);
-                          }).toList(),
+              return LayoutBuilder(
+                builder: (context, tableConstraints) {
+                  final isDark = Theme.of(context).brightness == Brightness.dark;
+                  return Theme(
+                    data: Theme.of(context).copyWith(
+                      scrollbarTheme: ScrollbarThemeData(
+                        thumbColor: WidgetStateProperty.all(cs.primary.withValues(alpha: 0.5)),
+                        thickness: WidgetStateProperty.all(8),
+                        radius: const Radius.circular(4),
+                      ),
+                    ),
+                    child: Scrollbar(
+                      thumbVisibility: true,
+                      child: SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: SingleChildScrollView(
+                          scrollDirection: Axis.vertical,
+                          child: ConstrainedBox(
+                            constraints: BoxConstraints(
+                              minWidth: tableConstraints.maxWidth > 1000 ? tableConstraints.maxWidth : 1000,
+                            ),
+                            child: DataTable(
+                              headingRowColor: WidgetStateProperty.all(isDark ? const Color(0xFF121417) : const Color(0xFF1E293B)),
+                              headingRowHeight: 52,
+                              dataRowMinHeight: 72,
+                              dataRowMaxHeight: 72,
+                              horizontalMargin: 20,
+                              columnSpacing: 24,
+                              columns: [
+                                _col('#'),
+                                _col('UNIT NAME / IDENTITY'),
+                                _col('TYPE & SPECIES'),
+                                _col('WORKER STAMPS'),
+                                _col('NO. COUNT'),
+                                _col('ARRIVAL DATE'),
+                                _col('STATUS'),
+                                _col('ACTIONS'),
+                              ],
+                              rows: batches.asMap().entries.map((entry) {
+                                final index = entry.key;
+                                final batch = entry.value;
+                                return _row(batch, index, db, cs, mortalityMap[batch.id] ?? 0);
+                              }).toList(),
+                            ),
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                ),
+                  );
+                },
               );
             },
           );
@@ -327,7 +318,7 @@ class _LivestockManagerState extends State<LivestockManager> {
     };
   }
 
-  DataRow _row(Batch batch, int index, AppDatabase db, ColorScheme cs) {
+  DataRow _row(Batch batch, int index, AppDatabase db, ColorScheme cs, int totalMortality) {
     final arrivalDate = DateFormat('dd MMM yyyy').format(batch.arrivalDate);
     final typeLabel = _getBatchTypeLabel(batch.type);
     final isLayer = batch.type.toUpperCase().contains('LAYER');
@@ -358,7 +349,7 @@ class _LivestockManagerState extends State<LivestockManager> {
             mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(typeLabel, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12, color: Color(0xFF1E293B))),
+              Text(typeLabel, style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12, color: Theme.of(context).brightness == Brightness.dark ? Colors.white : const Color(0xFF1E293B))),
               Text(breed, style: TextStyle(color: cs.onSurfaceVariant.withValues(alpha: 0.6), fontSize: 10, fontWeight: FontWeight.bold)),
             ],
           ),
@@ -387,13 +378,23 @@ class _LivestockManagerState extends State<LivestockManager> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    '${NumberFormat('#,###').format(batch.initialCount)} START',
-                    style: TextStyle(color: cs.onSurfaceVariant.withValues(alpha: 0.5), fontSize: 9, fontWeight: FontWeight.bold),
+                    NumberFormat('#,###').format(batch.initialCount),
+                    style: TextStyle(fontWeight: FontWeight.w900, fontSize: 13, color: Theme.of(context).brightness == Brightness.dark ? Colors.white : const Color(0xFF1E293B)),
                   ),
-                  Text(
-                    '${NumberFormat('#,###').format(batch.currentCount)} NOW',
-                    style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 13, color: Color(0xFF1E293B)),
-                  ),
+                  if (totalMortality > 0)
+                    Container(
+                      margin: const EdgeInsets.only(top: 2),
+                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).brightness == Brightness.dark ? Colors.red.withValues(alpha: 0.2) : const Color(0xFFFEF2F2),
+                        borderRadius: BorderRadius.circular(4),
+                        border: Border.all(color: Colors.red.withValues(alpha: 0.3), width: 0.5),
+                      ),
+                      child: Text(
+                        '- ${NumberFormat('#,###').format(totalMortality)}',
+                        style: const TextStyle(color: Color(0xFFB91C1C), fontSize: 9, fontWeight: FontWeight.w900),
+                      ),
+                    ),
                 ],
               ),
               const SizedBox(width: 8),

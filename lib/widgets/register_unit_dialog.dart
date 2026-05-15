@@ -368,7 +368,7 @@ class _RegisterUnitDialogState extends State<RegisterUnitDialog> {
                 Text('ALLOCATE FARM HOUSE', style: _labelStyle()),
                 const SizedBox(height: 10),
                 DropdownButtonFormField<int>(
-                  value: houses.any((h) => h.id == _selectedHouseId) ? _selectedHouseId : null,
+                  initialValue: houses.any((h) => h.id == _selectedHouseId) ? _selectedHouseId : null,
                   onChanged: (v) {
                     if (v == -1) {
                       _showQuickAddHouseDialog(context, db, farmId);

@@ -5,6 +5,7 @@ import 'package:drift/drift.dart' hide Column, Batch;
 import 'package:provider/provider.dart';
 import '../data/local_db.dart';
 import '../utils/farm_utils.dart';
+import '../data/sync_engine.dart';
 
 class MortalityDialog extends StatefulWidget {
   final Batch batch;
@@ -21,32 +22,66 @@ class _MortalityDialogState extends State<MortalityDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
     return AlertDialog(
-      backgroundColor: const Color(0xFF121417),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      title: const Row(
+      backgroundColor: isDark ? const Color(0xFF121417) : Colors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+        side: BorderSide(color: isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.05)),
+      ),
+      title: Row(
         children: [
-          Icon(Icons.coronavirus_outlined, color: Color(0xFFEF4444), size: 24),
-          SizedBox(width: 12),
-          Text('Record Mortality', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          const Icon(Icons.coronavirus_outlined, color: Color(0xFFEF4444), size: 28),
+          const SizedBox(width: 16),
+          Text(
+            'Record Mortality', 
+            style: TextStyle(
+              color: isDark ? Colors.white : const Color(0xFF1E293B), 
+              fontWeight: FontWeight.w900,
+              fontSize: 20,
+              letterSpacing: -0.5,
+            )
+          ),
         ],
       ),
       content: Form(
         key: _formKey,
         child: Column(
           mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              'Recording mortality for ${widget.batch.batchName}',
-              style: const TextStyle(color: Colors.grey, fontSize: 13),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFEF4444).withValues(alpha: 0.05),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.info_outline_rounded, size: 16, color: Color(0xFFEF4444)),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Recording mortality for ${widget.batch.batchName}',
+                      style: const TextStyle(
+                        color: Color(0xFFEF4444), 
+                        fontSize: 12, 
+                        fontWeight: FontWeight.w600
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 24),
             TextFormField(
               controller: _countController,
               keyboardType: TextInputType.number,
               inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-              style: const TextStyle(color: Colors.white),
-              decoration: _inputDecoration('Number of Birds Lost', Icons.remove_circle_outline),
+              style: TextStyle(color: isDark ? Colors.white : const Color(0xFF1E293B), fontWeight: FontWeight.bold),
+              decoration: _inputDecoration(context, 'Number of Birds Lost', Icons.remove_circle_outline),
               validator: (v) {
                 if (v == null || v.isEmpty) return 'Required';
                 final count = int.tryParse(v) ?? 0;
@@ -55,38 +90,73 @@ class _MortalityDialogState extends State<MortalityDialog> {
                 return null;
               },
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 20),
             TextFormField(
               controller: _reasonController,
               maxLines: 2,
-              style: const TextStyle(color: Colors.white),
-              decoration: _inputDecoration('Reason (Optional)', Icons.notes),
+              style: TextStyle(color: isDark ? Colors.white : const Color(0xFF1E293B)),
+              decoration: _inputDecoration(context, 'Reason (Optional)', Icons.notes),
             ),
           ],
         ),
       ),
+      actionsPadding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context),
-          child: const Text('CANCEL', style: TextStyle(color: Colors.grey)),
+          style: TextButton.styleFrom(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+          ),
+          child: Text(
+            'CANCEL', 
+            style: TextStyle(
+              color: isDark ? Colors.white38 : Colors.black45, 
+              fontWeight: FontWeight.w800,
+              fontSize: 12,
+              letterSpacing: 1,
+            )
+          ),
         ),
+        const SizedBox(width: 8),
         FilledButton(
           onPressed: _submit,
-          style: FilledButton.styleFrom(backgroundColor: const Color(0xFFEF4444)),
-          child: const Text('RECORD LOSS'),
+          style: FilledButton.styleFrom(
+            backgroundColor: const Color(0xFFEF4444),
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            elevation: 0,
+          ),
+          child: const Text(
+            'RECORD LOSS', 
+            style: TextStyle(fontWeight: FontWeight.w900, fontSize: 13, letterSpacing: 0.5)
+          ),
         ),
       ],
     );
   }
 
-  InputDecoration _inputDecoration(String label, IconData icon) {
+  InputDecoration _inputDecoration(BuildContext context, String label, IconData icon) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    
     return InputDecoration(
-      labelText: label,
-      labelStyle: const TextStyle(color: Color(0xFFEF4444), fontSize: 12),
-      prefixIcon: Icon(icon, color: Colors.grey, size: 20),
-      fillColor: const Color(0xFF23262B),
+      labelText: label.toUpperCase(),
+      labelStyle: const TextStyle(color: Color(0xFFEF4444), fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 1),
+      prefixIcon: Icon(icon, color: isDark ? Colors.white24 : Colors.black26, size: 20),
+      fillColor: isDark ? const Color(0xFF23262B) : const Color(0xFFF8FAFC),
       filled: true,
-      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12), 
+        borderSide: BorderSide(color: isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.05)),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12), 
+        borderSide: BorderSide(color: isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.05)),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12), 
+        borderSide: const BorderSide(color: Color(0xFFEF4444), width: 2),
+      ),
     );
   }
 
@@ -604,11 +674,27 @@ class _EditBatchDialogState extends State<EditBatchDialog> {
               dropdownColor: const Color(0xFF23262B),
               style: const TextStyle(color: Colors.white),
               decoration: _inputDecoration('Assign House', Icons.house_outlined),
+              onChanged: (v) {
+                if (v == -1) {
+                  _showQuickAddHouseDialog(context, db, farm.data!);
+                } else {
+                  setState(() => _selectedHouseId = v);
+                }
+              },
               items: [
                 const DropdownMenuItem(value: null, child: Text('No House Assigned')),
                 ...houses.map((h) => DropdownMenuItem(value: h.id, child: Text(h.name))),
+                const DropdownMenuItem<int>(
+                  value: -1,
+                  child: Row(
+                    children: [
+                      Icon(Icons.add_circle_outline_rounded, size: 18, color: Color(0xFF3B82F6)),
+                      SizedBox(width: 8),
+                      Text('Add New House', style: TextStyle(color: Color(0xFF3B82F6), fontWeight: FontWeight.bold)),
+                    ],
+                  ),
+                ),
               ],
-              onChanged: (v) => setState(() => _selectedHouseId = v),
             );
           },
         );
@@ -641,5 +727,72 @@ class _EditBatchDialogState extends State<EditBatchDialog> {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
       }
     }
+  }
+
+  void _showQuickAddHouseDialog(BuildContext context, AppDatabase db, int farmId) {
+    final houseNameCtrl = TextEditingController();
+    final capacityCtrl = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF121417),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: BorderSide(color: Colors.white.withValues(alpha: 0.1))),
+        title: const Text('Add House', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('HOUSE NAME', style: TextStyle(color: Color(0xFF3B82F6), fontSize: 12, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 12),
+            TextField(
+              controller: houseNameCtrl,
+              style: const TextStyle(color: Colors.white),
+              decoration: _inputDecoration('Enter house name', Icons.home_work_outlined),
+            ),
+            const SizedBox(height: 24),
+            const Text('CAPACITY (OPTIONAL)', style: TextStyle(color: Color(0xFF3B82F6), fontSize: 12, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 12),
+            TextField(
+              controller: capacityCtrl,
+              style: const TextStyle(color: Colors.white),
+              keyboardType: TextInputType.number,
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+              decoration: _inputDecoration('Enter capacity', Icons.people_outline),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text('Cancel', style: TextStyle(color: Colors.white.withValues(alpha: 0.6))),
+          ),
+          FilledButton(
+            onPressed: () async {
+              if (houseNameCtrl.text.trim().isEmpty) return;
+              final cap = int.tryParse(capacityCtrl.text) ?? 1000;
+              final userId = await FarmUtils.getUserId() ?? 'local_user';
+              
+              final houseId = await db.into(db.houses).insert(HousesCompanion.insert(
+                farmId: farmId,
+                name: houseNameCtrl.text.trim(),
+                capacity: cap,
+                userId: Value(userId),
+                isIsolation: const Value(false),
+                synced: const Value(false),
+              ));
+              
+              if (ctx.mounted) {
+                ctx.read<SyncEngine>().performSync();
+                Navigator.pop(ctx);
+                setState(() => _selectedHouseId = houseId);
+              }
+            },
+            style: FilledButton.styleFrom(backgroundColor: const Color(0xFF3B82F6)),
+            child: const Text('Add', style: TextStyle(fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
   }
 }

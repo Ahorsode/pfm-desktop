@@ -16,6 +16,7 @@ import 'team_management_screen.dart';
 import 'license_screen.dart';
 import 'settings_screen.dart';
 import 'audit_log_screen.dart';
+import 'mortality_quarantine_screen.dart';
 import '../widgets/app_sidebar.dart';
 
 class MainScaffold extends StatefulWidget {
@@ -35,7 +36,7 @@ class _MainScaffoldState extends State<MainScaffold> {
     const HousesScreen(), // 2
     const OperationLogScreen(type: OperationType.eggs), // 3
     const OperationLogScreen(type: OperationType.feeding), // 4
-    const OperationLogScreen(type: OperationType.mortality), // 5
+    const MortalityQuarantineScreen(), // 5
     const SalesScreen(), // 6
     const CustomerDirectoryScreen(), // 7
     const FinancialControlScreen(), // 8

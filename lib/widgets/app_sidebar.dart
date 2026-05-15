@@ -88,8 +88,8 @@ class AppSidebar extends StatelessWidget {
                   _buildMenuItem(
                     context,
                     5,
-                    Icons.cancel_outlined,
-                    'Mortality',
+                    Icons.dangerous_outlined,
+                    'Mortality & Quarantine',
                     sidebarAccent,
                   ),
 

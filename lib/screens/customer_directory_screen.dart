@@ -1,6 +1,6 @@
+import 'package:drift/drift.dart' hide Column;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:drift/drift.dart' hide Column;
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -24,7 +24,7 @@ class _CustomerDirectoryScreenState extends State<CustomerDirectoryScreen> with 
   void initState() {
     super.initState();
     db = Provider.of<AppDatabase>(context, listen: false);
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 2, vsync: this);
     _searchController.addListener(() => setState(() => _searchQuery = _searchController.text));
     _tabController.addListener(() => setState(() {}));
   }
@@ -48,6 +48,8 @@ class _CustomerDirectoryScreenState extends State<CustomerDirectoryScreen> with 
     final emailCtrl = TextEditingController(text: customer?.email ?? '');
     final addressCtrl = TextEditingController(text: customer?.address ?? '');
     final balanceCtrl = TextEditingController(text: customer?.balanceOwed.toString() ?? '0');
+    final supplyItemsCtrl = TextEditingController(text: customer?.supplyItems ?? '');
+    final contactPersonCtrl = TextEditingController(text: customer?.contactPerson ?? '');
     String selectedType = customer?.customerType ?? 'CUSTOMER';
     final formKey = GlobalKey<FormState>();
 
@@ -59,13 +61,13 @@ class _CustomerDirectoryScreenState extends State<CustomerDirectoryScreen> with 
         builder: (context, setDialogState) => Dialog(
           backgroundColor: Colors.transparent,
           child: Container(
-            width: 500,
+            width: 600,
             decoration: BoxDecoration(
-              color: const Color(0xFF0F172A),
+              color: Theme.of(context).cardColor,
               borderRadius: BorderRadius.circular(28),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+              border: Border.all(color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.1)),
               boxShadow: [
-                BoxShadow(color: Colors.black.withValues(alpha: 0.5), blurRadius: 40, offset: const Offset(0, 20)),
+                BoxShadow(color: Colors.black.withValues(alpha: 0.3), blurRadius: 40, offset: const Offset(0, 20)),
               ],
             ),
             child: ClipRRect(
@@ -120,6 +122,15 @@ class _CustomerDirectoryScreenState extends State<CustomerDirectoryScreen> with 
                             _buildDialogInputField('Email Address', 'optional@example.com', emailCtrl, Icons.email_rounded),
                             const SizedBox(height: 16),
                             _buildDialogInputField('Address', 'Physical location...', addressCtrl, Icons.location_on_rounded),
+                            if (selectedType == 'SUPPLIER') ...[
+                              const SizedBox(height: 16),
+                              const Divider(height: 32),
+                              const Text('SUPPLIER DETAILS', style: TextStyle(color: Color(0xFF10B981), fontWeight: FontWeight.w900, fontSize: 10, letterSpacing: 1)),
+                              const SizedBox(height: 16),
+                              _buildDialogInputField('Items Supplied', 'e.g. Feed, Chicks, Vaccines', supplyItemsCtrl, Icons.inventory_2_rounded),
+                              const SizedBox(height: 16),
+                              _buildDialogInputField('Primary Contact Person', 'Name of rep...', contactPersonCtrl, Icons.badge_rounded),
+                            ],
                             const SizedBox(height: 40),
                             Row(
                               children: [
@@ -143,6 +154,8 @@ class _CustomerDirectoryScreenState extends State<CustomerDirectoryScreen> with 
                                         address: Value(addressCtrl.text.isEmpty ? null : addressCtrl.text),
                                         customerType: Value(selectedType),
                                         balanceOwed: Value(double.tryParse(balanceCtrl.text) ?? 0.0),
+                                        supplyItems: Value(supplyItemsCtrl.text.isEmpty ? null : supplyItemsCtrl.text),
+                                        contactPerson: Value(contactPersonCtrl.text.isEmpty ? null : contactPersonCtrl.text),
                                         synced: const Value(false),
                                         updatedAt: Value(DateTime.now()),
                                       );
@@ -206,8 +219,8 @@ class _CustomerDirectoryScreenState extends State<CustomerDirectoryScreen> with 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
       decoration: BoxDecoration(
-        color: const Color(0xFF1E293B).withValues(alpha: 0.5),
-        border: Border(bottom: BorderSide(color: Colors.white.withValues(alpha: 0.05))),
+        color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+        border: Border(bottom: BorderSide(color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.05))),
       ),
       child: Row(
         children: [
@@ -220,9 +233,9 @@ class _CustomerDirectoryScreenState extends State<CustomerDirectoryScreen> with 
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(title, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w900, letterSpacing: 0.5)),
+              Text(title, style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 18, fontWeight: FontWeight.w900, letterSpacing: 0.5)),
               const SizedBox(height: 4),
-              Text(subtitle, style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1.2)),
+              Text(subtitle, style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1.2)),
             ],
           ),
         ],
@@ -241,15 +254,15 @@ class _CustomerDirectoryScreenState extends State<CustomerDirectoryScreen> with 
           keyboardType: isNumber ? const TextInputType.numberWithOptions(decimal: true) : TextInputType.text,
           validator: required ? (v) => (v == null || v.isEmpty) ? 'Required' : null : null,
           inputFormatters: isNumber ? [FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))] : [],
-          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 15),
+          style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.w600, fontSize: 15),
           decoration: InputDecoration(
             hintText: hint,
-            hintStyle: const TextStyle(color: Color(0xFF64748B), fontSize: 14),
-            prefixIcon: Icon(icon, size: 20, color: const Color(0xFF94A3B8)),
+            hintStyle: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.5), fontSize: 14),
+            prefixIcon: Icon(icon, size: 20, color: Theme.of(context).colorScheme.onSurfaceVariant),
             filled: true,
-            fillColor: const Color(0xFF1E293B),
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.08))),
-            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.08))),
+            fillColor: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.1))),
+            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.1))),
             focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFF10B981), width: 1.5)),
             contentPadding: const EdgeInsets.all(18),
           ),
@@ -262,12 +275,12 @@ class _CustomerDirectoryScreenState extends State<CustomerDirectoryScreen> with 
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF0F172A),
+        backgroundColor: Theme.of(context).cardColor,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('Delete Contact', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900)),
-        content: Text('Are you sure you want to delete "${customer.name}"?', style: const TextStyle(color: Color(0xFF94A3B8))),
+        title: Text('Delete Contact', style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.w900)),
+        content: Text('Are you sure you want to delete "${customer.name}"?', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('CANCEL', style: TextStyle(color: Color(0xFF64748B)))),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text('CANCEL', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant))),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, true),
             style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
@@ -287,7 +300,7 @@ class _CustomerDirectoryScreenState extends State<CustomerDirectoryScreen> with 
     final currency = NumberFormat.currency(symbol: 'GH₵ ', decimalDigits: 2);
 
     return Scaffold(
-      backgroundColor: const Color(0xFF020617),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: LayoutBuilder(
         builder: (context, constraints) {
           final bool isNarrow = constraints.maxWidth < 850;
@@ -302,7 +315,7 @@ class _CustomerDirectoryScreenState extends State<CustomerDirectoryScreen> with 
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('Directory', style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900, color: Colors.white)),
+                      Text('Directory', style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900, color: Theme.of(context).colorScheme.onSurface)),
                       const SizedBox(height: 12),
                       SizedBox(
                         width: double.infinity,
@@ -326,9 +339,9 @@ class _CustomerDirectoryScreenState extends State<CustomerDirectoryScreen> with 
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text('Directory', style: TextStyle(fontSize: 32, fontWeight: FontWeight.w900, color: Colors.white, letterSpacing: -0.5)),
+                          Text('Directory', style: TextStyle(fontSize: 32, fontWeight: FontWeight.w900, color: Theme.of(context).colorScheme.onSurface, letterSpacing: -0.5)),
                           const SizedBox(height: 4),
-                          Text('Manage your customers and suppliers', style: TextStyle(color: Colors.blueGrey[300], fontSize: 14, fontWeight: FontWeight.w500)),
+                          Text('Manage your customers and suppliers', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 14, fontWeight: FontWeight.w500)),
                         ],
                       ),
                       FilledButton.icon(
@@ -352,27 +365,40 @@ class _CustomerDirectoryScreenState extends State<CustomerDirectoryScreen> with 
                   Column(
                     children: [
                       Container(
-                        height: 48,
-                        width: double.infinity,
-                        decoration: BoxDecoration(color: const Color(0xFF1E293B), borderRadius: BorderRadius.circular(12)),
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.1)),
+                        ),
                         child: TabBar(
                           controller: _tabController,
-                          indicator: BoxDecoration(color: const Color(0xFF3B82F6), borderRadius: BorderRadius.circular(8)),
+                          dividerColor: Colors.transparent,
+                          indicatorSize: TabBarIndicatorSize.tab,
+                          indicator: BoxDecoration(
+                            color: Theme.of(context).colorScheme.primary,
+                            borderRadius: BorderRadius.circular(12),
+                            boxShadow: [
+                              BoxShadow(color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.3), blurRadius: 10, offset: const Offset(0, 4)),
+                            ],
+                          ),
                           labelColor: Colors.white,
-                          unselectedLabelColor: const Color(0xFF94A3B8),
-                          tabs: const [Tab(text: 'ALL'), Tab(text: 'CUSTOMERS'), Tab(text: 'SUPPLIERS')],
+                          unselectedLabelColor: Theme.of(context).colorScheme.onSurfaceVariant,
+                          labelStyle: const TextStyle(fontWeight: FontWeight.w900, fontSize: 12, letterSpacing: 0.5),
+                          unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12, letterSpacing: 0.5),
+                          tabs: const [Tab(text: 'CUSTOMERS'), Tab(text: 'SUPPLIERS')],
                         ),
                       ),
-                      const SizedBox(height: 16),
+                      const SizedBox(height: 20),
                       TextField(
                         controller: _searchController,
-                        style: const TextStyle(color: Colors.white),
+                        style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
                         decoration: InputDecoration(
                           hintText: 'Search contacts...',
                           prefixIcon: const Icon(Icons.search_rounded),
                           filled: true,
-                          fillColor: const Color(0xFF1E293B),
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                          fillColor: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
                         ),
                       ),
                     ],
@@ -381,28 +407,43 @@ class _CustomerDirectoryScreenState extends State<CustomerDirectoryScreen> with 
                   Row(
                     children: [
                       Container(
-                        height: 48,
-                        decoration: BoxDecoration(color: const Color(0xFF1E293B), borderRadius: BorderRadius.circular(12)),
+                        width: 400,
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.1)),
+                        ),
                         child: TabBar(
                           controller: _tabController,
-                          isScrollable: true,
-                          indicator: BoxDecoration(color: const Color(0xFF3B82F6), borderRadius: BorderRadius.circular(8)),
+                          dividerColor: Colors.transparent,
+                          indicatorSize: TabBarIndicatorSize.tab,
+                          indicator: BoxDecoration(
+                            color: Theme.of(context).colorScheme.primary,
+                            borderRadius: BorderRadius.circular(12),
+                            boxShadow: [
+                              BoxShadow(color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.3), blurRadius: 10, offset: const Offset(0, 4)),
+                            ],
+                          ),
                           labelColor: Colors.white,
-                          unselectedLabelColor: const Color(0xFF94A3B8),
-                          tabs: const [Tab(text: 'ALL'), Tab(text: 'CUSTOMERS'), Tab(text: 'SUPPLIERS')],
+                          unselectedLabelColor: Theme.of(context).colorScheme.onSurfaceVariant,
+                          labelStyle: const TextStyle(fontWeight: FontWeight.w900, fontSize: 12, letterSpacing: 0.5),
+                          unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12, letterSpacing: 0.5),
+                          tabs: const [Tab(text: 'CUSTOMERS'), Tab(text: 'SUPPLIERS')],
                         ),
                       ),
                       const SizedBox(width: 24),
                       Expanded(
                         child: TextField(
                           controller: _searchController,
-                          style: const TextStyle(color: Colors.white),
+                          style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
                           decoration: InputDecoration(
                             hintText: 'Search contacts...',
                             prefixIcon: const Icon(Icons.search_rounded),
                             filled: true,
-                            fillColor: const Color(0xFF1E293B),
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                            fillColor: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
                           ),
                         ),
                       ),
@@ -421,9 +462,9 @@ class _CustomerDirectoryScreenState extends State<CustomerDirectoryScreen> with 
                       final all = snapshot.data ?? [];
                       
                       List<Customer> categoryFiltered = all;
-                      if (_tabController.index == 1) {
+                      if (_tabController.index == 0) {
                         categoryFiltered = all.where((c) => c.customerType == 'CUSTOMER').toList();
-                      } else if (_tabController.index == 2) {
+                      } else {
                         categoryFiltered = all.where((c) => c.customerType == 'SUPPLIER').toList();
                       }
 
@@ -440,12 +481,12 @@ class _CustomerDirectoryScreenState extends State<CustomerDirectoryScreen> with 
                           child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
                             Container(
                               padding: const EdgeInsets.all(24),
-                              decoration: BoxDecoration(color: const Color(0xFF1E293B), shape: BoxShape.circle),
-                              child: Icon(Icons.person_search_rounded, size: 48, color: const Color(0xFF94A3B8)),
+                              decoration: BoxDecoration(color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.5), shape: BoxShape.circle),
+                              child: Icon(Icons.person_search_rounded, size: 48, color: Theme.of(context).colorScheme.onSurfaceVariant),
                             ),
                             const SizedBox(height: 20),
                             Text(_searchQuery.isEmpty ? 'No contacts found.' : 'No results for "$_searchQuery".',
-                                style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 16, fontWeight: FontWeight.w600)),
+                                style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 16, fontWeight: FontWeight.w600)),
                           ]),
                         );
                       }
@@ -460,45 +501,72 @@ class _CustomerDirectoryScreenState extends State<CustomerDirectoryScreen> with 
                             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
                             width: double.infinity,
                             decoration: BoxDecoration(
-                              color: const Color(0xFF1E293B).withValues(alpha: 0.5),
+                              gradient: LinearGradient(
+                                colors: [
+                                  Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+                                  Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.1),
+                                ],
+                              ),
                               borderRadius: BorderRadius.circular(16),
-                              border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+                              border: Border.all(color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.05)),
                             ),
                             child: Wrap(
                               spacing: 32,
                               runSpacing: 16,
                               children: [
-                                _summaryChip(Icons.people_rounded, 'TOTAL CONTACTS', '${filtered.length}', Colors.blue),
-                                _summaryChip(Icons.account_balance_wallet_rounded, 'OUTSTANDING BALANCE', currency.format(totalBalance), Colors.orange),
+                                _summaryChip(Icons.people_rounded, 'TOTAL ${_tabController.index == 0 ? "CUSTOMERS" : "SUPPLIERS"}', '${filtered.length}', _tabController.index == 0 ? Colors.blue : Colors.indigo),
+                                _summaryChip(
+                                  _tabController.index == 0 ? Icons.account_balance_wallet_rounded : Icons.payments_rounded,
+                                  _tabController.index == 0 ? 'TOTAL TO COLLECT' : 'TOTAL TO PAY',
+                                  currency.format(totalBalance),
+                                  _tabController.index == 0 ? Colors.orange : Colors.purpleAccent,
+                                ),
                               ],
                             ),
                           ),
                           const SizedBox(height: 24),
 
                           // Data table
+                          // Table Card - Full Width Focus
                           Expanded(
-                            child: Container(
-                              width: double.infinity,
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF0F172A),
-                                borderRadius: BorderRadius.circular(20),
-                                border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+                            child: Card(
+                              elevation: 4,
+                              shadowColor: Colors.black.withValues(alpha: 0.1),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(24),
+                                side: BorderSide(color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.1)),
                               ),
+                              color: Theme.of(context).cardColor,
+                              margin: EdgeInsets.zero,
                               child: ClipRRect(
-                                borderRadius: BorderRadius.circular(20),
-                                child: Scrollbar(
+                                borderRadius: BorderRadius.circular(24),
+                                child: SingleChildScrollView(
+                                  scrollDirection: Axis.vertical,
                                   child: SingleChildScrollView(
-                                    scrollDirection: Axis.vertical,
-                                    child: SingleChildScrollView(
-                                      scrollDirection: Axis.horizontal,
+                                    scrollDirection: Axis.horizontal,
+                                    child: ConstrainedBox(
+                                      constraints: BoxConstraints(minWidth: constraints.maxWidth - (isNarrow ? 32 : 64)),
                                       child: DataTable(
-                                        headingRowColor: WidgetStateProperty.all(const Color(0xFF1E293B)),
-                                        columns: const [
-                                          DataColumn(label: Text('CONTACT NAME', style: TextStyle(color: Color(0xFF94A3B8), fontWeight: FontWeight.w900, fontSize: 11, letterSpacing: 1))),
-                                          DataColumn(label: Text('TYPE', style: TextStyle(color: Color(0xFF94A3B8), fontWeight: FontWeight.w900, fontSize: 11, letterSpacing: 1))),
-                                          DataColumn(label: Text('PHONE', style: TextStyle(color: Color(0xFF94A3B8), fontWeight: FontWeight.w900, fontSize: 11, letterSpacing: 1))),
-                                          DataColumn(label: Text('OUTSTANDING', style: TextStyle(color: Color(0xFF94A3B8), fontWeight: FontWeight.w900, fontSize: 11, letterSpacing: 1))),
-                                          DataColumn(label: Text('ACTIONS', style: TextStyle(color: Color(0xFF94A3B8), fontWeight: FontWeight.w900, fontSize: 11, letterSpacing: 1))),
+                                        headingRowHeight: 64,
+                                        dataRowMinHeight: 72,
+                                        dataRowMaxHeight: 72,
+                                        horizontalMargin: 32,
+                                        headingRowColor: WidgetStateProperty.all(Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.3)),
+                                        columnSpacing: 40,
+                                        columns: [
+                                          DataColumn(label: Text('CONTACT NAME', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontWeight: FontWeight.w900, fontSize: 11, letterSpacing: 1))),
+                                          if (_tabController.index == 0) ...[
+                                            DataColumn(label: Text('PHONE', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontWeight: FontWeight.w900, fontSize: 11, letterSpacing: 1))),
+                                            DataColumn(label: Text('EMAIL', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontWeight: FontWeight.w900, fontSize: 11, letterSpacing: 1))),
+                                            DataColumn(label: Text('ADDRESS', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontWeight: FontWeight.w900, fontSize: 11, letterSpacing: 1))),
+                                            DataColumn(label: Text('RECEIVABLE', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontWeight: FontWeight.w900, fontSize: 11, letterSpacing: 1))),
+                                          ] else ...[
+                                            DataColumn(label: Text('SUPPLY ITEMS', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontWeight: FontWeight.w900, fontSize: 11, letterSpacing: 1))),
+                                            DataColumn(label: Text('CONTACT PERSON', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontWeight: FontWeight.w900, fontSize: 11, letterSpacing: 1))),
+                                            DataColumn(label: Text('PHONE', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontWeight: FontWeight.w900, fontSize: 11, letterSpacing: 1))),
+                                            DataColumn(label: Text('DEBT / PAYABLE', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontWeight: FontWeight.w900, fontSize: 11, letterSpacing: 1))),
+                                          ],
+                                          DataColumn(label: Text('ACTIONS', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontWeight: FontWeight.w900, fontSize: 11, letterSpacing: 1))),
                                         ],
                                         rows: filtered.map((c) => DataRow(cells: [
                                           DataCell(Row(children: [
@@ -508,33 +576,46 @@ class _CustomerDirectoryScreenState extends State<CustomerDirectoryScreen> with 
                                               child: Text(c.name[0].toUpperCase(), style: TextStyle(color: c.customerType == 'SUPPLIER' ? Colors.blue : const Color(0xFF10B981), fontWeight: FontWeight.w900, fontSize: 11)),
                                             ),
                                             const SizedBox(width: 14),
-                                            Text(c.name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+                                            Text(c.name, style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.w700)),
                                           ])),
-                                          DataCell(Container(
-                                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                            decoration: BoxDecoration(
-                                              color: (c.customerType == 'SUPPLIER' ? Colors.blue : const Color(0xFF10B981)).withValues(alpha: 0.1),
-                                              borderRadius: BorderRadius.circular(6),
-                                              border: Border.all(color: (c.customerType == 'SUPPLIER' ? Colors.blue : const Color(0xFF10B981)).withValues(alpha: 0.2)),
-                                            ),
-                                            child: Text(
-                                              c.customerType,
-                                              style: TextStyle(color: c.customerType == 'SUPPLIER' ? Colors.blue[300] : const Color(0xFF34D399), fontWeight: FontWeight.w900, fontSize: 9, letterSpacing: 0.5),
-                                            ),
+                                          if (_tabController.index == 0) ...[
+                                            DataCell(Text(c.phone ?? '—', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontWeight: FontWeight.w500))),
+                                            DataCell(Text(c.email ?? '—', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 13))),
+                                            DataCell(Text(c.address ?? '—', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 13))),
+                                            DataCell(Text(
+                                              currency.format(c.balanceOwed),
+                                              style: TextStyle(
+                                                fontWeight: FontWeight.w800,
+                                                color: c.balanceOwed > 0 ? Colors.orangeAccent : const Color(0xFF10B981),
+                                              ),
+                                            )),
+                                          ] else ...[
+                                            DataCell(Text(c.supplyItems ?? '—', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 13))),
+                                            DataCell(Text(c.contactPerson ?? '—', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 13))),
+                                            DataCell(Text(c.phone ?? '—', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontWeight: FontWeight.w500))),
+                                            DataCell(Text(
+                                              currency.format(c.balanceOwed),
+                                              style: TextStyle(
+                                                fontWeight: FontWeight.w800,
+                                                color: c.balanceOwed > 0 ? Colors.purpleAccent : const Color(0xFF10B981),
+                                              ),
+                                            )),
+                                          ],
+                                          DataCell(Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              if (c.balanceOwed > 0)
+                                                IconButton(
+                                                  icon: Icon(_tabController.index == 0 ? Icons.account_balance_wallet_rounded : Icons.payments_rounded, size: 18), 
+                                                  color: _tabController.index == 0 ? Colors.orangeAccent : Colors.purpleAccent, 
+                                                  onPressed: () => _showSettleDialog(c), 
+                                                  tooltip: _tabController.index == 0 ? 'Collect Balance' : 'Pay Debt'
+                                                ),
+                                              IconButton(icon: const Icon(Icons.edit_rounded, size: 18), color: const Color(0xFF3B82F6), onPressed: () => _showCustomerDialog(customer: c), tooltip: 'Edit'),
+                                              const SizedBox(width: 8),
+                                              IconButton(icon: const Icon(Icons.delete_outline_rounded, size: 18), color: Colors.redAccent.withValues(alpha: 0.7), onPressed: () => _deleteCustomer(c), tooltip: 'Delete'),
+                                            ],
                                           )),
-                                          DataCell(Text(c.phone ?? '—', style: const TextStyle(color: Color(0xFF94A3B8), fontWeight: FontWeight.w500))),
-                                          DataCell(Text(
-                                            currency.format(c.balanceOwed),
-                                            style: TextStyle(
-                                              fontWeight: FontWeight.w800,
-                                              color: c.balanceOwed > 0 ? Colors.orangeAccent : const Color(0xFF10B981),
-                                            ),
-                                          )),
-                                          DataCell(Row(children: [
-                                            IconButton(icon: const Icon(Icons.edit_rounded, size: 18), color: const Color(0xFF3B82F6), onPressed: () => _showCustomerDialog(customer: c), tooltip: 'Edit'),
-                                            const SizedBox(width: 8),
-                                            IconButton(icon: const Icon(Icons.delete_outline_rounded, size: 18), color: Colors.redAccent.withValues(alpha: 0.7), onPressed: () => _deleteCustomer(c), tooltip: 'Delete'),
-                                          ])),
                                         ])).toList(),
                                       ),
                                     ),
@@ -556,6 +637,98 @@ class _CustomerDirectoryScreenState extends State<CustomerDirectoryScreen> with 
     );
   }
 
+  Future<void> _showSettleDialog(Customer customer) async {
+    final TextEditingController amountController = TextEditingController();
+    final currency = NumberFormat.currency(symbol: 'GH₵ ', decimalDigits: 2);
+    
+    return showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            const Icon(Icons.payments_rounded, color: Colors.orangeAccent),
+            const SizedBox(width: 12),
+            const Text('Settle Balance', style: TextStyle(fontWeight: FontWeight.w800)),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Customer: ${customer.name}', style: const TextStyle(fontWeight: FontWeight.w600)),
+            const SizedBox(height: 8),
+            Text('Current Balance: ${currency.format(customer.balanceOwed)}', 
+              style: const TextStyle(color: Colors.orangeAccent, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 20),
+            TextField(
+              controller: amountController,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration: InputDecoration(
+                labelText: 'Payment Amount',
+                hintText: 'Enter amount paid',
+                prefixText: 'GH₵ ',
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                filled: true,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                TextButton(
+                  onPressed: () => amountController.text = customer.balanceOwed.toString(),
+                  child: const Text('Pay Full Amount'),
+                ),
+              ],
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () async {
+              final ctx = context;
+              final amount = double.tryParse(amountController.text) ?? 0.0;
+              if (amount <= 0) return;
+              
+              final newBalance = customer.balanceOwed - amount;
+              
+              await db.update(db.customers).replace(
+                customer.copyWith(
+                  balanceOwed: newBalance < 0 ? 0 : newBalance,
+                  updatedAt: DateTime.now(),
+                  synced: false,
+                ),
+              );
+
+              // Log the settlement
+              await db.into(db.settlements).insert(SettlementsCompanion.insert(
+                farmId: customer.farmId,
+                customerId: customer.id,
+                amount: amount,
+                settlementDate: Value(DateTime.now()),
+                settlementType: customer.customerType == 'SUPPLIER' ? 'PAYMENT' : 'COLLECTION',
+                synced: const Value(false),
+              ));
+              
+              if (!ctx.mounted) return;
+              Navigator.pop(ctx);
+              ScaffoldMessenger.of(ctx).showSnackBar(
+                SnackBar(content: Text('Payment of ${currency.format(amount)} recorded for ${customer.name}')),
+              );
+            },
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFF16A34A),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            child: const Text('Record Payment'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _summaryChip(IconData icon, String label, String value, Color color) {
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -567,9 +740,9 @@ class _CustomerDirectoryScreenState extends State<CustomerDirectoryScreen> with 
         ),
         const SizedBox(width: 14),
         Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(label, style: const TextStyle(color: Color(0xFF64748B), fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 1)),
+          Text(label, style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 1)),
           const SizedBox(height: 2),
-          Text(value, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 16)),
+          Text(value, style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.w900, fontSize: 16)),
         ]),
       ],
     );

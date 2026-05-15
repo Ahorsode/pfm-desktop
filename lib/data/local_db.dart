@@ -185,6 +185,8 @@ class Customers extends Table {
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
   DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
   TextColumn get customerType => text().withDefault(const Constant('CUSTOMER'))(); // 'CUSTOMER' or 'SUPPLIER'
+  TextColumn get supplyItems => text().nullable()();
+  TextColumn get contactPerson => text().nullable()();
   BoolColumn get synced => boolean().withDefault(const Constant(false))();
 }
 
@@ -331,7 +333,33 @@ class Sales extends Table {
   BoolColumn get synced => boolean().withDefault(const Constant(false))();
 }
 
-// 19. Pending Deletions (to track what needs to be deleted from cloud)
+// 19. Expenses
+@DataClassName('Expense')
+class Expenses extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  IntColumn get farmId => integer()();
+  TextColumn get category => text()(); // Feed, Meds, Labor, Fuel, etc.
+  RealColumn get amount => real()();
+  DateTimeColumn get date => dateTime().withDefault(currentDateAndTime)();
+  TextColumn get description => text().nullable()();
+  TextColumn get userId => text().nullable()();
+  BoolColumn get synced => boolean().withDefault(const Constant(false))();
+}
+
+// 20. Settlements (Tracking balance payments)
+@DataClassName('Settlement')
+class Settlements extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  IntColumn get farmId => integer()();
+  IntColumn get customerId => integer()();
+  RealColumn get amount => real()();
+  DateTimeColumn get settlementDate => dateTime().withDefault(currentDateAndTime)();
+  TextColumn get settlementType => text()(); // 'COLLECTION' or 'PAYMENT'
+  TextColumn get userId => text().nullable()();
+  BoolColumn get synced => boolean().withDefault(const Constant(false))();
+}
+
+// 21. Pending Deletions (to track what needs to be deleted from cloud)
 @DataClassName('PendingDeletion')
 class PendingDeletions extends Table {
   IntColumn get id => integer().autoIncrement()();
@@ -348,6 +376,24 @@ LazyDatabase _openConnection() {
     
     return NativeDatabase.createInBackground(file);
   });
+}
+
+// 23. Stock Logs
+@DataClassName('StockLog')
+class StockLogs extends Table {
+  @override
+  String get tableName => 'stock_logs';
+  
+  IntColumn get id => integer().autoIncrement()();
+  IntColumn get farmId => integer()();
+  IntColumn get itemId => integer()();
+  RealColumn get quantity => real()();
+  TextColumn get logType => text()(); // 'PROCURED', 'CONSUMED', 'ADJUSTED'
+  IntColumn get batchId => integer().nullable()();
+  IntColumn get supplierId => integer().nullable()();
+  TextColumn get note => text().nullable()();
+  DateTimeColumn get logDate => dateTime().withDefault(currentDateAndTime)();
+  BoolColumn get synced => boolean().withDefault(const Constant(false))();
 }
 
 @DriftDatabase(tables: [
@@ -369,13 +415,16 @@ LazyDatabase _openConnection() {
   VaccinationSchedules,
   MedicationSchedules,
   Sales,
-  PendingDeletions
+  Expenses,
+  Settlements,
+  PendingDeletions,
+  StockLogs
 ])
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 11;
+  int get schemaVersion => 14;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -389,8 +438,16 @@ class AppDatabase extends _$AppDatabase {
               await m.create(table);
             }
           }
-          if (from < 11) {
-            await m.createTable(pendingDeletions);
+          if (from < 12) {
+            await m.addColumn(customers, customers.supplyItems);
+            await m.addColumn(customers, customers.contactPerson);
+          }
+          if (from < 13) {
+            await m.createTable(expenses);
+            await m.createTable(settlements);
+          }
+          if (from < 14) {
+            await m.createTable(stockLogs);
           }
         },
       );

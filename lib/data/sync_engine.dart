@@ -247,6 +247,54 @@ class SyncEngine extends ChangeNotifier {
           email: Value(customer['email'] as String?),
           address: Value(customer['address'] as String?),
           balanceOwed: Value(customer['balanceOwed'] != null ? double.parse(customer['balanceOwed'].toString()) : 0.0),
+          customerType: Value(customer['customerType'] as String? ?? 'CUSTOMER'),
+          supplyItems: Value(customer['supplyItems'] as String?),
+          contactPerson: Value(customer['contactPerson'] as String?),
+          synced: const Value(true),
+        ));
+      }
+
+      // 8. Expenses
+      final remoteExpenses = await _supabase.from('expenses').select().eq('farmId', farmId);
+      for (var e in remoteExpenses) {
+        await db.into(db.expenses).insertOnConflictUpdate(ExpensesCompanion.insert(
+          id: Value(e['id'] as int),
+          farmId: farmId,
+          category: e['category'] as String,
+          amount: double.parse(e['amount'].toString()),
+          date: Value(DateTime.parse(e['date'] as String)),
+          description: Value(e['description'] as String?),
+          synced: const Value(true),
+        ));
+      }
+
+      // 9. Settlements
+      final remoteSettlements = await _supabase.from('settlements').select().eq('farmId', farmId);
+      for (var s in remoteSettlements) {
+        await db.into(db.settlements).insertOnConflictUpdate(SettlementsCompanion.insert(
+          id: Value(s['id'] as int),
+          farmId: farmId,
+          customerId: s['customerId'] as int,
+          amount: double.parse(s['amount'].toString()),
+          settlementDate: Value(DateTime.parse(s['settlementDate'] as String)),
+          settlementType: s['settlementType'] as String,
+          synced: const Value(true),
+        ));
+      }
+
+      // 10. Stock Logs
+      final remoteStockLogs = await _supabase.from('stock_logs').select().eq('farm_id', farmId);
+      for (var sl in remoteStockLogs) {
+        await db.into(db.stockLogs).insertOnConflictUpdate(StockLogsCompanion.insert(
+          id: Value(sl['id'] as int),
+          farmId: farmId,
+          itemId: sl['item_id'] as int,
+          quantity: double.parse(sl['quantity'].toString()),
+          logType: sl['log_type'] as String,
+          batchId: Value(sl['batch_id'] as int?),
+          supplierId: Value(sl['supplier_id'] as int?),
+          note: Value(sl['note'] as String?),
+          logDate: Value(DateTime.parse(sl['log_date'] as String)),
           synced: const Value(true),
         ));
       }
@@ -262,7 +310,6 @@ class SyncEngine extends ChangeNotifier {
   }
 
   Future<void> _pushChanges(String? legacyUserId) async {
-    final String currentUserId = _supabase.auth.currentUser?.id ?? '';
     debugPrint('--- SYNC PUSH START ---');
 
     try {
@@ -514,6 +561,8 @@ class SyncEngine extends ChangeNotifier {
             'address': c.address,
             'balanceOwed': c.balanceOwed,
             'customerType': c.customerType,
+            'supplyItems': c.supplyItems,
+            'contactPerson': c.contactPerson,
             'updatedAt': now,
           };
 
@@ -574,6 +623,88 @@ class SyncEngine extends ChangeNotifier {
             await (db.update(db.feedFormulations)..where((t) => t.id.equals(ff.id))).write(FeedFormulationsCompanion(id: Value(resp['id']), synced: const Value(true)));
           }
         } catch (e) { debugPrint("FeedFormulation push error: $e"); }
+      }
+
+
+      // 11. Push Expenses
+      final pendingExpenses = await (db.select(db.expenses)..where((t) => t.synced.equals(false))).get();
+      for (var e in pendingExpenses) {
+        try {
+          final existing = await _supabase.from('expenses').select('id').eq('id', e.id).maybeSingle();
+          final now = DateTime.now().toUtc().toIso8601String();
+          final payload = {
+            'farmId': e.farmId,
+            'category': e.category,
+            'amount': e.amount,
+            'date': e.date.toIso8601String(),
+            'description': e.description,
+            'updatedAt': now,
+          };
+
+          if (existing != null) {
+            await _supabase.from('expenses').update(payload).eq('id', e.id);
+            await (db.update(db.expenses)..where((t) => t.id.equals(e.id))).write(const ExpensesCompanion(synced: Value(true)));
+          } else {
+            payload['createdAt'] = now;
+            final response = await _supabase.from('expenses').insert(payload).select().single();
+            await (db.update(db.expenses)..where((t) => t.id.equals(e.id))).write(ExpensesCompanion(id: Value(response['id'] as int), synced: const Value(true)));
+          }
+        } catch (e) { debugPrint("Expense push error: $e"); }
+      }
+
+      // 12. Push Settlements
+      final pendingSettlements = await (db.select(db.settlements)..where((t) => t.synced.equals(false))).get();
+      for (var s in pendingSettlements) {
+        try {
+          final existing = await _supabase.from('settlements').select('id').eq('id', s.id).maybeSingle();
+          final now = DateTime.now().toUtc().toIso8601String();
+          final payload = {
+            'farmId': s.farmId,
+            'customerId': s.customerId,
+            'amount': s.amount,
+            'settlementDate': s.settlementDate.toIso8601String(),
+            'settlementType': s.settlementType,
+            'updatedAt': now,
+          };
+
+          if (existing != null) {
+            await _supabase.from('settlements').update(payload).eq('id', s.id);
+            await (db.update(db.settlements)..where((t) => t.id.equals(s.id))).write(const SettlementsCompanion(synced: Value(true)));
+          } else {
+            payload['createdAt'] = now;
+            final response = await _supabase.from('settlements').insert(payload).select().single();
+            await (db.update(db.settlements)..where((t) => t.id.equals(s.id))).write(SettlementsCompanion(id: Value(response['id'] as int), synced: const Value(true)));
+          }
+        } catch (e) { debugPrint("Settlement push error: $e"); }
+      }
+
+      // 13. Push Stock Logs
+      final pendingStockLogs = await (db.select(db.stockLogs)..where((t) => t.synced.equals(false))).get();
+      for (var sl in pendingStockLogs) {
+        try {
+          final existing = await _supabase.from('stock_logs').select('id').eq('id', sl.id).maybeSingle();
+          final payload = {
+            'farm_id': sl.farmId,
+            'item_id': sl.itemId,
+            'quantity': sl.quantity,
+            'log_type': sl.logType,
+            'batch_id': sl.batchId,
+            'supplier_id': sl.supplierId,
+            'note': sl.note,
+            'log_date': sl.logDate.toIso8601String(),
+          };
+
+          if (existing != null) {
+            await _supabase.from('stock_logs').update(payload).eq('id', sl.id);
+            await (db.update(db.stockLogs)..where((t) => t.id.equals(sl.id))).write(const StockLogsCompanion(synced: Value(true)));
+          } else {
+            final response = await _supabase.from('stock_logs').insert(payload).select().single();
+            final newId = response['id'] as int;
+            await (db.update(db.stockLogs)..where((t) => t.id.equals(sl.id))).write(StockLogsCompanion(id: Value(newId), synced: const Value(true)));
+          }
+        } catch (e) {
+          debugPrint("StockLog push error: $e");
+        }
       }
 
     } catch (e) {
@@ -680,6 +811,8 @@ class SyncEngine extends ChangeNotifier {
           address: Value(c['address'] as String?),
           customerType: Value(c['customerType'] as String? ?? 'CUSTOMER'),
           balanceOwed: Value(c['balanceOwed'] != null ? double.parse(c['balanceOwed'].toString()) : 0.0),
+          supplyItems: Value(c['supplyItems'] as String?),
+          contactPerson: Value(c['contactPerson'] as String?),
           synced: const Value(true),
         ));
       }
@@ -791,6 +924,52 @@ class SyncEngine extends ChangeNotifier {
         }
       }
       debugPrint("Pull: synced ${teamData.length} team members");
+
+      // 11. Pull Expenses (direct)
+      final rExp = await _supabase.from('expenses').select().eq('farmId', farmId);
+      for (var e in rExp) {
+        await db.into(db.expenses).insertOnConflictUpdate(ExpensesCompanion.insert(
+          id: Value(e['id'] as int),
+          farmId: farmId,
+          category: e['category'] as String,
+          amount: double.parse(e['amount'].toString()),
+          date: Value(DateTime.parse(e['date'] as String)),
+          description: Value(e['description'] as String?),
+          synced: const Value(true),
+        ));
+      }
+      debugPrint("Pull: synced ${rExp.length} expenses");
+
+      // 12. Pull Settlements (direct)
+      final rSet = await _supabase.from('settlements').select().eq('farmId', farmId);
+      for (var s in rSet) {
+        await db.into(db.settlements).insertOnConflictUpdate(SettlementsCompanion.insert(
+          id: Value(s['id'] as int),
+          farmId: farmId,
+          customerId: s['customerId'] as int,
+          amount: double.parse(s['amount'].toString()),
+          settlementDate: Value(DateTime.parse(s['settlementDate'] as String)),
+          settlementType: s['settlementType'] as String,
+          synced: const Value(true),
+        ));
+      }
+      // 13. Pull Stock Logs
+      final rStock = await _supabase.from('stock_logs').select().eq('farm_id', farmId);
+      for (var sl in rStock) {
+        await db.into(db.stockLogs).insertOnConflictUpdate(StockLogsCompanion.insert(
+          id: Value(sl['id'] as int),
+          farmId: farmId,
+          itemId: sl['item_id'] as int,
+          quantity: double.parse(sl['quantity'].toString()),
+          logType: sl['log_type'] as String,
+          batchId: Value(sl['batch_id'] as int?),
+          supplierId: Value(sl['supplier_id'] as int?),
+          note: Value(sl['note'] as String?),
+          logDate: Value(DateTime.parse(sl['log_date'] as String)),
+          synced: const Value(true),
+        ));
+      }
+      debugPrint("Pull: synced ${rStock.length} stock logs");
 
       notifyListeners();
     } catch (e) {

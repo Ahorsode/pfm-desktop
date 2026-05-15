@@ -118,7 +118,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
       if (localUser == null) {
         // Not found? Try to sync users from Supabase
-        debugPrint('User $identifier not found locally, performing emergency sync...');
+        if (!mounted) return;
         final syncEngine = Provider.of<SyncEngine>(context, listen: false);
         await syncEngine.performSync();
         

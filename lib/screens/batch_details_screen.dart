@@ -4,6 +4,7 @@ import 'package:drift/drift.dart' hide Column, Batch;
 import 'package:provider/provider.dart';
 import '../data/local_db.dart';
 import '../utils/farm_utils.dart';
+import '../widgets/batch_actions_dialogs.dart';
 import 'package:fl_chart/fl_chart.dart';
 
 class BatchDetailsScreen extends StatefulWidget {
@@ -50,13 +51,16 @@ class _BatchDetailsScreenState extends State<BatchDetailsScreen> {
   @override
   Widget build(BuildContext context) {
     final age = DateTime.now().difference(widget.batch.arrivalDate).inDays;
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
 
     return Scaffold(
-      backgroundColor: const Color(0xFF0F1113),
+      backgroundColor: isDark ? const Color(0xFF0F1113) : const Color(0xFFF1F5F9),
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        title: Text(widget.batch.batchName, style: const TextStyle(fontWeight: FontWeight.w900)),
+        iconTheme: IconThemeData(color: isDark ? Colors.white : const Color(0xFF1E293B)),
+        title: Text(widget.batch.batchName, style: TextStyle(fontWeight: FontWeight.w900, color: isDark ? Colors.white : const Color(0xFF1E293B))),
         actions: [
           _buildStatusChip(widget.batch.status),
           const SizedBox(width: 16),
@@ -71,6 +75,8 @@ class _BatchDetailsScreenState extends State<BatchDetailsScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _buildHeroHeader(age, isNarrow),
+                const SizedBox(height: 16),
+                _buildActionButtons(),
                 const SizedBox(height: 24),
                 if (isNarrow) ...[
                   _buildMainStats(isNarrow),
@@ -113,22 +119,36 @@ class _BatchDetailsScreenState extends State<BatchDetailsScreen> {
   }
 
   Widget _buildHeroHeader(int age, bool isNarrow) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     if (isNarrow) {
       return Container(
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          color: const Color(0xFF1A1D21),
+          color: isDark ? const Color(0xFF1A1D21) : Colors.white,
           borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+          border: Border.all(color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.05)),
+          boxShadow: isDark ? [] : [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10, offset: const Offset(0, 4))],
         ),
         child: Wrap(
           spacing: 16,
           runSpacing: 16,
           children: [
-            _heroStat('Stock', '${widget.batch.currentCount}', Icons.inventory_2_outlined),
-            _heroStat('Age', '$age Days', Icons.calendar_today_outlined),
-            _heroStat('Initial', '${widget.batch.initialCount}', Icons.add_circle_outline),
-            _heroStat('Breed', widget.batch.breedType ?? 'N/A', Icons.pets_outlined),
+            SizedBox(
+              width: 150,
+              child: _heroStat('Stock', '${widget.batch.currentCount}', Icons.inventory_2_outlined),
+            ),
+            SizedBox(
+              width: 150,
+              child: _heroStat('Age', '$age Days', Icons.calendar_today_outlined),
+            ),
+            SizedBox(
+              width: 150,
+              child: _heroStat('Initial', '${widget.batch.initialCount}', Icons.add_circle_outline),
+            ),
+            SizedBox(
+              width: 150,
+              child: _heroStat('Breed', widget.batch.breedType ?? 'N/A', Icons.pets_outlined),
+            ),
           ],
         ),
       );
@@ -136,40 +156,99 @@ class _BatchDetailsScreenState extends State<BatchDetailsScreen> {
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1A1D21) : Colors.white,
         gradient: LinearGradient(
-          colors: [const Color(0xFF10B981).withValues(alpha: 0.2), Colors.transparent],
+          colors: [const Color(0xFF10B981).withValues(alpha: isDark ? 0.2 : 0.1), isDark ? Colors.transparent : Colors.white],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+        border: Border.all(color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.05)),
+        boxShadow: isDark ? [] : [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10, offset: const Offset(0, 4))],
       ),
       child: Row(
         children: [
-          _heroStat('Current Stock', '${widget.batch.currentCount}', Icons.inventory_2_outlined),
+          Expanded(child: _heroStat('Current Stock', '${widget.batch.currentCount}', Icons.inventory_2_outlined)),
           _divider(),
-          _heroStat('Age', '$age Days', Icons.calendar_today_outlined),
+          Expanded(child: _heroStat('Age', '$age Days', Icons.calendar_today_outlined)),
           _divider(),
-          _heroStat('Initial Count', '${widget.batch.initialCount}', Icons.add_circle_outline),
+          Expanded(child: _heroStat('Initial Count', '${widget.batch.initialCount}', Icons.add_circle_outline)),
           _divider(),
-          _heroStat('Breed', widget.batch.breedType ?? 'N/A', Icons.pets_outlined),
+          Expanded(child: _heroStat('Breed', widget.batch.breedType ?? 'N/A', Icons.pets_outlined)),
         ],
       ),
     );
   }
 
   Widget _heroStat(String label, String value, IconData icon) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Column(
       children: [
-        Icon(icon, color: Colors.grey, size: 20),
+        Icon(icon, color: isDark ? Colors.grey : Colors.grey.shade600, size: 20),
         const SizedBox(height: 8),
-        Text(label, style: const TextStyle(color: Colors.grey, fontSize: 11)),
-        Text(value, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w900)),
+        Text(label, style: TextStyle(color: isDark ? Colors.grey : Colors.grey.shade600, fontSize: 11)),
+        Text(value, style: TextStyle(color: isDark ? Colors.white : const Color(0xFF1E293B), fontSize: 18, fontWeight: FontWeight.w900)),
       ],
     );
   }
 
   Widget _divider() => Container(width: 1, height: 40, color: Colors.white12);
+
+  Widget _buildActionButtons() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          _actionBtn('Record Mortality', Icons.coronavirus_outlined, Colors.red, () {
+            showDialog(context: context, builder: (_) => MortalityDialog(batch: widget.batch)).then((_) => _loadData());
+          }),
+          const SizedBox(width: 12),
+          _actionBtn('Quick Sale', Icons.point_of_sale_outlined, Colors.green, () {
+            showDialog(context: context, builder: (_) => QuickSaleDialog(batch: widget.batch)).then((_) => _loadData());
+          }),
+          const SizedBox(width: 12),
+          _actionBtn('Edit Batch', Icons.edit_outlined, Colors.orange, () {
+            showDialog(context: context, builder: (_) => EditBatchDialog(batch: widget.batch)).then((_) => _loadData());
+          }),
+        ],
+      ),
+    );
+  }
+
+  Widget _actionBtn(String label, IconData icon, Color color, VoidCallback onTap) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: color.withValues(alpha: 0.2)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, color: color, size: 18),
+              const SizedBox(width: 8),
+              Text(
+                label,
+                style: TextStyle(
+                  color: isDark ? Colors.white : color.withOpacity(0.9),
+                  fontWeight: FontWeight.bold,
+                  fontSize: 13,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 
   Widget _buildMainStats(bool isNarrow) {
     return Column(
@@ -182,13 +261,15 @@ class _BatchDetailsScreenState extends State<BatchDetailsScreen> {
   }
 
   Widget _buildChartCard(String title, IconData icon, bool isNarrow) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       height: 300,
       padding: EdgeInsets.all(isNarrow ? 16 : 24),
       decoration: BoxDecoration(
-        color: const Color(0xFF1A1D21),
+        color: isDark ? const Color(0xFF1A1D21) : Colors.white,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+        border: Border.all(color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.05)),
+        boxShadow: isDark ? [] : [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10, offset: const Offset(0, 4))],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -197,7 +278,7 @@ class _BatchDetailsScreenState extends State<BatchDetailsScreen> {
             children: [
               Icon(icon, color: const Color(0xFF10B981), size: 20),
               const SizedBox(width: 8),
-              Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              Text(title, style: TextStyle(color: isDark ? Colors.white : const Color(0xFF1E293B), fontWeight: FontWeight.bold)),
             ],
           ),
           const SizedBox(height: 24),
@@ -266,12 +347,14 @@ class _BatchDetailsScreenState extends State<BatchDetailsScreen> {
   }
 
   Widget _infoTile(String label, String value, IconData icon, Color color) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFF1A1D21),
+        color: isDark ? const Color(0xFF1A1D21) : Colors.white,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+        border: Border.all(color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.05)),
+        boxShadow: isDark ? [] : [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10, offset: const Offset(0, 4))],
       ),
       child: Row(
         children: [
@@ -284,8 +367,8 @@ class _BatchDetailsScreenState extends State<BatchDetailsScreen> {
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(label, style: const TextStyle(color: Colors.grey, fontSize: 11)),
-              Text(value, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900)),
+              Text(label, style: TextStyle(color: isDark ? Colors.grey : Colors.grey.shade600, fontSize: 11)),
+              Text(value, style: TextStyle(color: isDark ? Colors.white : const Color(0xFF1E293B), fontWeight: FontWeight.w900)),
             ],
           ),
         ],
@@ -294,17 +377,19 @@ class _BatchDetailsScreenState extends State<BatchDetailsScreen> {
   }
 
   Widget _buildLogTable() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: const Color(0xFF1A1D21),
+        color: isDark ? const Color(0xFF1A1D21) : Colors.white,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+        border: Border.all(color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.05)),
+        boxShadow: isDark ? [] : [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10, offset: const Offset(0, 4))],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Recent Operations', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          Text('Recent Operations', style: TextStyle(color: isDark ? Colors.white : const Color(0xFF1E293B), fontWeight: FontWeight.bold)),
           const SizedBox(height: 16),
           const Center(child: Text('No recent logs found.', style: TextStyle(color: Colors.grey, fontSize: 12))),
         ],
@@ -313,16 +398,19 @@ class _BatchDetailsScreenState extends State<BatchDetailsScreen> {
   }
 
   Widget _buildActivitySection() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('Batch History', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w900)),
+        Text('Batch History', style: TextStyle(color: isDark ? Colors.white : const Color(0xFF1E293B), fontSize: 18, fontWeight: FontWeight.w900)),
         const SizedBox(height: 16),
         Container(
           height: 200,
           decoration: BoxDecoration(
-            color: const Color(0xFF1A1D21),
+            color: isDark ? const Color(0xFF1A1D21) : Colors.white,
             borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.05)),
+            boxShadow: isDark ? [] : [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10, offset: const Offset(0, 4))],
           ),
           child: const Center(child: Text('Timeline coming soon...', style: TextStyle(color: Colors.grey))),
         ),
