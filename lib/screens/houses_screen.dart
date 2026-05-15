@@ -305,91 +305,96 @@ class HousesScreen extends StatelessWidget {
       builder: (context) => StatefulBuilder(
         builder: (context, setState) => Dialog(
           backgroundColor: Colors.transparent,
-          child: Container(
-            width: 500,
-            decoration: BoxDecoration(
-              color: const Color(0xFF0F172A),
-              borderRadius: BorderRadius.circular(28),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
-              boxShadow: [
-                BoxShadow(color: Colors.black.withValues(alpha: 0.5), blurRadius: 40, offset: const Offset(0, 20)),
-              ],
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(28),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _buildDialogHeader(
-                    icon: Icons.add_home_work_rounded,
-                    title: 'ADD NEW HOUSE',
-                    subtitle: 'REGISTER NEW LOCATION',
-                    color: Colors.blue,
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.all(32),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _buildDialogInputField('House Name', 'e.g. Broiler House A', nameController, Icons.badge_outlined),
-                        const SizedBox(height: 24),
-                        _buildDialogInputField('Total Bird Capacity', 'e.g. 1000', capacityController, Icons.groups_outlined, isNumber: true),
-                        const SizedBox(height: 32),
-                        const Text('HOUSE CATEGORY', style: TextStyle(color: Color(0xFF10B981), fontWeight: FontWeight.w900, fontSize: 10, letterSpacing: 1)),
-                        const SizedBox(height: 12),
-                        Container(
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF1E293B),
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
-                          ),
-                          child: SwitchListTile(
-                            title: const Text('Isolation House', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14)),
-                            subtitle: const Text('Mark if this house is for sick birds', style: TextStyle(color: Color(0xFF94A3B8), fontSize: 12)),
-                            value: isIsolation,
-                            onChanged: (v) => setState(() => isIsolation = v),
-                            activeTrackColor: const Color(0xFFF59E0B),
-                          ),
-                        ),
-                        const SizedBox(height: 40),
-                        Row(
+          insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 500),
+            child: Container(
+              decoration: BoxDecoration(
+                color: const Color(0xFF0F172A),
+                borderRadius: BorderRadius.circular(28),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+                boxShadow: [
+                  BoxShadow(color: Colors.black.withValues(alpha: 0.5), blurRadius: 40, offset: const Offset(0, 20)),
+                ],
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(28),
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _buildDialogHeader(
+                        icon: Icons.add_home_work_rounded,
+                        title: 'ADD NEW HOUSE',
+                        subtitle: 'REGISTER NEW LOCATION',
+                        color: Colors.blue,
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.all(32),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Expanded(
-                              child: TextButton(
-                                onPressed: () => Navigator.pop(context),
-                                child: const Text('CANCEL', style: TextStyle(color: Color(0xFF94A3B8), fontWeight: FontWeight.w800, letterSpacing: 1)),
+                            _buildDialogInputField('House Name', 'e.g. Broiler House A', nameController, Icons.badge_outlined),
+                            const SizedBox(height: 24),
+                            _buildDialogInputField('Total Bird Capacity', 'e.g. 1000', capacityController, Icons.groups_outlined, isNumber: true),
+                            const SizedBox(height: 32),
+                            const Text('HOUSE CATEGORY', style: TextStyle(color: Color(0xFF10B981), fontWeight: FontWeight.w900, fontSize: 10, letterSpacing: 1)),
+                            const SizedBox(height: 12),
+                            Container(
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF1E293B),
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+                              ),
+                              child: SwitchListTile(
+                                title: const Text('Isolation House', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14)),
+                                subtitle: const Text('Mark if this house is for sick birds', style: TextStyle(color: Color(0xFF94A3B8), fontSize: 12)),
+                                value: isIsolation,
+                                onChanged: (v) => setState(() => isIsolation = v),
+                                activeTrackColor: const Color(0xFFF59E0B),
                               ),
                             ),
-                            const SizedBox(width: 20),
-                            Expanded(
-                              flex: 2,
-                              child: FilledButton(
-                                onPressed: () async {
-                                  final farmId = await FarmUtils.getBoundFarmId();
-                                  if (farmId == null) return;
-                                  await db.into(db.houses).insert(HousesCompanion.insert(
-                                    farmId: farmId,
-                                    name: nameController.text,
-                                    capacity: int.tryParse(capacityController.text) ?? 0,
-                                    isIsolation: Value(isIsolation),
-                                    synced: const Value(false),
-                                  ));
-                                  if (context.mounted) Navigator.pop(context);
-                                },
-                                style: FilledButton.styleFrom(
-                                  backgroundColor: const Color(0xFF10B981),
-                                  padding: const EdgeInsets.symmetric(vertical: 20),
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            const SizedBox(height: 40),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: TextButton(
+                                    onPressed: () => Navigator.pop(context),
+                                    child: const Text('CANCEL', style: TextStyle(color: Color(0xFF94A3B8), fontWeight: FontWeight.w800, letterSpacing: 1)),
+                                  ),
                                 ),
-                                child: const Text('SAVE HOUSE LOCATION', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14)),
-                              ),
+                                const SizedBox(width: 20),
+                                Expanded(
+                                  flex: 2,
+                                  child: FilledButton(
+                                    onPressed: () async {
+                                      final farmId = await FarmUtils.getBoundFarmId();
+                                      if (farmId == null) return;
+                                      await db.into(db.houses).insert(HousesCompanion.insert(
+                                        farmId: farmId,
+                                        name: nameController.text,
+                                        capacity: int.tryParse(capacityController.text) ?? 0,
+                                        isIsolation: Value(isIsolation),
+                                        synced: const Value(false),
+                                      ));
+                                      if (context.mounted) Navigator.pop(context);
+                                    },
+                                    style: FilledButton.styleFrom(
+                                      backgroundColor: const Color(0xFF10B981),
+                                      padding: const EdgeInsets.symmetric(vertical: 20),
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                    ),
+                                    child: const Text('SAVE HOUSE LOCATION', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14)),
+                                  ),
+                                ),
+                              ],
                             ),
                           ],
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
-                ],
+                ),
               ),
             ),
           ),
@@ -408,90 +413,95 @@ class HousesScreen extends StatelessWidget {
       builder: (context) => StatefulBuilder(
         builder: (context, setState) => Dialog(
           backgroundColor: Colors.transparent,
-          child: Container(
-            width: 500,
-            decoration: BoxDecoration(
-              color: const Color(0xFF0F172A),
-              borderRadius: BorderRadius.circular(28),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
-              boxShadow: [
-                BoxShadow(color: Colors.black.withValues(alpha: 0.5), blurRadius: 40, offset: const Offset(0, 20)),
-              ],
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(28),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _buildDialogHeader(
-                    icon: Icons.home_work_rounded,
-                    title: 'EDIT HOUSE DETAILS',
-                    subtitle: 'UPDATE LOCATION INFO',
-                    color: Colors.blue,
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.all(32),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _buildDialogInputField('House Name', 'e.g. Broiler House A', nameController, Icons.badge_outlined),
-                        const SizedBox(height: 24),
-                        _buildDialogInputField('Total Bird Capacity', 'e.g. 1000', capacityController, Icons.groups_outlined, isNumber: true),
-                        const SizedBox(height: 32),
-                        const Text('HOUSE CATEGORY', style: TextStyle(color: Color(0xFF10B981), fontWeight: FontWeight.w900, fontSize: 10, letterSpacing: 1)),
-                        const SizedBox(height: 12),
-                        Container(
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF1E293B),
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
-                          ),
-                          child: SwitchListTile(
-                            title: const Text('Isolation House', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14)),
-                            subtitle: const Text('Mark if this house is for sick birds', style: TextStyle(color: Color(0xFF94A3B8), fontSize: 12)),
-                            value: isIsolation,
-                            onChanged: (v) => setState(() => isIsolation = v),
-                            activeTrackColor: const Color(0xFFF59E0B),
-                          ),
-                        ),
-                        const SizedBox(height: 40),
-                        Row(
+          insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 500),
+            child: Container(
+              decoration: BoxDecoration(
+                color: const Color(0xFF0F172A),
+                borderRadius: BorderRadius.circular(28),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+                boxShadow: [
+                  BoxShadow(color: Colors.black.withValues(alpha: 0.5), blurRadius: 40, offset: const Offset(0, 20)),
+                ],
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(28),
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _buildDialogHeader(
+                        icon: Icons.home_work_rounded,
+                        title: 'EDIT HOUSE DETAILS',
+                        subtitle: 'UPDATE LOCATION INFO',
+                        color: Colors.blue,
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.all(32),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Expanded(
-                              child: TextButton(
-                                onPressed: () => Navigator.pop(context),
-                                child: const Text('CANCEL', style: TextStyle(color: Color(0xFF94A3B8), fontWeight: FontWeight.w800, letterSpacing: 1)),
+                            _buildDialogInputField('House Name', 'e.g. Broiler House A', nameController, Icons.badge_outlined),
+                            const SizedBox(height: 24),
+                            _buildDialogInputField('Total Bird Capacity', 'e.g. 1000', capacityController, Icons.groups_outlined, isNumber: true),
+                            const SizedBox(height: 32),
+                            const Text('HOUSE CATEGORY', style: TextStyle(color: Color(0xFF10B981), fontWeight: FontWeight.w900, fontSize: 10, letterSpacing: 1)),
+                            const SizedBox(height: 12),
+                            Container(
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF1E293B),
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+                              ),
+                              child: SwitchListTile(
+                                title: const Text('Isolation House', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14)),
+                                subtitle: const Text('Mark if this house is for sick birds', style: TextStyle(color: Color(0xFF94A3B8), fontSize: 12)),
+                                value: isIsolation,
+                                onChanged: (v) => setState(() => isIsolation = v),
+                                activeTrackColor: const Color(0xFFF59E0B),
                               ),
                             ),
-                            const SizedBox(width: 20),
-                            Expanded(
-                              flex: 2,
-                              child: FilledButton(
-                                onPressed: () async {
-                                  await (db.update(db.houses)..where((t) => t.id.equals(house.id)))
-                                    .write(HousesCompanion(
-                                      name: Value(nameController.text),
-                                      capacity: Value(int.tryParse(capacityController.text) ?? house.capacity),
-                                      isIsolation: Value(isIsolation),
-                                      synced: const Value(false),
-                                      updatedAt: Value(DateTime.now()),
-                                    ));
-                                  if (context.mounted) Navigator.pop(context);
-                                },
-                                style: FilledButton.styleFrom(
-                                  backgroundColor: const Color(0xFF10B981),
-                                  padding: const EdgeInsets.symmetric(vertical: 20),
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            const SizedBox(height: 40),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: TextButton(
+                                    onPressed: () => Navigator.pop(context),
+                                    child: const Text('CANCEL', style: TextStyle(color: Color(0xFF94A3B8), fontWeight: FontWeight.w800, letterSpacing: 1)),
+                                  ),
                                 ),
-                                child: const Text('UPDATE LOCATION', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14)),
-                              ),
+                                const SizedBox(width: 20),
+                                Expanded(
+                                  flex: 2,
+                                  child: FilledButton(
+                                    onPressed: () async {
+                                      await (db.update(db.houses)..where((t) => t.id.equals(house.id)))
+                                        .write(HousesCompanion(
+                                          name: Value(nameController.text),
+                                          capacity: Value(int.tryParse(capacityController.text) ?? house.capacity),
+                                          isIsolation: Value(isIsolation),
+                                          synced: const Value(false),
+                                          updatedAt: Value(DateTime.now()),
+                                        ));
+                                      if (context.mounted) Navigator.pop(context);
+                                    },
+                                    style: FilledButton.styleFrom(
+                                      backgroundColor: const Color(0xFF10B981),
+                                      padding: const EdgeInsets.symmetric(vertical: 20),
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                    ),
+                                    child: const Text('UPDATE LOCATION', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14)),
+                                  ),
+                                ),
+                              ],
                             ),
                           ],
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
-                ],
+                ),
               ),
             ),
           ),

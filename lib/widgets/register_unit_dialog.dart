@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import 'package:drift/drift.dart' hide Column, Batch;
 import '../data/local_db.dart';
+import '../data/sync_engine.dart';
 import '../utils/farm_utils.dart';
 import 'financial_init_dialog.dart';
 
@@ -367,16 +368,34 @@ class _RegisterUnitDialogState extends State<RegisterUnitDialog> {
                 Text('ALLOCATE FARM HOUSE', style: _labelStyle()),
                 const SizedBox(height: 10),
                 DropdownButtonFormField<int>(
-                  initialValue: _selectedHouseId,
-                  onChanged: (v) => setState(() => _selectedHouseId = v),
+                  value: houses.any((h) => h.id == _selectedHouseId) ? _selectedHouseId : null,
+                  onChanged: (v) {
+                    if (v == -1) {
+                      _showQuickAddHouseDialog(context, db, farmId);
+                    } else {
+                      setState(() => _selectedHouseId = v);
+                    }
+                  },
                   dropdownColor: const Color(0xFF1E293B),
                   icon: const Icon(Icons.keyboard_arrow_down_rounded, color: Color(0xFF94A3B8)),
                   style: _inputTextStyle(),
                   decoration: _inputDecoration('Select Location', Icons.home_work_outlined),
-                  items: houses.map((h) => DropdownMenuItem<int>(
-                    value: h.id,
-                    child: Text(h.name),
-                  )).toList(),
+                  items: [
+                    ...houses.map((h) => DropdownMenuItem<int>(
+                      value: h.id,
+                      child: Text(h.name),
+                    )),
+                    const DropdownMenuItem<int>(
+                      value: -1,
+                      child: Row(
+                        children: [
+                          Icon(Icons.add_circle_outline_rounded, size: 18, color: Color(0xFF10B981)),
+                          SizedBox(width: 8),
+                          Text('Add New House', style: TextStyle(color: Color(0xFF10B981), fontWeight: FontWeight.bold)),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
               ],
             );
@@ -467,9 +486,9 @@ class _RegisterUnitDialogState extends State<RegisterUnitDialog> {
 
   TextStyle _labelStyle() => const TextStyle(
     color: Color(0xFF10B981),
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: FontWeight.w900,
-    letterSpacing: 1,
+    letterSpacing: 1.2,
   );
 
   TextStyle _inputTextStyle() => const TextStyle(
@@ -477,6 +496,75 @@ class _RegisterUnitDialogState extends State<RegisterUnitDialog> {
     fontSize: 14,
     fontWeight: FontWeight.w600,
   );
+
+  void _showQuickAddHouseDialog(BuildContext context, AppDatabase db, int farmId) {
+    final houseNameCtrl = TextEditingController();
+    final capacityCtrl = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF0F172A),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: BorderSide(color: Colors.white.withValues(alpha: 0.1))),
+        title: const Text('Add House', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('HOUSE NAME', style: _labelStyle()),
+              const SizedBox(height: 12),
+              TextField(
+                controller: houseNameCtrl,
+                style: _inputTextStyle(),
+                decoration: _inputDecoration('Enter house name', Icons.home_work_outlined),
+              ),
+              const SizedBox(height: 24),
+              Text('CAPACITY (OPTIONAL)', style: _labelStyle()),
+              const SizedBox(height: 12),
+              TextField(
+                controller: capacityCtrl,
+                style: _inputTextStyle(),
+                keyboardType: TextInputType.number,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                decoration: _inputDecoration('Enter capacity', Icons.people_outline),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text('Cancel', style: TextStyle(color: Colors.white.withValues(alpha: 0.6))),
+          ),
+          FilledButton(
+            onPressed: () async {
+              if (houseNameCtrl.text.trim().isEmpty) return;
+              final cap = int.tryParse(capacityCtrl.text) ?? 1000;
+              final userId = await FarmUtils.getUserId() ?? 'local_user';
+              
+              final houseId = await db.into(db.houses).insert(HousesCompanion.insert(
+                farmId: farmId,
+                name: houseNameCtrl.text.trim(),
+                capacity: cap,
+                userId: Value(userId),
+                isIsolation: const Value(false),
+                synced: const Value(false),
+              ));
+              
+              if (ctx.mounted) {
+                ctx.read<SyncEngine>().performSync();
+                Navigator.pop(ctx);
+                setState(() => _selectedHouseId = houseId);
+              }
+            },
+            style: FilledButton.styleFrom(backgroundColor: const Color(0xFF10B981)),
+            child: const Text('Add', style: TextStyle(fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
+  }
 
   InputDecoration _inputDecoration(String hint, IconData icon) => InputDecoration(
     hintText: hint,
@@ -555,6 +643,11 @@ class _RegisterUnitDialogState extends State<RegisterUnitDialog> {
           );
         }
       });
+
+      // Trigger sync
+      if (mounted) {
+        context.read<SyncEngine>().performSync();
+      }
 
       if (mounted) {
         Navigator.pop(context);

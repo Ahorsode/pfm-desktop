@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:drift/drift.dart' hide Column;
 import '../data/local_db.dart';
+import '../data/sync_engine.dart';
 import '../utils/farm_utils.dart';
 
 class InventoryManager extends StatelessWidget {
@@ -185,7 +186,10 @@ class InventoryManager extends StatelessWidget {
                   synced: const Value(false),
                 ),
               );
-              if (context.mounted) Navigator.pop(context);
+              if (context.mounted) {
+                context.read<SyncEngine>().performSync();
+                Navigator.pop(context);
+              }
             },
             child: const Text('Save Item'),
           ),

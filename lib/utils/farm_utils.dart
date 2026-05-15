@@ -15,4 +15,9 @@ class FarmUtils {
     final role = await getUserRole();
     return role == 'OWNER' || role == 'ACCOUNTANT' || role == 'MANAGER';
   }
+
+  static Future<String?> getUserId() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString('user_id');
+  }
 }

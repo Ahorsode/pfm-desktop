@@ -85,6 +85,7 @@ class SyncEngine extends ChangeNotifier {
       }
 
       await _pushChanges(userId);
+      await _pushDeletions();
       await _pullChanges();
       
     } finally {
@@ -182,12 +183,12 @@ class SyncEngine extends ChangeNotifier {
         await db.into(db.houses).insertOnConflictUpdate(HousesCompanion.insert(
           id: Value(house['id'] as int),
           farmId: farmId,
-          userId: Value(house['userId'] as String?),
+          userId: Value(house['user_id'] as String? ?? house['userId'] as String?),
           name: house['name'] as String,
           capacity: house['capacity'] as int,
-          currentTemperature: Value(house['currentTemperature'] != null ? double.parse(house['currentTemperature'].toString()) : null),
-          currentHumidity: Value(house['currentHumidity'] != null ? double.parse(house['currentHumidity'].toString()) : null),
-          isIsolation: Value(house['isIsolation'] as bool? ?? false),
+          currentTemperature: Value((house['current_temperature'] ?? house['currentTemperature']) != null ? double.parse((house['current_temperature'] ?? house['currentTemperature']).toString()) : null),
+          currentHumidity: Value((house['current_humidity'] ?? house['currentHumidity']) != null ? double.parse((house['current_humidity'] ?? house['currentHumidity']).toString()) : null),
+          isIsolation: Value((house['is_isolation'] ?? house['isIsolation'] ?? false) as bool),
           synced: const Value(true),
         ));
       }
@@ -199,14 +200,14 @@ class SyncEngine extends ChangeNotifier {
         await db.into(db.inventory).insertOnConflictUpdate(InventoryCompanion.insert(
           id: Value(item['id'] as int),
           farmId: farmId,
-          userId: Value(item['userId'] as String?),
-          itemName: item['itemName'] as String,
-          stockLevel: double.parse(item['stockLevel'].toString()),
-          reorderLevel: Value(item['reorderLevel'] != null ? double.parse(item['reorderLevel'].toString()) : null),
+          userId: Value(item['user_id'] as String? ?? item['userId'] as String?),
+          itemName: (item['item_name'] ?? item['itemName']) as String,
+          stockLevel: double.parse((item['stock_level'] ?? item['stockLevel']).toString()),
+          reorderLevel: Value((item['reorder_level'] ?? item['reorderLevel']) != null ? double.parse((item['reorder_level'] ?? item['reorderLevel']).toString()) : null),
           unit: item['unit'] as String,
           category: Value(item['category'] as String?),
-          costPerUnit: Value(item['costPerUnit'] != null ? double.parse(item['costPerUnit'].toString()) : null),
-          supplierId: Value(item['supplierId'] as int?),
+          costPerUnit: Value((item['cost_per_unit'] ?? item['costPerUnit']) != null ? double.parse((item['cost_per_unit'] ?? item['costPerUnit']).toString()) : null),
+          supplierId: Value((item['supplier_id'] ?? item['supplierId']) as int?),
           synced: const Value(true),
         ));
       }
@@ -218,16 +219,16 @@ class SyncEngine extends ChangeNotifier {
         await db.into(db.batches).insertOnConflictUpdate(BatchesCompanion.insert(
           id: Value(batch['id'] as int),
           farmId: farmId,
-          houseId: Value(batch['houseId'] as int?),
-          userId: Value(batch['userId'] as String?),
-          batchName: Value(batch['batchName'] as String? ?? ''),
+          houseId: Value(batch['house_id'] as int? ?? batch['houseId'] as int?),
+          userId: Value(batch['user_id'] as String? ?? batch['userId'] as String?),
+          batchName: Value(batch['batch_name'] as String? ?? batch['batchName'] as String? ?? ''),
           type: Value(batch['type'] as String? ?? ''),
-          breedType: Value(batch['breedType'] as String?),
+          breedType: Value(batch['breed_type'] as String? ?? batch['breedType'] as String?),
           status: Value(batch['status'] as String? ?? ''),
-          arrivalDate: DateTime.parse(batch['arrivalDate'] as String),
-          currentCount: batch['currentCount'] as int,
-          initialCount: batch['initialCount'] as int,
-          isolationCount: Value(batch['isolationCount'] as int? ?? 0),
+          arrivalDate: DateTime.parse((batch['arrival_date'] ?? batch['arrivalDate']) as String),
+          currentCount: (batch['current_count'] ?? batch['currentCount']) as int,
+          initialCount: (batch['initial_count'] ?? batch['initialCount']) as int,
+          isolationCount: Value((batch['isolation_count'] ?? batch['isolationCount'] ?? 0) as int),
           initialActualCost: Value(batch['initial_actual_cost'] != null ? double.parse(batch['initial_actual_cost'].toString()) : null),
           growthTarget: Value(batch['growth_target'] as String?),
           synced: const Value(true),
@@ -262,286 +263,340 @@ class SyncEngine extends ChangeNotifier {
 
   Future<void> _pushChanges(String? legacyUserId) async {
     final String currentUserId = _supabase.auth.currentUser?.id ?? '';
-    debugPrint('--- SYNC DIAGNOSTICS ---');
-    debugPrint('legacyUserId: $legacyUserId');
-    debugPrint('currentUserId: $currentUserId');
+    debugPrint('--- SYNC PUSH START ---');
+
     try {
-      final rpcResult = await _supabase.rpc('get_legacy_user_id');
-      debugPrint('RPC get_legacy_user_id result: $rpcResult');
+      // 1. Push Houses (camelCase columns)
+      final pendingHouses = await (db.select(db.houses)..where((t) => t.synced.equals(false))).get();
+      for (var h in pendingHouses) {
+        try {
+          final existing = await _supabase.from('houses').select('id').eq('id', h.id).maybeSingle();
+          final now = DateTime.now().toUtc().toIso8601String();
+          final payload = {
+            'farmId': h.farmId,
+            'userId': h.userId ?? legacyUserId,
+            'name': h.name,
+            'capacity': h.capacity,
+            'currentTemperature': h.currentTemperature,
+            'currentHumidity': h.currentHumidity,
+            'isIsolation': h.isIsolation,
+            'updatedAt': now,
+          };
+
+          if (existing != null) {
+            await _supabase.from('houses').update(payload).eq('id', h.id);
+            await (db.update(db.houses)..where((t) => t.id.equals(h.id))).write(const HousesCompanion(synced: Value(true)));
+          } else {
+            payload['createdAt'] = now;
+            final response = await _supabase.from('houses').insert(payload).select().single();
+            final newId = response['id'] as int;
+            if (newId != h.id) {
+              await (db.update(db.batches)..where((t) => t.houseId.equals(h.id))).write(BatchesCompanion(houseId: Value(newId)));
+            }
+            await (db.update(db.houses)..where((t) => t.id.equals(h.id))).write(HousesCompanion(id: Value(newId), synced: const Value(true)));
+          }
+        } catch (e) {
+          debugPrint("House push error: $e");
+        }
+      }
+
+      // 2. Push Batches (Mixed camel/snake columns)
+      final pendingBatches = await (db.select(db.batches)..where((t) => t.synced.equals(false))).get();
+      for (var b in pendingBatches) {
+        try {
+          final existing = await _supabase.from('batches').select('id').eq('id', b.id).maybeSingle();
+          final now = DateTime.now().toUtc().toIso8601String();
+          final payload = {
+            'farmId': b.farmId,
+            'houseId': b.houseId,
+            'userId': b.userId ?? legacyUserId,
+            'batchName': b.batchName,
+            'type': b.type,
+            'breedType': b.breedType,
+            'status': b.status,
+            'arrivalDate': b.arrivalDate.toIso8601String(),
+            'currentCount': b.currentCount,
+            'initialCount': b.initialCount,
+            'isolationCount': b.isolationCount,
+            'initial_actual_cost': b.initialActualCost, // snake in Prisma
+            'growth_target': b.growthTarget, // snake in Prisma
+            'updatedAt': now,
+          };
+
+          if (existing != null) {
+            await _supabase.from('batches').update(payload).eq('id', b.id);
+            await (db.update(db.batches)..where((t) => t.id.equals(b.id))).write(const BatchesCompanion(synced: Value(true)));
+          } else {
+            payload['createdAt'] = now;
+            final response = await _supabase.from('batches').insert(payload).select().single();
+            final newId = response['id'] as int;
+            if (newId != b.id) {
+              await (db.update(db.mortalities)..where((t) => t.batchId.equals(b.id))).write(MortalitiesCompanion(batchId: Value(newId)));
+              await (db.update(db.eggProductions)..where((t) => t.batchId.equals(b.id))).write(EggProductionsCompanion(batchId: Value(newId)));
+              await (db.update(db.feedingLogs)..where((t) => t.batchId.equals(b.id))).write(FeedingLogsCompanion(batchId: Value(newId)));
+            }
+            await (db.update(db.batches)..where((t) => t.id.equals(b.id))).write(BatchesCompanion(id: Value(newId), synced: const Value(true)));
+          }
+        } catch (e) {
+          debugPrint("Batch push error: $e");
+        }
+      }
+
+      // 3. Push Inventory (camelCase columns)
+      final pendingInventory = await (db.select(db.inventory)..where((t) => t.synced.equals(false))).get();
+      for (var i in pendingInventory) {
+        try {
+          final existing = await _supabase.from('inventory').select('id').eq('id', i.id).maybeSingle();
+          final now = DateTime.now().toUtc().toIso8601String();
+          final payload = {
+            'farmId': i.farmId,
+            'userId': i.userId ?? legacyUserId,
+            'itemName': i.itemName,
+            'stockLevel': i.stockLevel,
+            'reorderLevel': i.reorderLevel,
+            'unit': i.unit,
+            'category': i.category,
+            'costPerUnit': i.costPerUnit,
+            'supplierId': i.supplierId,
+            'updatedAt': now,
+          };
+
+          if (existing != null) {
+            await _supabase.from('inventory').update(payload).eq('id', i.id);
+            await (db.update(db.inventory)..where((t) => t.id.equals(i.id))).write(const InventoryCompanion(synced: Value(true)));
+          } else {
+            payload['createdAt'] = now;
+            final response = await _supabase.from('inventory').insert(payload).select().single();
+            final newId = response['id'] as int;
+            await (db.update(db.inventory)..where((t) => t.id.equals(i.id))).write(InventoryCompanion(id: Value(newId), synced: const Value(true)));
+          }
+        } catch (e) {
+          debugPrint("Inventory push error: $e");
+        }
+      }
+
+      // 4. Push Mortality (Mixed camel/snake columns)
+      final pendingMortality = await (db.select(db.mortalities)..where((t) => t.synced.equals(false))).get();
+      for (var m in pendingMortality) {
+        try {
+          final existing = await _supabase.from('mortality').select('id').eq('id', m.id).maybeSingle();
+          final now = DateTime.now().toUtc().toIso8601String();
+          final payload = {
+            'farmId': m.farmId,
+            'batch_id': m.batchId,
+            'count': m.count,
+            'reason': m.reason,
+            'logDate': m.logDate.toIso8601String(),
+            'user_id': m.userId ?? legacyUserId,
+            'category': m.category,
+            'sub_category': m.subCategory,
+            'updatedAt': now,
+          };
+
+          if (existing != null) {
+            await _supabase.from('mortality').update(payload).eq('id', m.id);
+            await (db.update(db.mortalities)..where((t) => t.id.equals(m.id))).write(const MortalitiesCompanion(synced: Value(true)));
+          } else {
+            payload['createdAt'] = now;
+            final response = await _supabase.from('mortality').insert(payload).select().single();
+            final newId = response['id'] as int;
+            await (db.update(db.mortalities)..where((t) => t.id.equals(m.id))).write(MortalitiesCompanion(id: Value(newId), synced: const Value(true)));
+          }
+        } catch (e) {
+          debugPrint("Mortality push error: $e");
+        }
+      }
+
+      // 5. Push Feeding Logs (camelCase columns)
+      final pendingFeeding = await (db.select(db.feedingLogs)..where((t) => t.synced.equals(false))).get();
+      for (var fl in pendingFeeding) {
+        try {
+          final existing = await _supabase.from('daily_feeding_logs').select('id').eq('id', fl.id).maybeSingle();
+          final now = DateTime.now().toUtc().toIso8601String();
+          final payload = {
+            'farmId': fl.farmId,
+            'batch_id': fl.batchId,
+            'feed_type_id': fl.feedTypeId,
+            'formulation_id': fl.formulationId,
+            'amount_consumed': fl.amountConsumed,
+            'log_date': fl.logDate.toIso8601String(),
+            'user_id': fl.userId ?? legacyUserId,
+            'updatedAt': now,
+          };
+
+          if (existing != null) {
+            await _supabase.from('daily_feeding_logs').update(payload).eq('id', fl.id);
+            await (db.update(db.feedingLogs)..where((t) => t.id.equals(fl.id))).write(const FeedingLogsCompanion(synced: Value(true)));
+          } else {
+            payload['createdAt'] = now;
+            final response = await _supabase.from('daily_feeding_logs').insert(payload).select().single();
+            final newId = response['id'] as int;
+            await (db.update(db.feedingLogs)..where((t) => t.id.equals(fl.id))).write(FeedingLogsCompanion(id: Value(newId), synced: const Value(true)));
+          }
+        } catch (e) {
+          debugPrint("Feeding push error: $e");
+        }
+      }
+
+      // 6. Push Egg Production (camelCase columns)
+      final pendingEggs = await (db.select(db.eggProductions)..where((t) => t.synced.equals(false))).get();
+      for (var ep in pendingEggs) {
+        try {
+          final existing = await _supabase.from('egg_production').select('id').eq('id', ep.id).maybeSingle();
+          final now = DateTime.now().toUtc().toIso8601String();
+          final payload = {
+            'farmId': ep.farmId,
+            'batchId': ep.batchId,
+            'categoryId': ep.categoryId,
+            'eggsCollected': ep.eggsCollected,
+            'unusableCount': ep.unusableCount,
+            'eggsRemaining': ep.eggsRemaining,
+            'cratesCollected': ep.cratesCollected,
+            'qualityGrade': ep.qualityGrade,
+            'logDate': ep.logDate.toIso8601String(),
+            'userId': ep.userId ?? legacyUserId,
+          };
+
+          if (existing != null) {
+            await _supabase.from('egg_production').update(payload).eq('id', ep.id);
+            await (db.update(db.eggProductions)..where((t) => t.id.equals(ep.id))).write(const EggProductionsCompanion(synced: Value(true)));
+          } else {
+            payload['createdAt'] = now;
+            final response = await _supabase.from('egg_production').insert(payload).select().single();
+            final newId = response['id'] as int;
+            await (db.update(db.eggProductions)..where((t) => t.id.equals(ep.id))).write(EggProductionsCompanion(id: Value(newId), synced: const Value(true)));
+          }
+        } catch (e) {
+          debugPrint("Egg push error: $e");
+        }
+      }
+
+      // 7. Push Sales (camelCase columns)
+      final pendingSales = await (db.select(db.sales)..where((t) => t.synced.equals(false))).get();
+      for (var s in pendingSales) {
+        try {
+          final existing = await _supabase.from('sales').select('id').eq('id', s.id).maybeSingle();
+          final now = DateTime.now().toUtc().toIso8601String();
+          final payload = {
+            'farmId': s.farmId,
+            'customerId': s.customerId,
+            'userId': s.userId ?? legacyUserId,
+            'totalAmount': s.totalAmount,
+            'saleDate': s.saleDate.toIso8601String(),
+            'updatedAt': now,
+          };
+
+          if (existing != null) {
+            await _supabase.from('sales').update(payload).eq('id', s.id);
+            await (db.update(db.sales)..where((t) => t.id.equals(s.id))).write(const SalesCompanion(synced: Value(true)));
+          } else {
+            payload['createdAt'] = now;
+            final response = await _supabase.from('sales').insert(payload).select().single();
+            final newId = response['id'] as int;
+            await (db.update(db.sales)..where((t) => t.id.equals(s.id))).write(SalesCompanion(id: Value(newId), synced: const Value(true)));
+          }
+        } catch (e) {
+          debugPrint("Sale push error: $e");
+        }
+      }
+
+      // 8. Push Customers (camelCase columns)
+      final pendingCustomers = await (db.select(db.customers)..where((t) => t.synced.equals(false))).get();
+      for (var c in pendingCustomers) {
+        try {
+          final existing = await _supabase.from('customers').select('id').eq('id', c.id).maybeSingle();
+          final now = DateTime.now().toUtc().toIso8601String();
+          final payload = {
+            'farmId': c.farmId,
+            'name': c.name,
+            'phone': c.phone,
+            'email': c.email,
+            'address': c.address,
+            'balanceOwed': c.balanceOwed,
+            'customerType': c.customerType,
+            'updatedAt': now,
+          };
+
+          if (existing != null) {
+            await _supabase.from('customers').update(payload).eq('id', c.id);
+            await (db.update(db.customers)..where((t) => t.id.equals(c.id))).write(const CustomersCompanion(synced: Value(true)));
+          } else {
+            payload['createdAt'] = now;
+            final response = await _supabase.from('customers').insert(payload).select().single();
+            final newId = response['id'] as int;
+            await (db.update(db.customers)..where((t) => t.id.equals(c.id))).write(CustomersCompanion(id: Value(newId), synced: const Value(true)));
+          }
+        } catch (e) {
+          debugPrint("Customer push error: $e");
+        }
+      }
+
+      // 9. Push Feed Types
+      final pendingFeedTypes = await (db.select(db.feedTypes)..where((t) => t.synced.equals(false))).get();
+      for (var ft in pendingFeedTypes) {
+        try {
+          final payload = {
+            'farmId': ft.farmId,
+            'name': ft.name,
+            'description': ft.description,
+            'currentStock': ft.currentStock,
+            'costPerKg': ft.costPerKg,
+            'updatedAt': DateTime.now().toUtc().toIso8601String(),
+          };
+          final existing = await _supabase.from('feed_types').select('id').eq('id', ft.id).maybeSingle();
+          if (existing != null) {
+            await _supabase.from('feed_types').update(payload).eq('id', ft.id);
+            await (db.update(db.feedTypes)..where((t) => t.id.equals(ft.id))).write(const FeedTypesCompanion(synced: Value(true)));
+          } else {
+            final resp = await _supabase.from('feed_types').insert(payload).select().single();
+            await (db.update(db.feedTypes)..where((t) => t.id.equals(ft.id))).write(FeedTypesCompanion(id: Value(resp['id']), synced: const Value(true)));
+          }
+        } catch (e) { debugPrint("FeedType push error: $e"); }
+      }
+
+      // 10. Push Feed Formulations
+      final pendingFormulations = await (db.select(db.feedFormulations)..where((t) => t.synced.equals(false))).get();
+      for (var ff in pendingFormulations) {
+        try {
+          final payload = {
+            'farmId': ff.farmId,
+            'name': ff.name,
+            'description': ff.description,
+            'isActive': ff.isActive,
+            'updatedAt': DateTime.now().toUtc().toIso8601String(),
+          };
+          final existing = await _supabase.from('feed_formulations').select('id').eq('id', ff.id).maybeSingle();
+          if (existing != null) {
+            await _supabase.from('feed_formulations').update(payload).eq('id', ff.id);
+            await (db.update(db.feedFormulations)..where((t) => t.id.equals(ff.id))).write(const FeedFormulationsCompanion(synced: Value(true)));
+          } else {
+            final resp = await _supabase.from('feed_formulations').insert(payload).select().single();
+            await (db.update(db.feedFormulations)..where((t) => t.id.equals(ff.id))).write(FeedFormulationsCompanion(id: Value(resp['id']), synced: const Value(true)));
+          }
+        } catch (e) { debugPrint("FeedFormulation push error: $e"); }
+      }
+
     } catch (e) {
-      debugPrint('RPC get_legacy_user_id error: $e');
+      debugPrint("Push Changes overall error: $e");
     }
-    debugPrint('------------------------');
+    debugPrint('--- SYNC PUSH END ---');
+  }
 
-    // 0.1 Push Houses
-    final pendingHouses = await (db.select(db.houses)..where((t) => t.synced.equals(false))).get();
-    for (var h in pendingHouses) {
+  Future<void> _pushDeletions() async {
+    final pending = await db.select(db.pendingDeletions).get();
+    for (var d in pending) {
       try {
-        final now = DateTime.now().toUtc().toIso8601String();
-        final payload = {
-          'farmId': h.farmId,
-          'userId': h.userId ?? legacyUserId,
-          'name': h.name,
-          'capacity': h.capacity,
-          'currentTemperature': h.currentTemperature,
-          'currentHumidity': h.currentHumidity,
-          'isIsolation': h.isIsolation,
-          'createdAt': now,
-          'updatedAt': now,
-        };
-        debugPrint('Pushing house: $payload');
-        final response = await _supabase.from('houses').insert(payload).select().single();
-        
-        final newId = response['id'] as int;
-        if (newId != h.id) {
-          await (db.update(db.batches)..where((t) => t.houseId.equals(h.id))).write(BatchesCompanion(houseId: Value(newId)));
-        }
-        await (db.update(db.houses)..where((t) => t.id.equals(h.id))).write(HousesCompanion(id: Value(newId), synced: const Value(true)));
-      } catch (e) {
-        debugPrint("House push error: $e");
-      }
-    }
+        // Table names in Supabase are sometimes different (e.g. mortality vs mortalities)
+        String remoteTable = d.targetTableName;
+        if (remoteTable == 'mortalities') remoteTable = 'mortality';
+        if (remoteTable == 'feeding_logs') remoteTable = 'daily_feeding_logs';
+        if (remoteTable == 'egg_productions') remoteTable = 'egg_production';
 
-    // 0.2 Push Batches
-    final pendingBatches = await (db.select(db.batches)..where((t) => t.synced.equals(false))).get();
-    for (var b in pendingBatches) {
-      try {
-        final batchNow = DateTime.now().toUtc().toIso8601String();
-        final response = await _supabase.from('batches').insert({
-          'farmId': b.farmId,
-          'houseId': b.houseId,
-          'userId': b.userId ?? legacyUserId,
-          'batchName': b.batchName,
-          'type': b.type,
-          'status': b.status,
-          'breedType': b.breedType,
-          'arrivalDate': b.arrivalDate.toIso8601String(),
-          'currentCount': b.currentCount,
-          'initialCount': b.initialCount,
-          'isolationCount': b.isolationCount,
-          'initial_actual_cost': b.initialActualCost,
-          'growth_target': b.growthTarget,
-          'createdAt': batchNow,
-          'updatedAt': batchNow,
-        }).select().single();
-        
-        final newId = response['id'] as int;
-        if (newId != b.id) {
-          await (db.update(db.mortalities)..where((t) => t.batchId.equals(b.id))).write(MortalitiesCompanion(batchId: Value(newId)));
-          await (db.update(db.eggProductions)..where((t) => t.batchId.equals(b.id))).write(EggProductionsCompanion(batchId: Value(newId)));
-          await (db.update(db.feedingLogs)..where((t) => t.batchId.equals(b.id))).write(FeedingLogsCompanion(batchId: Value(newId)));
-        }
-        await (db.update(db.batches)..where((t) => t.id.equals(b.id))).write(BatchesCompanion(id: Value(newId), synced: const Value(true)));
+        await _supabase.from(remoteTable).delete().eq('id', d.recordId);
+        await (db.delete(db.pendingDeletions)..where((t) => t.id.equals(d.id))).go();
+        debugPrint("Deleted remote record: $remoteTable ID ${d.recordId}");
       } catch (e) {
-        debugPrint("Batch push error: $e");
-      }
-    }
-
-    // 1. Push Mortalities
-    final pendingMortalities = await (db.select(db.mortalities)..where((t) => t.synced.equals(false))).get();
-    for (var m in pendingMortalities) {
-      try {
-        final response = await _supabase.from('mortality').insert({
-          'farmId': m.farmId,
-          'batchId': m.batchId,
-          'count': m.count,
-          'reason': m.reason,
-          'category': m.category,
-          'sub_category': m.subCategory,
-          'logDate': m.logDate.toIso8601String(),
-          'userId': m.userId ?? legacyUserId,
-        }).select().single();
-        
-        final newId = response['id'] as int;
-        await (db.update(db.mortalities)..where((t) => t.id.equals(m.id))).write(MortalitiesCompanion(id: Value(newId), synced: const Value(true)));
-      } catch (e) {
-        debugPrint("Mortality push error: $e");
-      }
-    }
-
-    // 2. Push Feeding Logs
-    final pendingFeeds = await (db.select(db.feedingLogs)..where((t) => t.synced.equals(false))).get();
-    for (var f in pendingFeeds) {
-      try {
-        await _supabase.from('daily_feeding_logs').upsert({
-          'id': f.id,
-          'farmId': f.farmId,
-          'batch_id': f.batchId,
-          'feed_type_id': f.feedTypeId,
-          'formulation_id': f.formulationId,
-          'amount_consumed': f.amountConsumed,
-          'log_date': f.logDate.toIso8601String(),
-          'user_id': f.userId ?? legacyUserId,
-        });
-        await (db.update(db.feedingLogs)..where((t) => t.id.equals(f.id))).write(const FeedingLogsCompanion(synced: Value(true)));
-      } catch (e) {
-        debugPrint("Feeding push error: $e");
-      }
-    }
-
-    // 3. Push Egg Production
-    final pendingEggs = await (db.select(db.eggProductions)..where((t) => t.synced.equals(false))).get();
-    for (var e in pendingEggs) {
-      try {
-        await _supabase.from('egg_production').upsert({
-          'id': e.id,
-          'farmId': e.farmId,
-          'batchId': e.batchId,
-          'categoryId': e.categoryId,
-          'eggsCollected': e.eggsCollected,
-          'unusableCount': e.unusableCount,
-          'eggsRemaining': e.eggsRemaining,
-          'cratesCollected': e.cratesCollected,
-          'qualityGrade': e.qualityGrade,
-          'logDate': e.logDate.toIso8601String(),
-          'userId': e.userId ?? legacyUserId,
-        });
-        await (db.update(db.eggProductions)..where((t) => t.id.equals(e.id))).write(const EggProductionsCompanion(synced: Value(true)));
-      } catch (e) {
-        debugPrint("Egg push error: $e");
-      }
-    }
-    // 4. Push Customers
-    final pendingCustomers = await (db.select(db.customers)..where((t) => t.synced.equals(false))).get();
-    for (var c in pendingCustomers) {
-      try {
-        final response = await _supabase.from('customers').upsert({
-          'id': c.id,
-          'farmId': c.farmId,
-          'name': c.name,
-          'phone': c.phone,
-          'email': c.email,
-          'address': c.address,
-          'customerType': c.customerType,
-          'balanceOwed': c.balanceOwed,
-          'updatedAt': DateTime.now().toUtc().toIso8601String(),
-        }).select().single();
-        
-        final newId = response['id'] as int;
-        await (db.update(db.customers)..where((t) => t.id.equals(c.id))).write(CustomersCompanion(id: Value(newId), synced: const Value(true)));
-      } catch (e) {
-        debugPrint("Customer push error: $e");
-      }
-    }
-
-    // 5. Push Sales
-    final pendingSales = await (db.select(db.sales)..where((t) => t.synced.equals(false))).get();
-    for (var s in pendingSales) {
-      try {
-        final response = await _supabase.from('sales').insert({
-          'farmId': s.farmId,
-          'batchId': s.batchId,
-          'customerId': s.customerId,
-          'quantity': s.quantity,
-          'unitPrice': s.unitPrice,
-          'totalAmount': s.totalAmount,
-          'saleDate': s.saleDate.toIso8601String(),
-          'userId': s.userId ?? legacyUserId,
-        }).select().single();
-        
-        final newId = response['id'] as int;
-        await (db.update(db.sales)..where((t) => t.id.equals(s.id))).write(SalesCompanion(id: Value(newId), synced: const Value(true)));
-      } catch (e) {
-        debugPrint("Sale push error: $e");
-      }
-    }
-
-    // 7. Push Inventory
-    final pendingInv = await (db.select(db.inventory)..where((t) => t.synced.equals(false))).get();
-    for (var i in pendingInv) {
-      try {
-        final response = await _supabase.from('inventory').upsert({
-          'id': i.id,
-          'farmId': i.farmId,
-          'userId': i.userId ?? legacyUserId,
-          'itemName': i.itemName,
-          'stockLevel': i.stockLevel,
-          'reorderLevel': i.reorderLevel,
-          'unit': i.unit,
-          'category': i.category,
-          'costPerUnit': i.costPerUnit,
-          'updatedAt': DateTime.now().toUtc().toIso8601String(),
-        }).select().single();
-        
-        final newId = response['id'] as int;
-        await (db.update(db.inventory)..where((t) => t.id.equals(i.id))).write(InventoryCompanion(id: Value(newId), synced: const Value(true)));
-      } catch (e) {
-        debugPrint("Inventory push error: $e");
-      }
-    }
-
-    // 8. Push Weight Records
-    final pendingWeights = await (db.select(db.weightRecords)..where((t) => t.synced.equals(false))).get();
-    for (var w in pendingWeights) {
-      try {
-        final response = await _supabase.from('weight_records').insert({
-          'farmId': w.farmId,
-          'batchId': w.batchId,
-          'averageWeight': w.averageWeight,
-          'logDate': w.logDate.toIso8601String(),
-          'userId': w.userId ?? legacyUserId,
-        }).select().single();
-        
-        final newId = response['id'] as int;
-        await (db.update(db.weightRecords)..where((t) => t.id.equals(w.id))).write(WeightRecordsCompanion(id: Value(newId), synced: const Value(true)));
-      } catch (e) {
-        debugPrint("Weight push error: $e");
-      }
-    }
-
-    // 9. Push Farm Settings
-    final pendingSettings = await (db.select(db.farmSettings)..where((t) => t.synced.equals(false))).get();
-    for (var s in pendingSettings) {
-      try {
-        await _supabase.from('farm_settings').upsert({
-          'farmId': s.farmId,
-          'currency': s.currency,
-          'eggRecordReminderTime': s.eggRecordReminderTime,
-          'feedRecordReminderTime': s.feedRecordReminderTime,
-          'growthTargetStandard': s.growthTargetStandard,
-          'eggsPerCrate': s.eggsPerCrate,
-        });
-        await (db.update(db.farmSettings)..where((t) => t.farmId.equals(s.farmId))).write(const FarmSettingsCompanion(synced: Value(true)));
-      } catch (e) {
-        debugPrint("Settings push error: $e");
-      }
-    }
-
-    // 10. Push Users
-    final pendingUsers = await (db.select(db.users)..where((t) => t.synced.equals(false))).get();
-    for (var u in pendingUsers) {
-      try {
-        await _supabase.from('users').upsert({
-          'id': u.id,
-          'firstname': u.firstname,
-          'surname': u.surname,
-          'middleName': u.middleName,
-          'name': u.name,
-          'email': u.email,
-          'phoneNumber': u.phoneNumber,
-          'role': u.role,
-          'mustChangePassword': u.mustChangePassword,
-          'updatedAt': DateTime.now().toUtc().toIso8601String(),
-        });
-        await (db.update(db.users)..where((t) => t.id.equals(u.id))).write(const UsersCompanion(synced: Value(true)));
-      } catch (e) {
-        debugPrint("User push error: $e");
-      }
-    }
-
-    // 11. Push Farm Members
-    final pendingMembers = await (db.select(db.farmMembers)..where((t) => t.synced.equals(false))).get();
-    for (var m in pendingMembers) {
-      try {
-        await _supabase.from('farm_members').upsert({
-          'farmId': m.farmId,
-          'userId': m.userId,
-          'role': m.role,
-          'joinedAt': m.joinedAt.toIso8601String(),
-        });
-        await (db.update(db.farmMembers)..where((t) => t.id.equals(m.id))).write(const FarmMembersCompanion(synced: Value(true)));
-      } catch (e) {
-        debugPrint("Member push error: $e");
+        debugPrint("Deletion sync error for ${d.targetTableName} ID ${d.recordId}: $e");
       }
     }
   }
@@ -589,7 +644,7 @@ class SyncEngine extends ChangeNotifier {
           initialCount: rb['initialCount'] as int? ?? 0,
           isolationCount: Value(rb['isolationCount'] as int? ?? 0),
           initialActualCost: Value(rb['initial_actual_cost'] != null ? double.parse(rb['initial_actual_cost'].toString()) : null),
-          growthTarget: Value(rb['growth_target'] as String?),
+          growthTarget: Value(rb['growth_target']?.toString()),
           synced: const Value(true),
         ));
       }
@@ -639,13 +694,13 @@ class SyncEngine extends ChangeNotifier {
         await db.into(db.mortalities).insertOnConflictUpdate(MortalitiesCompanion.insert(
           id: Value(m['id'] as int),
           farmId: farmId,
-          batchId: m['batchId'] as int,
+          batchId: m['batch_id'] as int,
           count: m['count'] as int,
           reason: Value(m['reason'] as String?),
           category: Value(m['category'] as String?),
           subCategory: Value(m['sub_category'] as String?),
           logDate: DateTime.parse(m['logDate'] as String),
-          userId: Value(m['userId'] as String?),
+          userId: Value(m['user_id'] as String?),
           synced: const Value(true),
         ));
       }
@@ -694,19 +749,33 @@ class SyncEngine extends ChangeNotifier {
       }
       debugPrint('Pull: synced ${remoteFeeds.length} feeding logs');
 
+      // 8. Pull Feed Types
+      final remoteFT = await _supabase.from('feed_types').select().eq('farmId', farmId);
+      for (var ft in remoteFT) {
+        await db.into(db.feedTypes).insertOnConflictUpdate(FeedTypesCompanion.insert(
+          id: Value(ft['id']),
+          farmId: farmId,
+          name: ft['name'],
+          currentStock: Value(double.parse(ft['currentStock'].toString())),
+          costPerKg: Value(double.parse(ft['costPerKg'].toString())),
+          synced: const Value(true),
+        ));
+      }
+
       // 10. Pull Users and Farm Members
       final teamData = await _supabase.from('users').select('*, farm_members(*)').eq('farm_members.farmId', farmId);
       for (var u in teamData) {
         final userId = u['id'] as String;
         await db.into(db.users).insertOnConflictUpdate(UsersCompanion.insert(
           id: userId,
-          firstname: u['firstname'] ?? '',
-          surname: u['surname'] ?? '',
-          name: u['name'] ?? '',
-          email: u['email'] ?? '',
-          phoneNumber: u['phoneNumber'] ?? '',
-          role: u['role'] ?? 'worker',
-          mustChangePassword: Value(u['mustChangePassword'] ?? false),
+          firstname: Value(u['firstname'] as String?),
+          surname: Value(u['surname'] as String?),
+          middleName: Value(u['middle_name'] as String?),
+          name: Value(u['name'] as String?),
+          email: Value(u['email'] as String?),
+          phoneNumber: Value(u['phone_number'] as String?),
+          role: Value(u['role'] as String? ?? 'worker'),
+          mustChangePassword: Value(u['must_change_password'] as bool? ?? false),
           synced: const Value(true),
         ));
 

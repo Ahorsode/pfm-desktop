@@ -261,6 +261,9 @@ class FeedTypes extends Table {
   IntColumn get farmId => integer()();
   TextColumn get name => text()();
   TextColumn get description => text().nullable()();
+  RealColumn get currentStock => real().withDefault(const Constant(0.0))();
+  RealColumn get costPerKg => real().withDefault(const Constant(0.0))();
+  BoolColumn get synced => boolean().withDefault(const Constant(false))();
 }
 
 // 15. Feed Formulations
@@ -273,6 +276,9 @@ class FeedFormulations extends Table {
   IntColumn get farmId => integer()();
   TextColumn get name => text()();
   TextColumn get ingredientsJson => text().nullable()(); // JSON string
+  TextColumn get description => text().nullable()();
+  BoolColumn get isActive => boolean().withDefault(const Constant(true))();
+  BoolColumn get synced => boolean().withDefault(const Constant(false))();
 }
 
 // 16. Vaccination Schedules
@@ -325,6 +331,16 @@ class Sales extends Table {
   BoolColumn get synced => boolean().withDefault(const Constant(false))();
 }
 
+// 19. Pending Deletions (to track what needs to be deleted from cloud)
+@DataClassName('PendingDeletion')
+class PendingDeletions extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  TextColumn get targetTableName => text()();
+  TextColumn get recordId => text()(); 
+  IntColumn get farmId => integer()();
+  DateTimeColumn get deletedAt => dateTime().withDefault(currentDateAndTime)();
+}
+
 LazyDatabase _openConnection() {
   return LazyDatabase(() async {
     final dbFolder = await getApplicationDocumentsDirectory();
@@ -352,13 +368,14 @@ LazyDatabase _openConnection() {
   FeedFormulations,
   VaccinationSchedules,
   MedicationSchedules,
-  Sales
+  Sales,
+  PendingDeletions
 ])
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 10;
+  int get schemaVersion => 11;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -371,6 +388,9 @@ class AppDatabase extends _$AppDatabase {
               await m.drop(table);
               await m.create(table);
             }
+          }
+          if (from < 11) {
+            await m.createTable(pendingDeletions);
           }
         },
       );

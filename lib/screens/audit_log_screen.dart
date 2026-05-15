@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:provider/provider.dart';
 import '../utils/farm_utils.dart';
+import '../data/sync_engine.dart';
 
 class AuditLogScreen extends StatefulWidget {
   const AuditLogScreen({super.key});
@@ -28,25 +30,43 @@ class _AuditLogScreenState extends State<AuditLogScreen> with SingleTickerProvid
   Future<void> _fetchLogs() async {
     setState(() => _isLoading = true);
     try {
+      if (mounted) {
+        await context.read<SyncEngine>().performSync();
+      }
+
       final farmId = await FarmUtils.getBoundFarmId();
       if (farmId == null) return;
 
+      // 1. Fetch Edit Logs
       final auditData = await _supabase
-          .from('AuditLog')
-          .select('*, users(name, email)')
+          .from('audit_logs')
+          .select('*, users(firstname, surname, email)')
           .eq('farm_id', farmId)
           .order('created_at', ascending: false)
           .limit(100);
 
+      // 2. Fetch Delete Logs
       final deleteData = await _supabase
-          .from('DeleteLog')
-          .select('*')
+          .from('delete_logs')
+          .select('*, users(firstname, surname, email)')
           .eq('farm_id', farmId)
           .order('deleted_at', ascending: false)
           .limit(100);
 
+      // Map audit logs
+      final List<Map<String, dynamic>> combined = [];
+      
+      for (var row in auditData) {
+        combined.add({
+          ...row,
+          'type': 'UPDATE',
+          'display_date': row['created_at'],
+          'display_table': row['table_name'],
+        });
+      }
+
       setState(() {
-        _auditLogs = List<Map<String, dynamic>>.from(auditData);
+        _auditLogs = combined;
         _deleteLogs = List<Map<String, dynamic>>.from(deleteData);
       });
     } catch (e) {
@@ -63,7 +83,7 @@ class _AuditLogScreenState extends State<AuditLogScreen> with SingleTickerProvid
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
-        title: const Text('Audit Logs', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 24)),
+        title: const Text('Edits', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 24)),
         backgroundColor: Colors.white,
         elevation: 0,
         centerTitle: false,
@@ -106,7 +126,7 @@ class _AuditLogScreenState extends State<AuditLogScreen> with SingleTickerProvid
                   indicatorSize: TabBarIndicatorSize.tab,
                   dividerColor: Colors.transparent,
                   tabs: const [
-                    Tab(text: 'Edits & Actions'),
+                    Tab(text: 'Edits'),
                     Tab(text: 'Deletions'),
                   ],
                 ),
@@ -138,16 +158,26 @@ class _AuditLogScreenState extends State<AuditLogScreen> with SingleTickerProvid
       separatorBuilder: (context, index) => const SizedBox(height: 12),
       itemBuilder: (context, index) {
         final log = _auditLogs[index];
-        final date = DateTime.parse(log['created_at']).toLocal();
-        final user = log['users'] != null ? log['users']['name'] ?? log['users']['email'] : 'System';
+        final type = log['type'] as String;
+        final date = DateTime.parse(log['display_date']).toLocal();
+        
+        String user = 'System';
+        if (log['users'] != null) {
+          final userData = log['users'];
+          final fname = userData['firstname'] ?? '';
+          final sname = userData['surname'] ?? '';
+          user = '$fname $sname'.trim();
+          if (user.isEmpty) user = userData['email'] ?? 'Unknown User';
+        }
+
 
         return _buildLogCard(
-          title: '${log['action']} - ${log['table_name']}',
+          title: 'Edit: ${log['display_table']}',
           subtitle: 'Modified by $user',
           date: DateFormat('MMM dd, yyyy • HH:mm').format(date),
-          icon: _getActionIcon(log['action']),
-          color: _getActionColor(log['action']),
-          details: 'Record ID: ${log['record_id']}',
+          icon: Icons.edit_rounded,
+          color: const Color(0xFFF59E0B),
+          details: 'ID: ${log['record_id']} • ${log['attribute_name']} (${log['old_value'] ?? 'NULL'} -> ${log['new_value'] ?? 'NULL'})',
         );
       },
     );
@@ -166,13 +196,22 @@ class _AuditLogScreenState extends State<AuditLogScreen> with SingleTickerProvid
         final log = _deleteLogs[index];
         final date = DateTime.parse(log['deleted_at']).toLocal();
 
+        String user = 'System';
+        if (log['users'] != null) {
+          final userData = log['users'];
+          final fname = userData['firstname'] ?? '';
+          final sname = userData['surname'] ?? '';
+          user = '$fname $sname'.trim();
+          if (user.isEmpty) user = userData['email'] ?? 'Unknown User';
+        }
+
         return _buildLogCard(
           title: 'Deleted from ${log['table_name']}',
-          subtitle: 'Deleted by ${log['deleted_by'] ?? 'Unknown'}',
+          subtitle: 'Deleted by $user',
           date: DateFormat('MMM dd, yyyy • HH:mm').format(date),
           icon: Icons.delete_forever_rounded,
           color: Colors.red,
-          details: 'Record ID: ${log['record_id']}',
+          details: 'Log ID: ${log['id']}',
           trailing: FilledButton.icon(
             onPressed: () => _confirmRestore(log),
             icon: const Icon(Icons.restore_rounded, size: 16),
@@ -226,7 +265,13 @@ class _AuditLogScreenState extends State<AuditLogScreen> with SingleTickerProvid
                 children: [
                   Row(
                     children: [
-                      Text(title, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: Color(0xFF1E293B))),
+                      Expanded(
+                        child: Text(
+                          title, 
+                          style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: Color(0xFF1E293B)),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
                       const SizedBox(width: 8),
                       Text('•', style: TextStyle(color: Colors.black.withValues(alpha: 0.2))),
                       const SizedBox(width: 8),
@@ -260,23 +305,6 @@ class _AuditLogScreenState extends State<AuditLogScreen> with SingleTickerProvid
     );
   }
 
-  IconData _getActionIcon(String action) {
-    switch (action.toUpperCase()) {
-      case 'CREATE': return Icons.add_circle_outline_rounded;
-      case 'UPDATE': return Icons.edit_note_rounded;
-      case 'DELETE': return Icons.delete_outline_rounded;
-      default: return Icons.info_outline_rounded;
-    }
-  }
-
-  Color _getActionColor(String action) {
-    switch (action.toUpperCase()) {
-      case 'CREATE': return const Color(0xFF16A34A);
-      case 'UPDATE': return const Color(0xFF2563EB);
-      case 'DELETE': return const Color(0xFFDC2626);
-      default: return const Color(0xFF64748B);
-    }
-  }
 
   Future<void> _confirmRestore(Map<String, dynamic> log) async {
     final confirmed = await showDialog<bool>(

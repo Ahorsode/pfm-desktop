@@ -61,82 +61,84 @@ class _FinancialInitDialogState extends State<FinancialInitDialog> {
         ),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(28),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Header
-              _buildHeader(),
-
-              Padding(
-                padding: const EdgeInsets.all(32),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Batch Summary Card
-                    _buildBatchSummary(),
-                    const SizedBox(height: 32),
-
-                    // Form Fields
-                    _buildInputField('Cost Per Unit (Bird)', _costPerUnitController, Icons.payments_outlined),
-                    const SizedBox(height: 24),
-                    _buildInputField('Carriage / Transport', _carriageController, Icons.local_shipping_outlined),
-                    const SizedBox(height: 24),
-                    _buildInputField('Other Direct Expenses', _otherExpensesController, Icons.more_horiz_rounded),
-                    
-                    const SizedBox(height: 32),
-                    Divider(color: Colors.white.withValues(alpha: 0.1)),
-                    const SizedBox(height: 24),
-
-                    // Total Summary
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text('TOTAL ACTUAL COST', 
-                              style: TextStyle(fontWeight: FontWeight.w900, fontSize: 12, color: Color(0xFF94A3B8), letterSpacing: 1)),
-                            SizedBox(height: 4),
-                            Text('COMBINED BATCH VALUATION', 
-                              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 9, color: Color(0xFF64748B), letterSpacing: 0.5)),
-                          ],
-                        ),
-                        Text(NumberFormat.currency(symbol: 'GH₵ ').format(_totalCost), 
-                          style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 32, color: Color(0xFF10B981), letterSpacing: -1)),
-                      ],
-                    ),
-
-                    const SizedBox(height: 40),
-
-                    // Buttons
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextButton(
-                            onPressed: () => Navigator.pop(context),
-                            style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 20)),
-                            child: const Text('SKIP FOR NOW', style: TextStyle(fontWeight: FontWeight.w800, color: Color(0xFF94A3B8), letterSpacing: 1, fontSize: 13)),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Header
+                _buildHeader(),
+  
+                Padding(
+                  padding: const EdgeInsets.all(32),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Batch Summary Card
+                      _buildBatchSummary(),
+                      const SizedBox(height: 32),
+  
+                      // Form Fields
+                      _buildInputField('Cost Per Unit (Bird)', _costPerUnitController, Icons.payments_outlined),
+                      const SizedBox(height: 24),
+                      _buildInputField('Carriage / Transport', _carriageController, Icons.local_shipping_outlined),
+                      const SizedBox(height: 24),
+                      _buildInputField('Other Direct Expenses', _otherExpensesController, Icons.more_horiz_rounded),
+                      
+                      const SizedBox(height: 32),
+                      Divider(color: Colors.white.withValues(alpha: 0.1)),
+                      const SizedBox(height: 24),
+  
+                      // Total Summary
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('TOTAL ACTUAL COST', 
+                                style: TextStyle(fontWeight: FontWeight.w900, fontSize: 12, color: Color(0xFF94A3B8), letterSpacing: 1)),
+                              SizedBox(height: 4),
+                              Text('COMBINED BATCH VALUATION', 
+                                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 9, color: Color(0xFF64748B), letterSpacing: 0.5)),
+                            ],
                           ),
-                        ),
-                        const SizedBox(width: 20),
-                        Expanded(
-                          flex: 2,
-                          child: FilledButton(
-                            onPressed: () => _saveCosts(context),
-                            style: FilledButton.styleFrom(
-                              backgroundColor: const Color(0xFF10B981),
-                              padding: const EdgeInsets.symmetric(vertical: 20),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          Text(NumberFormat.currency(symbol: 'GH₵ ').format(_totalCost), 
+                            style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 32, color: Color(0xFF10B981), letterSpacing: -1)),
+                        ],
+                      ),
+  
+                      const SizedBox(height: 40),
+  
+                      // Buttons
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextButton(
+                              onPressed: () => Navigator.pop(context),
+                              style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 20)),
+                              child: const Text('SKIP FOR NOW', style: TextStyle(fontWeight: FontWeight.w800, color: Color(0xFF94A3B8), letterSpacing: 1, fontSize: 13)),
                             ),
-                            child: const Text('SAVE INITIAL COSTS', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14, letterSpacing: 0.5)),
                           ),
-                        ),
-                      ],
-                    ),
-                  ],
+                          const SizedBox(width: 20),
+                          Expanded(
+                            flex: 2,
+                            child: FilledButton(
+                              onPressed: () => _saveCosts(context),
+                              style: FilledButton.styleFrom(
+                                backgroundColor: const Color(0xFF10B981),
+                                padding: const EdgeInsets.symmetric(vertical: 20),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              ),
+                              child: const Text('SAVE INITIAL COSTS', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14, letterSpacing: 0.5)),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

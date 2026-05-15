@@ -281,7 +281,10 @@ class AppSidebar extends StatelessWidget {
           borderRadius: BorderRadius.circular(10),
           hoverColor: Colors.white.withValues(alpha: 0.05),
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            padding: EdgeInsets.symmetric(
+              horizontal: isCollapsed ? 6 : 12, 
+              vertical: 10,
+            ),
             child: Row(
               mainAxisAlignment: isCollapsed
                   ? MainAxisAlignment.center

@@ -8185,8 +8185,53 @@ class $FeedTypesTable extends FeedTypes
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _currentStockMeta = const VerificationMeta(
+    'currentStock',
+  );
   @override
-  List<GeneratedColumn> get $columns => [id, farmId, name, description];
+  late final GeneratedColumn<double> currentStock = GeneratedColumn<double>(
+    'current_stock',
+    aliasedName,
+    false,
+    type: DriftSqlType.double,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0.0),
+  );
+  static const VerificationMeta _costPerKgMeta = const VerificationMeta(
+    'costPerKg',
+  );
+  @override
+  late final GeneratedColumn<double> costPerKg = GeneratedColumn<double>(
+    'cost_per_kg',
+    aliasedName,
+    false,
+    type: DriftSqlType.double,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0.0),
+  );
+  static const VerificationMeta _syncedMeta = const VerificationMeta('synced');
+  @override
+  late final GeneratedColumn<bool> synced = GeneratedColumn<bool>(
+    'synced',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("synced" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    farmId,
+    name,
+    description,
+    currentStock,
+    costPerKg,
+    synced,
+  ];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -8227,6 +8272,27 @@ class $FeedTypesTable extends FeedTypes
         ),
       );
     }
+    if (data.containsKey('current_stock')) {
+      context.handle(
+        _currentStockMeta,
+        currentStock.isAcceptableOrUnknown(
+          data['current_stock']!,
+          _currentStockMeta,
+        ),
+      );
+    }
+    if (data.containsKey('cost_per_kg')) {
+      context.handle(
+        _costPerKgMeta,
+        costPerKg.isAcceptableOrUnknown(data['cost_per_kg']!, _costPerKgMeta),
+      );
+    }
+    if (data.containsKey('synced')) {
+      context.handle(
+        _syncedMeta,
+        synced.isAcceptableOrUnknown(data['synced']!, _syncedMeta),
+      );
+    }
     return context;
   }
 
@@ -8252,6 +8318,18 @@ class $FeedTypesTable extends FeedTypes
         DriftSqlType.string,
         data['${effectivePrefix}description'],
       ),
+      currentStock: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}current_stock'],
+      )!,
+      costPerKg: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}cost_per_kg'],
+      )!,
+      synced: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}synced'],
+      )!,
     );
   }
 
@@ -8266,11 +8344,17 @@ class FeedType extends DataClass implements Insertable<FeedType> {
   final int farmId;
   final String name;
   final String? description;
+  final double currentStock;
+  final double costPerKg;
+  final bool synced;
   const FeedType({
     required this.id,
     required this.farmId,
     required this.name,
     this.description,
+    required this.currentStock,
+    required this.costPerKg,
+    required this.synced,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -8281,6 +8365,9 @@ class FeedType extends DataClass implements Insertable<FeedType> {
     if (!nullToAbsent || description != null) {
       map['description'] = Variable<String>(description);
     }
+    map['current_stock'] = Variable<double>(currentStock);
+    map['cost_per_kg'] = Variable<double>(costPerKg);
+    map['synced'] = Variable<bool>(synced);
     return map;
   }
 
@@ -8292,6 +8379,9 @@ class FeedType extends DataClass implements Insertable<FeedType> {
       description: description == null && nullToAbsent
           ? const Value.absent()
           : Value(description),
+      currentStock: Value(currentStock),
+      costPerKg: Value(costPerKg),
+      synced: Value(synced),
     );
   }
 
@@ -8305,6 +8395,9 @@ class FeedType extends DataClass implements Insertable<FeedType> {
       farmId: serializer.fromJson<int>(json['farmId']),
       name: serializer.fromJson<String>(json['name']),
       description: serializer.fromJson<String?>(json['description']),
+      currentStock: serializer.fromJson<double>(json['currentStock']),
+      costPerKg: serializer.fromJson<double>(json['costPerKg']),
+      synced: serializer.fromJson<bool>(json['synced']),
     );
   }
   @override
@@ -8315,6 +8408,9 @@ class FeedType extends DataClass implements Insertable<FeedType> {
       'farmId': serializer.toJson<int>(farmId),
       'name': serializer.toJson<String>(name),
       'description': serializer.toJson<String?>(description),
+      'currentStock': serializer.toJson<double>(currentStock),
+      'costPerKg': serializer.toJson<double>(costPerKg),
+      'synced': serializer.toJson<bool>(synced),
     };
   }
 
@@ -8323,11 +8419,17 @@ class FeedType extends DataClass implements Insertable<FeedType> {
     int? farmId,
     String? name,
     Value<String?> description = const Value.absent(),
+    double? currentStock,
+    double? costPerKg,
+    bool? synced,
   }) => FeedType(
     id: id ?? this.id,
     farmId: farmId ?? this.farmId,
     name: name ?? this.name,
     description: description.present ? description.value : this.description,
+    currentStock: currentStock ?? this.currentStock,
+    costPerKg: costPerKg ?? this.costPerKg,
+    synced: synced ?? this.synced,
   );
   FeedType copyWithCompanion(FeedTypesCompanion data) {
     return FeedType(
@@ -8337,6 +8439,11 @@ class FeedType extends DataClass implements Insertable<FeedType> {
       description: data.description.present
           ? data.description.value
           : this.description,
+      currentStock: data.currentStock.present
+          ? data.currentStock.value
+          : this.currentStock,
+      costPerKg: data.costPerKg.present ? data.costPerKg.value : this.costPerKg,
+      synced: data.synced.present ? data.synced.value : this.synced,
     );
   }
 
@@ -8346,13 +8453,24 @@ class FeedType extends DataClass implements Insertable<FeedType> {
           ..write('id: $id, ')
           ..write('farmId: $farmId, ')
           ..write('name: $name, ')
-          ..write('description: $description')
+          ..write('description: $description, ')
+          ..write('currentStock: $currentStock, ')
+          ..write('costPerKg: $costPerKg, ')
+          ..write('synced: $synced')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(id, farmId, name, description);
+  int get hashCode => Object.hash(
+    id,
+    farmId,
+    name,
+    description,
+    currentStock,
+    costPerKg,
+    synced,
+  );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -8360,7 +8478,10 @@ class FeedType extends DataClass implements Insertable<FeedType> {
           other.id == this.id &&
           other.farmId == this.farmId &&
           other.name == this.name &&
-          other.description == this.description);
+          other.description == this.description &&
+          other.currentStock == this.currentStock &&
+          other.costPerKg == this.costPerKg &&
+          other.synced == this.synced);
 }
 
 class FeedTypesCompanion extends UpdateCompanion<FeedType> {
@@ -8368,17 +8489,26 @@ class FeedTypesCompanion extends UpdateCompanion<FeedType> {
   final Value<int> farmId;
   final Value<String> name;
   final Value<String?> description;
+  final Value<double> currentStock;
+  final Value<double> costPerKg;
+  final Value<bool> synced;
   const FeedTypesCompanion({
     this.id = const Value.absent(),
     this.farmId = const Value.absent(),
     this.name = const Value.absent(),
     this.description = const Value.absent(),
+    this.currentStock = const Value.absent(),
+    this.costPerKg = const Value.absent(),
+    this.synced = const Value.absent(),
   });
   FeedTypesCompanion.insert({
     this.id = const Value.absent(),
     required int farmId,
     required String name,
     this.description = const Value.absent(),
+    this.currentStock = const Value.absent(),
+    this.costPerKg = const Value.absent(),
+    this.synced = const Value.absent(),
   }) : farmId = Value(farmId),
        name = Value(name);
   static Insertable<FeedType> custom({
@@ -8386,12 +8516,18 @@ class FeedTypesCompanion extends UpdateCompanion<FeedType> {
     Expression<int>? farmId,
     Expression<String>? name,
     Expression<String>? description,
+    Expression<double>? currentStock,
+    Expression<double>? costPerKg,
+    Expression<bool>? synced,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
       if (farmId != null) 'farm_id': farmId,
       if (name != null) 'name': name,
       if (description != null) 'description': description,
+      if (currentStock != null) 'current_stock': currentStock,
+      if (costPerKg != null) 'cost_per_kg': costPerKg,
+      if (synced != null) 'synced': synced,
     });
   }
 
@@ -8400,12 +8536,18 @@ class FeedTypesCompanion extends UpdateCompanion<FeedType> {
     Value<int>? farmId,
     Value<String>? name,
     Value<String?>? description,
+    Value<double>? currentStock,
+    Value<double>? costPerKg,
+    Value<bool>? synced,
   }) {
     return FeedTypesCompanion(
       id: id ?? this.id,
       farmId: farmId ?? this.farmId,
       name: name ?? this.name,
       description: description ?? this.description,
+      currentStock: currentStock ?? this.currentStock,
+      costPerKg: costPerKg ?? this.costPerKg,
+      synced: synced ?? this.synced,
     );
   }
 
@@ -8424,6 +8566,15 @@ class FeedTypesCompanion extends UpdateCompanion<FeedType> {
     if (description.present) {
       map['description'] = Variable<String>(description.value);
     }
+    if (currentStock.present) {
+      map['current_stock'] = Variable<double>(currentStock.value);
+    }
+    if (costPerKg.present) {
+      map['cost_per_kg'] = Variable<double>(costPerKg.value);
+    }
+    if (synced.present) {
+      map['synced'] = Variable<bool>(synced.value);
+    }
     return map;
   }
 
@@ -8433,7 +8584,10 @@ class FeedTypesCompanion extends UpdateCompanion<FeedType> {
           ..write('id: $id, ')
           ..write('farmId: $farmId, ')
           ..write('name: $name, ')
-          ..write('description: $description')
+          ..write('description: $description, ')
+          ..write('currentStock: $currentStock, ')
+          ..write('costPerKg: $costPerKg, ')
+          ..write('synced: $synced')
           ..write(')'))
         .toString();
   }
@@ -8487,8 +8641,55 @@ class $FeedFormulationsTable extends FeedFormulations
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _descriptionMeta = const VerificationMeta(
+    'description',
+  );
   @override
-  List<GeneratedColumn> get $columns => [id, farmId, name, ingredientsJson];
+  late final GeneratedColumn<String> description = GeneratedColumn<String>(
+    'description',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _isActiveMeta = const VerificationMeta(
+    'isActive',
+  );
+  @override
+  late final GeneratedColumn<bool> isActive = GeneratedColumn<bool>(
+    'is_active',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("is_active" IN (0, 1))',
+    ),
+    defaultValue: const Constant(true),
+  );
+  static const VerificationMeta _syncedMeta = const VerificationMeta('synced');
+  @override
+  late final GeneratedColumn<bool> synced = GeneratedColumn<bool>(
+    'synced',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("synced" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    farmId,
+    name,
+    ingredientsJson,
+    description,
+    isActive,
+    synced,
+  ];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -8529,6 +8730,27 @@ class $FeedFormulationsTable extends FeedFormulations
         ),
       );
     }
+    if (data.containsKey('description')) {
+      context.handle(
+        _descriptionMeta,
+        description.isAcceptableOrUnknown(
+          data['description']!,
+          _descriptionMeta,
+        ),
+      );
+    }
+    if (data.containsKey('is_active')) {
+      context.handle(
+        _isActiveMeta,
+        isActive.isAcceptableOrUnknown(data['is_active']!, _isActiveMeta),
+      );
+    }
+    if (data.containsKey('synced')) {
+      context.handle(
+        _syncedMeta,
+        synced.isAcceptableOrUnknown(data['synced']!, _syncedMeta),
+      );
+    }
     return context;
   }
 
@@ -8554,6 +8776,18 @@ class $FeedFormulationsTable extends FeedFormulations
         DriftSqlType.string,
         data['${effectivePrefix}ingredients_json'],
       ),
+      description: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}description'],
+      ),
+      isActive: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}is_active'],
+      )!,
+      synced: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}synced'],
+      )!,
     );
   }
 
@@ -8568,11 +8802,17 @@ class FeedFormulation extends DataClass implements Insertable<FeedFormulation> {
   final int farmId;
   final String name;
   final String? ingredientsJson;
+  final String? description;
+  final bool isActive;
+  final bool synced;
   const FeedFormulation({
     required this.id,
     required this.farmId,
     required this.name,
     this.ingredientsJson,
+    this.description,
+    required this.isActive,
+    required this.synced,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -8583,6 +8823,11 @@ class FeedFormulation extends DataClass implements Insertable<FeedFormulation> {
     if (!nullToAbsent || ingredientsJson != null) {
       map['ingredients_json'] = Variable<String>(ingredientsJson);
     }
+    if (!nullToAbsent || description != null) {
+      map['description'] = Variable<String>(description);
+    }
+    map['is_active'] = Variable<bool>(isActive);
+    map['synced'] = Variable<bool>(synced);
     return map;
   }
 
@@ -8594,6 +8839,11 @@ class FeedFormulation extends DataClass implements Insertable<FeedFormulation> {
       ingredientsJson: ingredientsJson == null && nullToAbsent
           ? const Value.absent()
           : Value(ingredientsJson),
+      description: description == null && nullToAbsent
+          ? const Value.absent()
+          : Value(description),
+      isActive: Value(isActive),
+      synced: Value(synced),
     );
   }
 
@@ -8607,6 +8857,9 @@ class FeedFormulation extends DataClass implements Insertable<FeedFormulation> {
       farmId: serializer.fromJson<int>(json['farmId']),
       name: serializer.fromJson<String>(json['name']),
       ingredientsJson: serializer.fromJson<String?>(json['ingredientsJson']),
+      description: serializer.fromJson<String?>(json['description']),
+      isActive: serializer.fromJson<bool>(json['isActive']),
+      synced: serializer.fromJson<bool>(json['synced']),
     );
   }
   @override
@@ -8617,6 +8870,9 @@ class FeedFormulation extends DataClass implements Insertable<FeedFormulation> {
       'farmId': serializer.toJson<int>(farmId),
       'name': serializer.toJson<String>(name),
       'ingredientsJson': serializer.toJson<String?>(ingredientsJson),
+      'description': serializer.toJson<String?>(description),
+      'isActive': serializer.toJson<bool>(isActive),
+      'synced': serializer.toJson<bool>(synced),
     };
   }
 
@@ -8625,6 +8881,9 @@ class FeedFormulation extends DataClass implements Insertable<FeedFormulation> {
     int? farmId,
     String? name,
     Value<String?> ingredientsJson = const Value.absent(),
+    Value<String?> description = const Value.absent(),
+    bool? isActive,
+    bool? synced,
   }) => FeedFormulation(
     id: id ?? this.id,
     farmId: farmId ?? this.farmId,
@@ -8632,6 +8891,9 @@ class FeedFormulation extends DataClass implements Insertable<FeedFormulation> {
     ingredientsJson: ingredientsJson.present
         ? ingredientsJson.value
         : this.ingredientsJson,
+    description: description.present ? description.value : this.description,
+    isActive: isActive ?? this.isActive,
+    synced: synced ?? this.synced,
   );
   FeedFormulation copyWithCompanion(FeedFormulationsCompanion data) {
     return FeedFormulation(
@@ -8641,6 +8903,11 @@ class FeedFormulation extends DataClass implements Insertable<FeedFormulation> {
       ingredientsJson: data.ingredientsJson.present
           ? data.ingredientsJson.value
           : this.ingredientsJson,
+      description: data.description.present
+          ? data.description.value
+          : this.description,
+      isActive: data.isActive.present ? data.isActive.value : this.isActive,
+      synced: data.synced.present ? data.synced.value : this.synced,
     );
   }
 
@@ -8650,13 +8917,24 @@ class FeedFormulation extends DataClass implements Insertable<FeedFormulation> {
           ..write('id: $id, ')
           ..write('farmId: $farmId, ')
           ..write('name: $name, ')
-          ..write('ingredientsJson: $ingredientsJson')
+          ..write('ingredientsJson: $ingredientsJson, ')
+          ..write('description: $description, ')
+          ..write('isActive: $isActive, ')
+          ..write('synced: $synced')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(id, farmId, name, ingredientsJson);
+  int get hashCode => Object.hash(
+    id,
+    farmId,
+    name,
+    ingredientsJson,
+    description,
+    isActive,
+    synced,
+  );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -8664,7 +8942,10 @@ class FeedFormulation extends DataClass implements Insertable<FeedFormulation> {
           other.id == this.id &&
           other.farmId == this.farmId &&
           other.name == this.name &&
-          other.ingredientsJson == this.ingredientsJson);
+          other.ingredientsJson == this.ingredientsJson &&
+          other.description == this.description &&
+          other.isActive == this.isActive &&
+          other.synced == this.synced);
 }
 
 class FeedFormulationsCompanion extends UpdateCompanion<FeedFormulation> {
@@ -8672,17 +8953,26 @@ class FeedFormulationsCompanion extends UpdateCompanion<FeedFormulation> {
   final Value<int> farmId;
   final Value<String> name;
   final Value<String?> ingredientsJson;
+  final Value<String?> description;
+  final Value<bool> isActive;
+  final Value<bool> synced;
   const FeedFormulationsCompanion({
     this.id = const Value.absent(),
     this.farmId = const Value.absent(),
     this.name = const Value.absent(),
     this.ingredientsJson = const Value.absent(),
+    this.description = const Value.absent(),
+    this.isActive = const Value.absent(),
+    this.synced = const Value.absent(),
   });
   FeedFormulationsCompanion.insert({
     this.id = const Value.absent(),
     required int farmId,
     required String name,
     this.ingredientsJson = const Value.absent(),
+    this.description = const Value.absent(),
+    this.isActive = const Value.absent(),
+    this.synced = const Value.absent(),
   }) : farmId = Value(farmId),
        name = Value(name);
   static Insertable<FeedFormulation> custom({
@@ -8690,12 +8980,18 @@ class FeedFormulationsCompanion extends UpdateCompanion<FeedFormulation> {
     Expression<int>? farmId,
     Expression<String>? name,
     Expression<String>? ingredientsJson,
+    Expression<String>? description,
+    Expression<bool>? isActive,
+    Expression<bool>? synced,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
       if (farmId != null) 'farm_id': farmId,
       if (name != null) 'name': name,
       if (ingredientsJson != null) 'ingredients_json': ingredientsJson,
+      if (description != null) 'description': description,
+      if (isActive != null) 'is_active': isActive,
+      if (synced != null) 'synced': synced,
     });
   }
 
@@ -8704,12 +9000,18 @@ class FeedFormulationsCompanion extends UpdateCompanion<FeedFormulation> {
     Value<int>? farmId,
     Value<String>? name,
     Value<String?>? ingredientsJson,
+    Value<String?>? description,
+    Value<bool>? isActive,
+    Value<bool>? synced,
   }) {
     return FeedFormulationsCompanion(
       id: id ?? this.id,
       farmId: farmId ?? this.farmId,
       name: name ?? this.name,
       ingredientsJson: ingredientsJson ?? this.ingredientsJson,
+      description: description ?? this.description,
+      isActive: isActive ?? this.isActive,
+      synced: synced ?? this.synced,
     );
   }
 
@@ -8728,6 +9030,15 @@ class FeedFormulationsCompanion extends UpdateCompanion<FeedFormulation> {
     if (ingredientsJson.present) {
       map['ingredients_json'] = Variable<String>(ingredientsJson.value);
     }
+    if (description.present) {
+      map['description'] = Variable<String>(description.value);
+    }
+    if (isActive.present) {
+      map['is_active'] = Variable<bool>(isActive.value);
+    }
+    if (synced.present) {
+      map['synced'] = Variable<bool>(synced.value);
+    }
     return map;
   }
 
@@ -8737,7 +9048,10 @@ class FeedFormulationsCompanion extends UpdateCompanion<FeedFormulation> {
           ..write('id: $id, ')
           ..write('farmId: $farmId, ')
           ..write('name: $name, ')
-          ..write('ingredientsJson: $ingredientsJson')
+          ..write('ingredientsJson: $ingredientsJson, ')
+          ..write('description: $description, ')
+          ..write('isActive: $isActive, ')
+          ..write('synced: $synced')
           ..write(')'))
         .toString();
   }
@@ -10356,6 +10670,360 @@ class SalesCompanion extends UpdateCompanion<Sale> {
   }
 }
 
+class $PendingDeletionsTable extends PendingDeletions
+    with TableInfo<$PendingDeletionsTable, PendingDeletion> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $PendingDeletionsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _targetTableNameMeta = const VerificationMeta(
+    'targetTableName',
+  );
+  @override
+  late final GeneratedColumn<String> targetTableName = GeneratedColumn<String>(
+    'target_table_name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _recordIdMeta = const VerificationMeta(
+    'recordId',
+  );
+  @override
+  late final GeneratedColumn<String> recordId = GeneratedColumn<String>(
+    'record_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _farmIdMeta = const VerificationMeta('farmId');
+  @override
+  late final GeneratedColumn<int> farmId = GeneratedColumn<int>(
+    'farm_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _deletedAtMeta = const VerificationMeta(
+    'deletedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> deletedAt = GeneratedColumn<DateTime>(
+    'deleted_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    targetTableName,
+    recordId,
+    farmId,
+    deletedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'pending_deletions';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<PendingDeletion> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('target_table_name')) {
+      context.handle(
+        _targetTableNameMeta,
+        targetTableName.isAcceptableOrUnknown(
+          data['target_table_name']!,
+          _targetTableNameMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_targetTableNameMeta);
+    }
+    if (data.containsKey('record_id')) {
+      context.handle(
+        _recordIdMeta,
+        recordId.isAcceptableOrUnknown(data['record_id']!, _recordIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_recordIdMeta);
+    }
+    if (data.containsKey('farm_id')) {
+      context.handle(
+        _farmIdMeta,
+        farmId.isAcceptableOrUnknown(data['farm_id']!, _farmIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_farmIdMeta);
+    }
+    if (data.containsKey('deleted_at')) {
+      context.handle(
+        _deletedAtMeta,
+        deletedAt.isAcceptableOrUnknown(data['deleted_at']!, _deletedAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  PendingDeletion map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return PendingDeletion(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      targetTableName: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}target_table_name'],
+      )!,
+      recordId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}record_id'],
+      )!,
+      farmId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}farm_id'],
+      )!,
+      deletedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}deleted_at'],
+      )!,
+    );
+  }
+
+  @override
+  $PendingDeletionsTable createAlias(String alias) {
+    return $PendingDeletionsTable(attachedDatabase, alias);
+  }
+}
+
+class PendingDeletion extends DataClass implements Insertable<PendingDeletion> {
+  final int id;
+  final String targetTableName;
+  final String recordId;
+  final int farmId;
+  final DateTime deletedAt;
+  const PendingDeletion({
+    required this.id,
+    required this.targetTableName,
+    required this.recordId,
+    required this.farmId,
+    required this.deletedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['target_table_name'] = Variable<String>(targetTableName);
+    map['record_id'] = Variable<String>(recordId);
+    map['farm_id'] = Variable<int>(farmId);
+    map['deleted_at'] = Variable<DateTime>(deletedAt);
+    return map;
+  }
+
+  PendingDeletionsCompanion toCompanion(bool nullToAbsent) {
+    return PendingDeletionsCompanion(
+      id: Value(id),
+      targetTableName: Value(targetTableName),
+      recordId: Value(recordId),
+      farmId: Value(farmId),
+      deletedAt: Value(deletedAt),
+    );
+  }
+
+  factory PendingDeletion.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return PendingDeletion(
+      id: serializer.fromJson<int>(json['id']),
+      targetTableName: serializer.fromJson<String>(json['targetTableName']),
+      recordId: serializer.fromJson<String>(json['recordId']),
+      farmId: serializer.fromJson<int>(json['farmId']),
+      deletedAt: serializer.fromJson<DateTime>(json['deletedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'targetTableName': serializer.toJson<String>(targetTableName),
+      'recordId': serializer.toJson<String>(recordId),
+      'farmId': serializer.toJson<int>(farmId),
+      'deletedAt': serializer.toJson<DateTime>(deletedAt),
+    };
+  }
+
+  PendingDeletion copyWith({
+    int? id,
+    String? targetTableName,
+    String? recordId,
+    int? farmId,
+    DateTime? deletedAt,
+  }) => PendingDeletion(
+    id: id ?? this.id,
+    targetTableName: targetTableName ?? this.targetTableName,
+    recordId: recordId ?? this.recordId,
+    farmId: farmId ?? this.farmId,
+    deletedAt: deletedAt ?? this.deletedAt,
+  );
+  PendingDeletion copyWithCompanion(PendingDeletionsCompanion data) {
+    return PendingDeletion(
+      id: data.id.present ? data.id.value : this.id,
+      targetTableName: data.targetTableName.present
+          ? data.targetTableName.value
+          : this.targetTableName,
+      recordId: data.recordId.present ? data.recordId.value : this.recordId,
+      farmId: data.farmId.present ? data.farmId.value : this.farmId,
+      deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('PendingDeletion(')
+          ..write('id: $id, ')
+          ..write('targetTableName: $targetTableName, ')
+          ..write('recordId: $recordId, ')
+          ..write('farmId: $farmId, ')
+          ..write('deletedAt: $deletedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(id, targetTableName, recordId, farmId, deletedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is PendingDeletion &&
+          other.id == this.id &&
+          other.targetTableName == this.targetTableName &&
+          other.recordId == this.recordId &&
+          other.farmId == this.farmId &&
+          other.deletedAt == this.deletedAt);
+}
+
+class PendingDeletionsCompanion extends UpdateCompanion<PendingDeletion> {
+  final Value<int> id;
+  final Value<String> targetTableName;
+  final Value<String> recordId;
+  final Value<int> farmId;
+  final Value<DateTime> deletedAt;
+  const PendingDeletionsCompanion({
+    this.id = const Value.absent(),
+    this.targetTableName = const Value.absent(),
+    this.recordId = const Value.absent(),
+    this.farmId = const Value.absent(),
+    this.deletedAt = const Value.absent(),
+  });
+  PendingDeletionsCompanion.insert({
+    this.id = const Value.absent(),
+    required String targetTableName,
+    required String recordId,
+    required int farmId,
+    this.deletedAt = const Value.absent(),
+  }) : targetTableName = Value(targetTableName),
+       recordId = Value(recordId),
+       farmId = Value(farmId);
+  static Insertable<PendingDeletion> custom({
+    Expression<int>? id,
+    Expression<String>? targetTableName,
+    Expression<String>? recordId,
+    Expression<int>? farmId,
+    Expression<DateTime>? deletedAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (targetTableName != null) 'target_table_name': targetTableName,
+      if (recordId != null) 'record_id': recordId,
+      if (farmId != null) 'farm_id': farmId,
+      if (deletedAt != null) 'deleted_at': deletedAt,
+    });
+  }
+
+  PendingDeletionsCompanion copyWith({
+    Value<int>? id,
+    Value<String>? targetTableName,
+    Value<String>? recordId,
+    Value<int>? farmId,
+    Value<DateTime>? deletedAt,
+  }) {
+    return PendingDeletionsCompanion(
+      id: id ?? this.id,
+      targetTableName: targetTableName ?? this.targetTableName,
+      recordId: recordId ?? this.recordId,
+      farmId: farmId ?? this.farmId,
+      deletedAt: deletedAt ?? this.deletedAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (targetTableName.present) {
+      map['target_table_name'] = Variable<String>(targetTableName.value);
+    }
+    if (recordId.present) {
+      map['record_id'] = Variable<String>(recordId.value);
+    }
+    if (farmId.present) {
+      map['farm_id'] = Variable<int>(farmId.value);
+    }
+    if (deletedAt.present) {
+      map['deleted_at'] = Variable<DateTime>(deletedAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('PendingDeletionsCompanion(')
+          ..write('id: $id, ')
+          ..write('targetTableName: $targetTableName, ')
+          ..write('recordId: $recordId, ')
+          ..write('farmId: $farmId, ')
+          ..write('deletedAt: $deletedAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -10382,6 +11050,9 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $MedicationSchedulesTable medicationSchedules =
       $MedicationSchedulesTable(this);
   late final $SalesTable sales = $SalesTable(this);
+  late final $PendingDeletionsTable pendingDeletions = $PendingDeletionsTable(
+    this,
+  );
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -10405,6 +11076,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     vaccinationSchedules,
     medicationSchedules,
     sales,
+    pendingDeletions,
   ];
 }
 
@@ -14335,6 +15007,9 @@ typedef $$FeedTypesTableCreateCompanionBuilder =
       required int farmId,
       required String name,
       Value<String?> description,
+      Value<double> currentStock,
+      Value<double> costPerKg,
+      Value<bool> synced,
     });
 typedef $$FeedTypesTableUpdateCompanionBuilder =
     FeedTypesCompanion Function({
@@ -14342,6 +15017,9 @@ typedef $$FeedTypesTableUpdateCompanionBuilder =
       Value<int> farmId,
       Value<String> name,
       Value<String?> description,
+      Value<double> currentStock,
+      Value<double> costPerKg,
+      Value<bool> synced,
     });
 
 class $$FeedTypesTableFilterComposer
@@ -14370,6 +15048,21 @@ class $$FeedTypesTableFilterComposer
 
   ColumnFilters<String> get description => $composableBuilder(
     column: $table.description,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get currentStock => $composableBuilder(
+    column: $table.currentStock,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get costPerKg => $composableBuilder(
+    column: $table.costPerKg,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get synced => $composableBuilder(
+    column: $table.synced,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -14402,6 +15095,21 @@ class $$FeedTypesTableOrderingComposer
     column: $table.description,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<double> get currentStock => $composableBuilder(
+    column: $table.currentStock,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get costPerKg => $composableBuilder(
+    column: $table.costPerKg,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get synced => $composableBuilder(
+    column: $table.synced,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$FeedTypesTableAnnotationComposer
@@ -14426,6 +15134,17 @@ class $$FeedTypesTableAnnotationComposer
     column: $table.description,
     builder: (column) => column,
   );
+
+  GeneratedColumn<double> get currentStock => $composableBuilder(
+    column: $table.currentStock,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<double> get costPerKg =>
+      $composableBuilder(column: $table.costPerKg, builder: (column) => column);
+
+  GeneratedColumn<bool> get synced =>
+      $composableBuilder(column: $table.synced, builder: (column) => column);
 }
 
 class $$FeedTypesTableTableManager
@@ -14460,11 +15179,17 @@ class $$FeedTypesTableTableManager
                 Value<int> farmId = const Value.absent(),
                 Value<String> name = const Value.absent(),
                 Value<String?> description = const Value.absent(),
+                Value<double> currentStock = const Value.absent(),
+                Value<double> costPerKg = const Value.absent(),
+                Value<bool> synced = const Value.absent(),
               }) => FeedTypesCompanion(
                 id: id,
                 farmId: farmId,
                 name: name,
                 description: description,
+                currentStock: currentStock,
+                costPerKg: costPerKg,
+                synced: synced,
               ),
           createCompanionCallback:
               ({
@@ -14472,11 +15197,17 @@ class $$FeedTypesTableTableManager
                 required int farmId,
                 required String name,
                 Value<String?> description = const Value.absent(),
+                Value<double> currentStock = const Value.absent(),
+                Value<double> costPerKg = const Value.absent(),
+                Value<bool> synced = const Value.absent(),
               }) => FeedTypesCompanion.insert(
                 id: id,
                 farmId: farmId,
                 name: name,
                 description: description,
+                currentStock: currentStock,
+                costPerKg: costPerKg,
+                synced: synced,
               ),
           withReferenceMapper: (p0) => p0
               .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
@@ -14506,6 +15237,9 @@ typedef $$FeedFormulationsTableCreateCompanionBuilder =
       required int farmId,
       required String name,
       Value<String?> ingredientsJson,
+      Value<String?> description,
+      Value<bool> isActive,
+      Value<bool> synced,
     });
 typedef $$FeedFormulationsTableUpdateCompanionBuilder =
     FeedFormulationsCompanion Function({
@@ -14513,6 +15247,9 @@ typedef $$FeedFormulationsTableUpdateCompanionBuilder =
       Value<int> farmId,
       Value<String> name,
       Value<String?> ingredientsJson,
+      Value<String?> description,
+      Value<bool> isActive,
+      Value<bool> synced,
     });
 
 class $$FeedFormulationsTableFilterComposer
@@ -14541,6 +15278,21 @@ class $$FeedFormulationsTableFilterComposer
 
   ColumnFilters<String> get ingredientsJson => $composableBuilder(
     column: $table.ingredientsJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get description => $composableBuilder(
+    column: $table.description,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get isActive => $composableBuilder(
+    column: $table.isActive,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get synced => $composableBuilder(
+    column: $table.synced,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -14573,6 +15325,21 @@ class $$FeedFormulationsTableOrderingComposer
     column: $table.ingredientsJson,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get description => $composableBuilder(
+    column: $table.description,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get isActive => $composableBuilder(
+    column: $table.isActive,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get synced => $composableBuilder(
+    column: $table.synced,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$FeedFormulationsTableAnnotationComposer
@@ -14597,6 +15364,17 @@ class $$FeedFormulationsTableAnnotationComposer
     column: $table.ingredientsJson,
     builder: (column) => column,
   );
+
+  GeneratedColumn<String> get description => $composableBuilder(
+    column: $table.description,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get isActive =>
+      $composableBuilder(column: $table.isActive, builder: (column) => column);
+
+  GeneratedColumn<bool> get synced =>
+      $composableBuilder(column: $table.synced, builder: (column) => column);
 }
 
 class $$FeedFormulationsTableTableManager
@@ -14640,11 +15418,17 @@ class $$FeedFormulationsTableTableManager
                 Value<int> farmId = const Value.absent(),
                 Value<String> name = const Value.absent(),
                 Value<String?> ingredientsJson = const Value.absent(),
+                Value<String?> description = const Value.absent(),
+                Value<bool> isActive = const Value.absent(),
+                Value<bool> synced = const Value.absent(),
               }) => FeedFormulationsCompanion(
                 id: id,
                 farmId: farmId,
                 name: name,
                 ingredientsJson: ingredientsJson,
+                description: description,
+                isActive: isActive,
+                synced: synced,
               ),
           createCompanionCallback:
               ({
@@ -14652,11 +15436,17 @@ class $$FeedFormulationsTableTableManager
                 required int farmId,
                 required String name,
                 Value<String?> ingredientsJson = const Value.absent(),
+                Value<String?> description = const Value.absent(),
+                Value<bool> isActive = const Value.absent(),
+                Value<bool> synced = const Value.absent(),
               }) => FeedFormulationsCompanion.insert(
                 id: id,
                 farmId: farmId,
                 name: name,
                 ingredientsJson: ingredientsJson,
+                description: description,
+                isActive: isActive,
+                synced: synced,
               ),
           withReferenceMapper: (p0) => p0
               .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
@@ -15511,6 +16301,208 @@ typedef $$SalesTableProcessedTableManager =
       Sale,
       PrefetchHooks Function()
     >;
+typedef $$PendingDeletionsTableCreateCompanionBuilder =
+    PendingDeletionsCompanion Function({
+      Value<int> id,
+      required String targetTableName,
+      required String recordId,
+      required int farmId,
+      Value<DateTime> deletedAt,
+    });
+typedef $$PendingDeletionsTableUpdateCompanionBuilder =
+    PendingDeletionsCompanion Function({
+      Value<int> id,
+      Value<String> targetTableName,
+      Value<String> recordId,
+      Value<int> farmId,
+      Value<DateTime> deletedAt,
+    });
+
+class $$PendingDeletionsTableFilterComposer
+    extends Composer<_$AppDatabase, $PendingDeletionsTable> {
+  $$PendingDeletionsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get targetTableName => $composableBuilder(
+    column: $table.targetTableName,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get recordId => $composableBuilder(
+    column: $table.recordId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get farmId => $composableBuilder(
+    column: $table.farmId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get deletedAt => $composableBuilder(
+    column: $table.deletedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$PendingDeletionsTableOrderingComposer
+    extends Composer<_$AppDatabase, $PendingDeletionsTable> {
+  $$PendingDeletionsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get targetTableName => $composableBuilder(
+    column: $table.targetTableName,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get recordId => $composableBuilder(
+    column: $table.recordId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get farmId => $composableBuilder(
+    column: $table.farmId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get deletedAt => $composableBuilder(
+    column: $table.deletedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$PendingDeletionsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $PendingDeletionsTable> {
+  $$PendingDeletionsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get targetTableName => $composableBuilder(
+    column: $table.targetTableName,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get recordId =>
+      $composableBuilder(column: $table.recordId, builder: (column) => column);
+
+  GeneratedColumn<int> get farmId =>
+      $composableBuilder(column: $table.farmId, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get deletedAt =>
+      $composableBuilder(column: $table.deletedAt, builder: (column) => column);
+}
+
+class $$PendingDeletionsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $PendingDeletionsTable,
+          PendingDeletion,
+          $$PendingDeletionsTableFilterComposer,
+          $$PendingDeletionsTableOrderingComposer,
+          $$PendingDeletionsTableAnnotationComposer,
+          $$PendingDeletionsTableCreateCompanionBuilder,
+          $$PendingDeletionsTableUpdateCompanionBuilder,
+          (
+            PendingDeletion,
+            BaseReferences<
+              _$AppDatabase,
+              $PendingDeletionsTable,
+              PendingDeletion
+            >,
+          ),
+          PendingDeletion,
+          PrefetchHooks Function()
+        > {
+  $$PendingDeletionsTableTableManager(
+    _$AppDatabase db,
+    $PendingDeletionsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$PendingDeletionsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$PendingDeletionsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$PendingDeletionsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String> targetTableName = const Value.absent(),
+                Value<String> recordId = const Value.absent(),
+                Value<int> farmId = const Value.absent(),
+                Value<DateTime> deletedAt = const Value.absent(),
+              }) => PendingDeletionsCompanion(
+                id: id,
+                targetTableName: targetTableName,
+                recordId: recordId,
+                farmId: farmId,
+                deletedAt: deletedAt,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required String targetTableName,
+                required String recordId,
+                required int farmId,
+                Value<DateTime> deletedAt = const Value.absent(),
+              }) => PendingDeletionsCompanion.insert(
+                id: id,
+                targetTableName: targetTableName,
+                recordId: recordId,
+                farmId: farmId,
+                deletedAt: deletedAt,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$PendingDeletionsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $PendingDeletionsTable,
+      PendingDeletion,
+      $$PendingDeletionsTableFilterComposer,
+      $$PendingDeletionsTableOrderingComposer,
+      $$PendingDeletionsTableAnnotationComposer,
+      $$PendingDeletionsTableCreateCompanionBuilder,
+      $$PendingDeletionsTableUpdateCompanionBuilder,
+      (
+        PendingDeletion,
+        BaseReferences<_$AppDatabase, $PendingDeletionsTable, PendingDeletion>,
+      ),
+      PendingDeletion,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -15551,4 +16543,6 @@ class $AppDatabaseManager {
       $$MedicationSchedulesTableTableManager(_db, _db.medicationSchedules);
   $$SalesTableTableManager get sales =>
       $$SalesTableTableManager(_db, _db.sales);
+  $$PendingDeletionsTableTableManager get pendingDeletions =>
+      $$PendingDeletionsTableTableManager(_db, _db.pendingDeletions);
 }

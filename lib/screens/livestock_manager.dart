@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../data/local_db.dart';
+import '../data/sync_engine.dart';
 import '../widgets/register_unit_dialog.dart';
 import '../widgets/batch_actions_dialogs.dart';
 import 'batch_details_screen.dart';
@@ -264,7 +265,7 @@ class _LivestockManagerState extends State<LivestockManager> {
                             _col('UNIT NAME / IDENTITY'),
                             _col('TYPE & SPECIES'),
                             _col('WORKER STAMPS'),
-                            _col('QUANTITY'),
+                            _col('STOCK (START / NOW)'),
                             _col('ARRIVAL DATE'),
                             _col('STATUS'),
                             _col('ACTIONS'),
@@ -331,7 +332,6 @@ class _LivestockManagerState extends State<LivestockManager> {
     final typeLabel = _getBatchTypeLabel(batch.type);
     final isLayer = batch.type.toUpperCase().contains('LAYER');
     final breed = batch.breedType ?? 'Other';
-    final benchmark = batch.breedType?.toUpperCase() ?? 'OTHER';
 
     return DataRow(
       cells: [
@@ -378,16 +378,25 @@ class _LivestockManagerState extends State<LivestockManager> {
             ],
           ),
         ),
-        // Quantity
         DataCell(
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(
-                NumberFormat('#,###').format(batch.currentCount),
-                style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 14, color: Color(0xFF1E293B)),
+              Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '${NumberFormat('#,###').format(batch.initialCount)} START',
+                    style: TextStyle(color: cs.onSurfaceVariant.withValues(alpha: 0.5), fontSize: 9, fontWeight: FontWeight.bold),
+                  ),
+                  Text(
+                    '${NumberFormat('#,###').format(batch.currentCount)} NOW',
+                    style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 13, color: Color(0xFF1E293B)),
+                  ),
+                ],
               ),
-              const SizedBox(width: 4),
+              const SizedBox(width: 8),
               Text(
                 isLayer ? 'layers' : 'broilers',
                 style: TextStyle(color: cs.onSurfaceVariant.withValues(alpha: 0.6), fontSize: 10, fontWeight: FontWeight.w600),
@@ -535,7 +544,23 @@ class _LivestockManagerState extends State<LivestockManager> {
     );
 
     if (confirmed == true) {
+      if (batch.synced) {
+        await db.into(db.pendingDeletions).insert(
+          PendingDeletionsCompanion.insert(
+            targetTableName: 'batches',
+            recordId: batch.id.toString(),
+            farmId: batch.farmId,
+          ),
+        );
+      }
+      
       await (db.delete(db.batches)..where((t) => t.id.equals(batch.id))).go();
+      
+      // Trigger sync in background
+      if (mounted) {
+        context.read<SyncEngine>().performSync();
+      }
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text('${batch.batchName} deleted'),

@@ -69,8 +69,9 @@ class _OperationLogScreenState extends State<OperationLogScreen> {
                           stream: (db.select(db.batches)..where((t) => t.status.equals('active'))).watch(),
                           builder: (context, snapshot) {
                             final batches = snapshot.data ?? [];
+                            final validBatch = batches.any((b) => b.id == _selectedBatchId);
                             return DropdownButtonFormField<int>(
-                              initialValue: _selectedBatchId,
+                              initialValue: validBatch ? _selectedBatchId : null,
                               hint: Text('Choose an active batch', style: TextStyle(color: cs.onSurfaceVariant, fontSize: 14)),
                               dropdownColor: Colors.white,
                               alignment: AlignmentDirectional.bottomStart,
@@ -100,8 +101,9 @@ class _OperationLogScreenState extends State<OperationLogScreen> {
                                       stream: db.select(db.feedTypes).watch(),
                                       builder: (context, snapshot) {
                                         final types = snapshot.data ?? [];
+                                        final validType = types.any((t) => t.id == _selectedFeedTypeId);
                                         return DropdownButtonFormField<int>(
-                                          initialValue: _selectedFeedTypeId,
+                                          initialValue: validType ? _selectedFeedTypeId : null,
                                           hint: const Text('Select Feed', style: TextStyle(fontSize: 14)),
                                           dropdownColor: Colors.white,
                                           alignment: AlignmentDirectional.bottomStart,
@@ -129,8 +131,9 @@ class _OperationLogScreenState extends State<OperationLogScreen> {
                                       stream: db.select(db.feedFormulations).watch(),
                                       builder: (context, snapshot) {
                                         final forms = snapshot.data ?? [];
+                                        final validForm = forms.any((f) => f.id == _selectedFormulationId);
                                         return DropdownButtonFormField<int>(
-                                          initialValue: _selectedFormulationId,
+                                          initialValue: validForm ? _selectedFormulationId : null,
                                           hint: const Text('Select Formula', style: TextStyle(fontSize: 14)),
                                           dropdownColor: Colors.white,
                                           alignment: AlignmentDirectional.bottomStart,

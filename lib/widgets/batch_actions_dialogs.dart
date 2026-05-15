@@ -398,7 +398,8 @@ class EditBatchDialog extends StatefulWidget {
 
 class _EditBatchDialogState extends State<EditBatchDialog> {
   late TextEditingController _nameController;
-  late TextEditingController _countController;
+  late TextEditingController _initialCountController;
+  late TextEditingController _currentCountController;
   late TextEditingController _breedController;
   late String _status;
   late String _type;
@@ -411,7 +412,8 @@ class _EditBatchDialogState extends State<EditBatchDialog> {
   void initState() {
     super.initState();
     _nameController = TextEditingController(text: widget.batch.batchName);
-    _countController = TextEditingController(text: widget.batch.currentCount.toString());
+    _initialCountController = TextEditingController(text: widget.batch.initialCount.toString());
+    _currentCountController = TextEditingController(text: widget.batch.currentCount.toString());
     _breedController = TextEditingController(text: widget.batch.breedType ?? '');
     _selectedBenchmark = widget.batch.growthTarget ?? 'Default (From Breed)';
     _status = widget.batch.status;
@@ -445,20 +447,35 @@ class _EditBatchDialogState extends State<EditBatchDialog> {
                   children: [
                     Expanded(
                       child: TextFormField(
-                        controller: _countController,
+                        controller: _initialCountController,
                         keyboardType: TextInputType.number,
                         inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                         style: const TextStyle(color: Colors.white),
-                        decoration: _inputDecoration('Current Count', Icons.numbers),
+                        decoration: _inputDecoration('Arrival Quantity', Icons.add_circle_outline),
                         validator: (v) => (v == null || v.isEmpty) ? 'Required' : null,
+                        onChanged: (v) {
+                          // Automatically update current count based on the difference
+                          final newInitial = int.tryParse(v) ?? 0;
+                          final diff = newInitial - widget.batch.initialCount;
+                          _currentCountController.text = (widget.batch.currentCount + diff).toString();
+                        },
                       ),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
-                      child: _buildDatePicker(context),
+                      child: TextFormField(
+                        controller: _currentCountController,
+                        keyboardType: TextInputType.number,
+                        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                        style: const TextStyle(color: Colors.white),
+                        decoration: _inputDecoration('Current Stock', Icons.inventory_2_outlined),
+                        validator: (v) => (v == null || v.isEmpty) ? 'Required' : null,
+                      ),
                     ),
                   ],
                 ),
+                const SizedBox(height: 16),
+                _buildDatePicker(context),
                 const SizedBox(height: 16),
                 _buildHouseDropdown(context),
                 const SizedBox(height: 16),
@@ -607,7 +624,8 @@ class _EditBatchDialogState extends State<EditBatchDialog> {
       await (db.update(db.batches)..where((t) => t.id.equals(widget.batch.id))).write(
         BatchesCompanion(
           batchName: Value(_nameController.text),
-          currentCount: Value(int.parse(_countController.text)),
+          initialCount: Value(int.parse(_initialCountController.text)),
+          currentCount: Value(int.parse(_currentCountController.text)),
           status: Value(_status),
           type: Value(_type),
           arrivalDate: Value(_arrivalDate),

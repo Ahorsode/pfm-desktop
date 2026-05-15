@@ -77,7 +77,6 @@ class _MainScaffoldState extends State<MainScaffold> {
         builder: (context, constraints) {
           // Breakpoints for Desktop Responsiveness
           final bool isNarrow = constraints.maxWidth < 1000;
-          final bool isMini = constraints.maxWidth < 850;
           
           // Auto-collapse sidebar on narrow screens
           final bool effectiveCollapsed = _isCollapsed || isNarrow;
