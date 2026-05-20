@@ -195,7 +195,6 @@ class _BatchDetailsScreenState extends State<BatchDetailsScreen> {
   Widget _divider() => Container(width: 1, height: 40, color: Colors.white12);
 
   Widget _buildActionButtons() {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: Row(
@@ -238,7 +237,7 @@ class _BatchDetailsScreenState extends State<BatchDetailsScreen> {
               Text(
                 label,
                 style: TextStyle(
-                  color: isDark ? Colors.white : color.withOpacity(0.9),
+                  color: isDark ? Colors.white : color.withValues(alpha: 0.9),
                   fontWeight: FontWeight.bold,
                   fontSize: 13,
                 ),

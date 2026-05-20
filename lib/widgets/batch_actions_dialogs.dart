@@ -19,11 +19,23 @@ class _MortalityDialogState extends State<MortalityDialog> {
   final _countController = TextEditingController();
   final _reasonController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
+  String _selectedTab = 'mortality'; // 'mortality' or 'isolation'
+  House? _selectedHouse;
+
+  @override
+  void dispose() {
+    _countController.dispose();
+    _reasonController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+    final db = context.watch<AppDatabase>();
+    final isIsolation = _selectedTab == 'isolation';
+    final activeColor = isIsolation ? const Color(0xFFF59E0B) : const Color(0xFFEF4444);
 
     return AlertDialog(
       backgroundColor: isDark ? const Color(0xFF121417) : Colors.white,
@@ -33,10 +45,22 @@ class _MortalityDialogState extends State<MortalityDialog> {
       ),
       title: Row(
         children: [
-          const Icon(Icons.coronavirus_outlined, color: Color(0xFFEF4444), size: 28),
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 300),
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: activeColor.withValues(alpha: 0.1),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              isIsolation ? Icons.health_and_safety_outlined : Icons.coronavirus_outlined, 
+              color: activeColor, 
+              size: 26,
+            ),
+          ),
           const SizedBox(width: 16),
           Text(
-            'Record Mortality', 
+            isIsolation ? 'Isolate & Quarantine' : 'Record Mortality', 
             style: TextStyle(
               color: isDark ? Colors.white : const Color(0xFF1E293B), 
               fontWeight: FontWeight.w900,
@@ -46,58 +70,247 @@ class _MortalityDialogState extends State<MortalityDialog> {
           ),
         ],
       ),
-      content: Form(
-        key: _formKey,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: const Color(0xFFEF4444).withValues(alpha: 0.05),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.info_outline_rounded, size: 16, color: Color(0xFFEF4444)),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'Recording mortality for ${widget.batch.batchName}',
-                      style: const TextStyle(
-                        color: Color(0xFFEF4444), 
-                        fontSize: 12, 
-                        fontWeight: FontWeight.w600
+      content: SizedBox(
+        width: 480,
+        child: Form(
+          key: _formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // 1. Sliding Segmented Control / Tab Selector
+              Container(
+                padding: const EdgeInsets.all(4),
+                decoration: BoxDecoration(
+                  color: isDark ? const Color(0xFF23262B) : const Color(0xFFF1F5F9),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: () {
+                          if (_selectedTab != 'mortality') {
+                            setState(() {
+                              _selectedTab = 'mortality';
+                              _countController.clear();
+                              _reasonController.clear();
+                            });
+                          }
+                        },
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 250),
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          decoration: BoxDecoration(
+                            color: _selectedTab == 'mortality'
+                                ? (isDark ? const Color(0xFFEF4444).withValues(alpha: 0.15) : Colors.white)
+                                : Colors.transparent,
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: _selectedTab == 'mortality'
+                                  ? const Color(0xFFEF4444).withValues(alpha: 0.3)
+                                  : Colors.transparent,
+                            ),
+                            boxShadow: _selectedTab == 'mortality' && !isDark
+                                ? [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 4, offset: const Offset(0, 2))]
+                                : null,
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.coronavirus_outlined,
+                                size: 16,
+                                color: _selectedTab == 'mortality' ? const Color(0xFFEF4444) : (isDark ? Colors.white38 : Colors.black38),
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                'MORTALITY',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: 0.5,
+                                  color: _selectedTab == 'mortality' ? const Color(0xFFEF4444) : (isDark ? Colors.white60 : Colors.black54),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
                     ),
-                  ),
-                ],
+                    const SizedBox(width: 4),
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: () {
+                          if (_selectedTab != 'isolation') {
+                            setState(() {
+                              _selectedTab = 'isolation';
+                              _countController.clear();
+                              _reasonController.clear();
+                              _selectedHouse = null;
+                            });
+                          }
+                        },
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 250),
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          decoration: BoxDecoration(
+                            color: _selectedTab == 'isolation'
+                                ? (isDark ? const Color(0xFFF59E0B).withValues(alpha: 0.15) : Colors.white)
+                                : Colors.transparent,
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: _selectedTab == 'isolation'
+                                  ? const Color(0xFFF59E0B).withValues(alpha: 0.3)
+                                  : Colors.transparent,
+                            ),
+                            boxShadow: _selectedTab == 'isolation' && !isDark
+                                ? [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 4, offset: const Offset(0, 2))]
+                                : null,
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.health_and_safety_outlined,
+                                size: 16,
+                                color: _selectedTab == 'isolation' ? const Color(0xFFF59E0B) : (isDark ? Colors.white38 : Colors.black38),
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                'ISOLATE BIRDS',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: 0.5,
+                                  color: _selectedTab == 'isolation' ? const Color(0xFFF59E0B) : (isDark ? Colors.white60 : Colors.black54),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-            const SizedBox(height: 24),
-            TextFormField(
-              controller: _countController,
-              keyboardType: TextInputType.number,
-              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-              style: TextStyle(color: isDark ? Colors.white : const Color(0xFF1E293B), fontWeight: FontWeight.bold),
-              decoration: _inputDecoration(context, 'Number of Birds Lost', Icons.remove_circle_outline),
-              validator: (v) {
-                if (v == null || v.isEmpty) return 'Required';
-                final count = int.tryParse(v) ?? 0;
-                if (count <= 0) return 'Must be > 0';
-                if (count > widget.batch.currentCount) return 'Cannot exceed current count';
-                return null;
-              },
-            ),
-            const SizedBox(height: 20),
-            TextFormField(
-              controller: _reasonController,
-              maxLines: 2,
-              style: TextStyle(color: isDark ? Colors.white : const Color(0xFF1E293B)),
-              decoration: _inputDecoration(context, 'Reason (Optional)', Icons.notes),
-            ),
-          ],
+              const SizedBox(height: 24),
+
+              // 2. Information Pill
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: activeColor.withValues(alpha: 0.05),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: activeColor.withValues(alpha: 0.1)),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      isIsolation ? Icons.health_and_safety_outlined : Icons.info_outline_rounded,
+                      size: 16,
+                      color: activeColor,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        isIsolation 
+                            ? 'Isolating birds from ${widget.batch.batchName}. ${widget.batch.currentCount} active birds remaining.'
+                            : 'Recording mortality for ${widget.batch.batchName}. ${widget.batch.currentCount} active birds remaining.',
+                        style: TextStyle(
+                          color: activeColor, 
+                          fontSize: 12, 
+                          fontWeight: FontWeight.w600
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 24),
+
+              // 3. Number input field
+              TextFormField(
+                controller: _countController,
+                keyboardType: TextInputType.number,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                style: TextStyle(color: isDark ? Colors.white : const Color(0xFF1E293B), fontWeight: FontWeight.bold),
+                decoration: _inputDecoration(
+                  context, 
+                  isIsolation ? 'Number of Birds to Isolate' : 'Number of Birds Lost', 
+                  isIsolation ? Icons.health_and_safety_outlined : Icons.remove_circle_outline,
+                  isIsolation: isIsolation,
+                ),
+                validator: (v) {
+                  if (v == null || v.isEmpty) return 'Required';
+                  final count = int.tryParse(v) ?? 0;
+                  if (count <= 0) return 'Must be > 0';
+                  if (count > widget.batch.currentCount) return 'Cannot exceed current count';
+                  return null;
+                },
+              ),
+              const SizedBox(height: 20),
+
+              // 4. Dynamic Isolation House Selector (Only for Isolation mode)
+              if (isIsolation) ...[
+                StreamBuilder<List<House>>(
+                  stream: (db.select(db.houses)
+                        ..where((t) => t.isIsolation.equals(true) & t.farmId.equals(widget.batch.farmId)))
+                      .watch(),
+                  builder: (context, snapshot) {
+                    final houses = snapshot.data ?? [];
+                    return DropdownButtonFormField<House?>(
+                      // ignore: deprecated_member_use
+                      value: _selectedHouse,
+                      dropdownColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+                      style: TextStyle(color: isDark ? Colors.white : const Color(0xFF1E293B), fontSize: 14),
+                      decoration: _inputDecoration(
+                        context, 
+                        'Select Quarantine Bay / Room', 
+                        Icons.home_work_outlined,
+                        isIsolation: true,
+                      ),
+                      items: [
+                        const DropdownMenuItem<House?>(
+                          value: null,
+                          child: Row(
+                            children: [
+                              Icon(Icons.shield_outlined, size: 16, color: Colors.amber),
+                              SizedBox(width: 8),
+                              Text('General Quarantine Zone', style: TextStyle(fontWeight: FontWeight.bold)),
+                            ],
+                          ),
+                        ),
+                        ...houses.map((h) => DropdownMenuItem<House?>(
+                              value: h,
+                              child: Text('${h.name} (Capacity: ${h.capacity} birds)'),
+                            )),
+                      ],
+                      onChanged: (val) {
+                        setState(() {
+                          _selectedHouse = val;
+                        });
+                      },
+                    );
+                  },
+                ),
+                const SizedBox(height: 20),
+              ],
+
+              // 5. Notes / Reason field
+              TextFormField(
+                controller: _reasonController,
+                maxLines: 2,
+                style: TextStyle(color: isDark ? Colors.white : const Color(0xFF1E293B)),
+                decoration: _inputDecoration(
+                  context, 
+                  isIsolation ? 'Symptoms / Illness Notes' : 'Reason (Optional)', 
+                  Icons.notes,
+                  isIsolation: isIsolation,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
       actionsPadding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
@@ -121,27 +334,28 @@ class _MortalityDialogState extends State<MortalityDialog> {
         FilledButton(
           onPressed: _submit,
           style: FilledButton.styleFrom(
-            backgroundColor: const Color(0xFFEF4444),
+            backgroundColor: activeColor,
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             elevation: 0,
           ),
-          child: const Text(
-            'RECORD LOSS', 
-            style: TextStyle(fontWeight: FontWeight.w900, fontSize: 13, letterSpacing: 0.5)
+          child: Text(
+            isIsolation ? 'ISOLATE BIRDS' : 'RECORD LOSS', 
+            style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 13, letterSpacing: 0.5)
           ),
         ),
       ],
     );
   }
 
-  InputDecoration _inputDecoration(BuildContext context, String label, IconData icon) {
+  InputDecoration _inputDecoration(BuildContext context, String label, IconData icon, {bool isIsolation = false}) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+    final primaryColor = isIsolation ? const Color(0xFFF59E0B) : const Color(0xFFEF4444);
     
     return InputDecoration(
       labelText: label.toUpperCase(),
-      labelStyle: const TextStyle(color: Color(0xFFEF4444), fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 1),
+      labelStyle: TextStyle(color: primaryColor, fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 1),
       prefixIcon: Icon(icon, color: isDark ? Colors.white24 : Colors.black26, size: 20),
       fillColor: isDark ? const Color(0xFF23262B) : const Color(0xFFF8FAFC),
       filled: true,
@@ -155,7 +369,7 @@ class _MortalityDialogState extends State<MortalityDialog> {
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12), 
-        borderSide: const BorderSide(color: Color(0xFFEF4444), width: 2),
+        borderSide: BorderSide(color: primaryColor, width: 2),
       ),
     );
   }
@@ -165,34 +379,139 @@ class _MortalityDialogState extends State<MortalityDialog> {
     
     final count = int.parse(_countController.text);
     final db = context.read<AppDatabase>();
-    final farmId = await FarmUtils.getBoundFarmId();
-    
-    if (farmId == null) return;
+    final farmId = widget.batch.farmId;
+    final isIsolation = _selectedTab == 'isolation';
+
+    if (isIsolation && _selectedHouse != null) {
+      final targetRoomName = _selectedHouse!.name;
+      final targetCapacity = _selectedHouse!.capacity;
+
+      // Fetch active isolated batches and their isolation logs to calculate current occupancy
+      final activeBatches = await (db.select(db.batches)
+            ..where((t) => t.status.equals('active') & t.isolationCount.isBiggerThanValue(0)))
+          .get();
+      
+      int currentOccupancy = 0;
+      for (final b in activeBatches) {
+        final logs = await (db.select(db.mortalities)
+              ..where((t) => t.batchId.equals(b.id) & t.category.equals('ISOLATION'))
+              ..orderBy([(t) => OrderingTerm(expression: t.logDate, mode: OrderingMode.desc)])
+              ..limit(1))
+            .get();
+        
+        final room = logs.isNotEmpty 
+            ? (logs.first.subCategory ?? 'General Quarantine Zone')
+            : 'General Quarantine Zone';
+        
+        if (room == targetRoomName) {
+          currentOccupancy += b.isolationCount;
+        }
+      }
+
+      if (currentOccupancy + count > targetCapacity) {
+        if (mounted) {
+          final isDark = Theme.of(context).brightness == Brightness.dark;
+          showDialog(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              title: const Row(
+                children: [
+                  Icon(Icons.warning_amber_rounded, color: Colors.amber, size: 24),
+                  SizedBox(width: 8),
+                  Text('Capacity Exceeded', style: TextStyle(fontWeight: FontWeight.bold)),
+                ],
+              ),
+              content: Text(
+                'Cannot isolate birds in $targetRoomName.\n\n'
+                'Current Occupancy: $currentOccupancy / $targetCapacity birds.\n'
+                'Requested Isolation: $count birds.\n\n'
+                'This would exceed the maximum room capacity by ${(currentOccupancy + count) - targetCapacity} birds. Please select another bay or reduce the count.',
+                style: TextStyle(color: isDark ? Colors.white70 : Colors.black87),
+              ),
+              actions: [
+                FilledButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFFF59E0B),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                  child: const Text('OK', style: TextStyle(fontWeight: FontWeight.bold)),
+                ),
+              ],
+            ),
+          );
+        }
+        return;
+      }
+    }
 
     try {
       await db.transaction(() async {
-        // 1. Insert mortality record
-        await db.into(db.mortalities).insert(
-          MortalitiesCompanion.insert(
-            farmId: farmId,
-            batchId: widget.batch.id,
-            count: count,
-            logDate: DateTime.now(),
-            reason: Value(_reasonController.text),
-            synced: const Value(false),
-          ),
-        );
+        if (isIsolation) {
+          // 1. Insert isolation record under mortality table
+          await db.into(db.mortalities).insert(
+            MortalitiesCompanion.insert(
+              farmId: farmId,
+              batchId: widget.batch.id,
+              count: count,
+              logDate: DateTime.now(),
+              reason: Value(_reasonController.text.trim().isEmpty ? 'Quarantined for health monitoring' : _reasonController.text.trim()),
+              category: const Value('ISOLATION'),
+              subCategory: Value(_selectedHouse?.name ?? 'General Quarantine Zone'),
+              synced: const Value(false),
+            ),
+          );
 
-        // 2. Update batch count
-        await (db.update(db.batches)..where((t) => t.id.equals(widget.batch.id))).write(
-          BatchesCompanion(
-            currentCount: Value(widget.batch.currentCount - count),
-            synced: const Value(false),
-          ),
-        );
+          // 2. Update batch count (reduces current flock count, increments isolation flock count)
+          await (db.update(db.batches)..where((t) => t.id.equals(widget.batch.id))).write(
+            BatchesCompanion(
+              currentCount: Value(widget.batch.currentCount - count),
+              isolationCount: Value(widget.batch.isolationCount + count),
+              synced: const Value(false),
+            ),
+          );
+        } else {
+          // 1. Insert mortality record
+          await db.into(db.mortalities).insert(
+            MortalitiesCompanion.insert(
+              farmId: farmId,
+              batchId: widget.batch.id,
+              count: count,
+              logDate: DateTime.now(),
+              reason: Value(_reasonController.text.trim().isEmpty ? null : _reasonController.text.trim()),
+              category: const Value('MORTALITY'),
+              synced: const Value(false),
+            ),
+          );
+
+          // 2. Update batch count
+          await (db.update(db.batches)..where((t) => t.id.equals(widget.batch.id))).write(
+            BatchesCompanion(
+              currentCount: Value(widget.batch.currentCount - count),
+              synced: const Value(false),
+            ),
+          );
+        }
       });
       
-      if (mounted) Navigator.pop(context);
+      if (mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            backgroundColor: isIsolation ? const Color(0xFFF59E0B) : const Color(0xFFEF4444),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            content: Text(
+              isIsolation 
+                  ? 'Successfully quarantined $count birds to ${_selectedHouse?.name ?? "General Quarantine Zone"}'
+                  : 'Successfully recorded mortality log of $count birds.',
+              style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+            ),
+          ),
+        );
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));

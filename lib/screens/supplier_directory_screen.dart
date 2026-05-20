@@ -7,14 +7,14 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../data/local_db.dart';
 import '../data/sync_engine.dart';
 
-class CustomerDirectoryScreen extends StatefulWidget {
-  const CustomerDirectoryScreen({super.key});
+class SupplierDirectoryScreen extends StatefulWidget {
+  const SupplierDirectoryScreen({super.key});
 
   @override
-  State<CustomerDirectoryScreen> createState() => _CustomerDirectoryScreenState();
+  State<SupplierDirectoryScreen> createState() => _SupplierDirectoryScreenState();
 }
 
-class _CustomerDirectoryScreenState extends State<CustomerDirectoryScreen> {
+class _SupplierDirectoryScreenState extends State<SupplierDirectoryScreen> {
   final _searchController = TextEditingController();
   String _searchQuery = '';
   late AppDatabase db;
@@ -41,116 +41,126 @@ class _CustomerDirectoryScreenState extends State<CustomerDirectoryScreen> {
     return prefs.getInt('bound_farm_id') ?? 0;
   }
 
-  Future<void> _showCustomerDialog({Customer? customer}) async {
+  Future<void> _showSupplierDialog({Customer? supplier}) async {
     final farmId = await _getFarmId();
-    final nameCtrl = TextEditingController(text: customer?.name ?? '');
-    final phoneCtrl = TextEditingController(text: customer?.phone ?? '');
-    final emailCtrl = TextEditingController(text: customer?.email ?? '');
-    final addressCtrl = TextEditingController(text: customer?.address ?? '');
-    final balanceCtrl = TextEditingController(text: customer?.balanceOwed.toString() ?? '0');
+    final nameCtrl = TextEditingController(text: supplier?.name ?? '');
+    final phoneCtrl = TextEditingController(text: supplier?.phone ?? '');
+    final emailCtrl = TextEditingController(text: supplier?.email ?? '');
+    final addressCtrl = TextEditingController(text: supplier?.address ?? '');
+    final balanceCtrl = TextEditingController(text: supplier?.balanceOwed.toString() ?? '0');
+    final supplyItemsCtrl = TextEditingController(text: supplier?.supplyItems ?? '');
+    final contactPersonCtrl = TextEditingController(text: supplier?.contactPerson ?? '');
     final formKey = GlobalKey<FormState>();
 
     if (!mounted) return;
 
     await showDialog(
       context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (context, setDialogState) => Dialog(
-          backgroundColor: Colors.transparent,
-          child: Container(
-            width: 600,
-            decoration: BoxDecoration(
-              color: Theme.of(context).cardColor,
-              borderRadius: BorderRadius.circular(28),
-              border: Border.all(color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.1)),
-              boxShadow: [
-                BoxShadow(color: Colors.black.withValues(alpha: 0.3), blurRadius: 40, offset: const Offset(0, 20)),
-              ],
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(28),
-              child: Form(
-                key: formKey,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    _buildDialogHeader(
-                      icon: customer == null ? Icons.person_add_rounded : Icons.edit_note_rounded,
-                      title: customer == null ? 'ADD NEW CUSTOMER' : 'EDIT CUSTOMER INFO',
-                      subtitle: 'RELATIONSHIP MANAGEMENT',
-                      color: const Color(0xFF10B981),
-                    ),
-                    Flexible(
-                      child: SingleChildScrollView(
-                        padding: const EdgeInsets.all(32),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            _buildDialogInputField('Customer Name', 'e.g. John Doe', nameCtrl, Icons.person_rounded, required: true),
-                            const SizedBox(height: 16),
-                            Row(
-                              children: [
-                                Expanded(child: _buildDialogInputField('Phone Number', '+233...', phoneCtrl, Icons.phone_rounded, required: true)),
-                                const SizedBox(width: 16),
-                                Expanded(child: _buildDialogInputField('Receivable Balance (GH₵)', '0.00', balanceCtrl, Icons.payments_rounded, isNumber: true)),
-                              ],
-                            ),
-                            const SizedBox(height: 16),
-                            _buildDialogInputField('Email Address', 'optional@example.com', emailCtrl, Icons.email_rounded),
-                            const SizedBox(height: 16),
-                            _buildDialogInputField('Address', 'Physical location...', addressCtrl, Icons.location_on_rounded),
-                            const SizedBox(height: 40),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: TextButton(
-                                    onPressed: () => Navigator.pop(ctx),
-                                    child: const Text('CANCEL', style: TextStyle(color: Color(0xFF94A3B8), fontWeight: FontWeight.w800, letterSpacing: 1)),
-                                  ),
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.transparent,
+        child: Container(
+          width: 600,
+          decoration: BoxDecoration(
+            color: Theme.of(context).cardColor,
+            borderRadius: BorderRadius.circular(28),
+            border: Border.all(color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.1)),
+            boxShadow: [
+              BoxShadow(color: Colors.black.withValues(alpha: 0.3), blurRadius: 40, offset: const Offset(0, 20)),
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(28),
+            child: Form(
+              key: formKey,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _buildDialogHeader(
+                    icon: supplier == null ? Icons.local_shipping_rounded : Icons.edit_note_rounded,
+                    title: supplier == null ? 'ADD NEW SUPPLIER' : 'EDIT SUPPLIER INFO',
+                    subtitle: 'SUPPLIER RELATIONSHIP MANAGEMENT',
+                    color: const Color(0xFF6366F1),
+                  ),
+                  Flexible(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.all(32),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildDialogInputField('Supplier/Company Name', 'e.g. Agro Feeds Ltd', nameCtrl, Icons.business_rounded, required: true),
+                          const SizedBox(height: 16),
+                          Row(
+                            children: [
+                              Expanded(child: _buildDialogInputField('Primary Representative', 'e.g. John Doe', contactPersonCtrl, Icons.person_rounded, required: true)),
+                              const SizedBox(width: 16),
+                              Expanded(child: _buildDialogInputField('Phone Number', '+233...', phoneCtrl, Icons.phone_rounded, required: true)),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+                          Row(
+                            children: [
+                              Expanded(child: _buildDialogInputField('Items Supplied', 'e.g. Feed, Meds, Chicks', supplyItemsCtrl, Icons.inventory_2_rounded, required: true)),
+                              const SizedBox(width: 16),
+                              Expanded(child: _buildDialogInputField('Debt Payable (GH₵)', '0.00', balanceCtrl, Icons.payments_rounded, isNumber: true)),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+                          _buildDialogInputField('Email Address', 'optional@company.com', emailCtrl, Icons.email_rounded),
+                          const SizedBox(height: 16),
+                          _buildDialogInputField('Company Address', 'Physical location...', addressCtrl, Icons.location_on_rounded),
+                          const SizedBox(height: 40),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: TextButton(
+                                  onPressed: () => Navigator.pop(ctx),
+                                  child: const Text('CANCEL', style: TextStyle(color: Color(0xFF94A3B8), fontWeight: FontWeight.w800, letterSpacing: 1)),
                                 ),
-                                const SizedBox(width: 20),
-                                Expanded(
-                                  flex: 2,
-                                  child: FilledButton(
-                                    onPressed: () async {
-                                      if (!formKey.currentState!.validate()) return;
-                                      final companion = CustomersCompanion(
-                                        farmId: Value(farmId),
-                                        name: Value(nameCtrl.text),
-                                        phone: Value(phoneCtrl.text.isEmpty ? null : phoneCtrl.text),
-                                        email: Value(emailCtrl.text.isEmpty ? null : emailCtrl.text),
-                                        address: Value(addressCtrl.text.isEmpty ? null : addressCtrl.text),
-                                        customerType: const Value('CUSTOMER'),
-                                        balanceOwed: Value(double.tryParse(balanceCtrl.text) ?? 0.0),
-                                        synced: const Value(false),
-                                        updatedAt: Value(DateTime.now()),
-                                      );
-                                      final syncEngine = Provider.of<SyncEngine>(context, listen: false);
-                                      if (customer == null) {
-                                        await db.into(db.customers).insert(companion);
-                                      } else {
-                                        await (db.update(db.customers)..where((t) => t.id.equals(customer.id))).write(companion);
-                                      }
-                                      if (ctx.mounted) Navigator.pop(ctx);
-                                      setState(() {});
-                                      syncEngine.syncNow();
-                                    },
-                                    style: FilledButton.styleFrom(
-                                      backgroundColor: const Color(0xFF10B981),
-                                      padding: const EdgeInsets.symmetric(vertical: 20),
-                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                    ),
-                                    child: Text(customer == null ? 'ADD CUSTOMER' : 'SAVE CHANGES', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 14)),
+                              ),
+                              const SizedBox(width: 20),
+                              Expanded(
+                                flex: 2,
+                                child: FilledButton(
+                                  onPressed: () async {
+                                    if (!formKey.currentState!.validate()) return;
+                                    final companion = CustomersCompanion(
+                                      farmId: Value(farmId),
+                                      name: Value(nameCtrl.text),
+                                      phone: Value(phoneCtrl.text.isEmpty ? null : phoneCtrl.text),
+                                      email: Value(emailCtrl.text.isEmpty ? null : emailCtrl.text),
+                                      address: Value(addressCtrl.text.isEmpty ? null : addressCtrl.text),
+                                      customerType: const Value('SUPPLIER'),
+                                      supplyItems: Value(supplyItemsCtrl.text.isEmpty ? null : supplyItemsCtrl.text),
+                                      contactPerson: Value(contactPersonCtrl.text.isEmpty ? null : contactPersonCtrl.text),
+                                      balanceOwed: Value(double.tryParse(balanceCtrl.text) ?? 0.0),
+                                      synced: const Value(false),
+                                      updatedAt: Value(DateTime.now()),
+                                    );
+                                    final syncEngine = Provider.of<SyncEngine>(context, listen: false);
+                                    if (supplier == null) {
+                                      await db.into(db.customers).insert(companion);
+                                    } else {
+                                      await (db.update(db.customers)..where((t) => t.id.equals(supplier.id))).write(companion);
+                                    }
+                                    if (ctx.mounted) Navigator.pop(ctx);
+                                    setState(() {});
+                                    syncEngine.syncNow();
+                                  },
+                                  style: FilledButton.styleFrom(
+                                    backgroundColor: const Color(0xFF6366F1),
+                                    padding: const EdgeInsets.symmetric(vertical: 20),
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                                   ),
+                                  child: Text(supplier == null ? 'ADD SUPPLIER' : 'SAVE CHANGES', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 14)),
                                 ),
-                              ],
-                            ),
-                          ],
-                        ),
+                              ),
+                            ],
+                          ),
+                        ],
                       ),
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
           ),
@@ -191,7 +201,7 @@ class _CustomerDirectoryScreenState extends State<CustomerDirectoryScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label.toUpperCase(), style: const TextStyle(color: Color(0xFF10B981), fontWeight: FontWeight.w900, fontSize: 10, letterSpacing: 1)),
+        Text(label.toUpperCase(), style: const TextStyle(color: Color(0xFF6366F1), fontWeight: FontWeight.w900, fontSize: 10, letterSpacing: 1)),
         const SizedBox(height: 10),
         TextFormField(
           controller: controller,
@@ -207,7 +217,7 @@ class _CustomerDirectoryScreenState extends State<CustomerDirectoryScreen> {
             fillColor: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
             border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.1))),
             enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.1))),
-            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFF10B981), width: 1.5)),
+            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFF6366F1), width: 1.5)),
             contentPadding: const EdgeInsets.all(18),
           ),
         ),
@@ -215,14 +225,14 @@ class _CustomerDirectoryScreenState extends State<CustomerDirectoryScreen> {
     );
   }
 
-  Future<void> _deleteCustomer(Customer customer) async {
+  Future<void> _deleteSupplier(Customer supplier) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: Theme.of(context).cardColor,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Text('Delete Customer', style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.w900)),
-        content: Text('Are you sure you want to delete "${customer.name}"?', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
+        title: Text('Delete Supplier', style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.w900)),
+        content: Text('Are you sure you want to delete "${supplier.name}"?', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text('CANCEL', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant))),
           FilledButton(
@@ -234,7 +244,7 @@ class _CustomerDirectoryScreenState extends State<CustomerDirectoryScreen> {
       ),
     );
     if (confirmed == true) {
-      await (db.delete(db.customers)..where((t) => t.id.equals(customer.id))).go();
+      await (db.delete(db.customers)..where((t) => t.id.equals(supplier.id))).go();
       setState(() {});
     }
   }
@@ -259,16 +269,16 @@ class _CustomerDirectoryScreenState extends State<CustomerDirectoryScreen> {
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Customers', style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900, color: Theme.of(context).colorScheme.onSurface)),
+                      Text('Suppliers', style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900, color: Theme.of(context).colorScheme.onSurface)),
                       const SizedBox(height: 12),
                       SizedBox(
                         width: double.infinity,
                         child: FilledButton.icon(
-                          onPressed: () => _showCustomerDialog(),
+                          onPressed: () => _showSupplierDialog(),
                           icon: const Icon(Icons.add_rounded, size: 20),
-                          label: const Text('ADD CUSTOMER', style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 1)),
+                          label: const Text('ADD SUPPLIER', style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 1)),
                           style: FilledButton.styleFrom(
-                            backgroundColor: const Color(0xFF10B981),
+                            backgroundColor: const Color(0xFF6366F1),
                             padding: const EdgeInsets.symmetric(vertical: 20),
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                           ),
@@ -283,21 +293,21 @@ class _CustomerDirectoryScreenState extends State<CustomerDirectoryScreen> {
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('Customers', style: TextStyle(fontSize: 32, fontWeight: FontWeight.w900, color: Theme.of(context).colorScheme.onSurface, letterSpacing: -0.5)),
+                          Text('Suppliers', style: TextStyle(fontSize: 32, fontWeight: FontWeight.w900, color: Theme.of(context).colorScheme.onSurface, letterSpacing: -0.5)),
                           const SizedBox(height: 4),
-                          Text('Manage your farm customers and receivables', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 14, fontWeight: FontWeight.w500)),
+                          Text('Manage your farm suppliers and supply logs', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 14, fontWeight: FontWeight.w500)),
                         ],
                       ),
                       FilledButton.icon(
-                        onPressed: () => _showCustomerDialog(),
-                        icon: const Icon(Icons.add_rounded, size: 20),
-                        label: const Text('ADD CUSTOMER', style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 1)),
+                        onPressed: () => _showSupplierDialog(),
+                        icon: const Icon(Icons.local_shipping_rounded, size: 20),
+                        label: const Text('ADD SUPPLIER', style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 1)),
                         style: FilledButton.styleFrom(
-                          backgroundColor: const Color(0xFF10B981),
+                          backgroundColor: const Color(0xFF6366F1),
                           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                           elevation: 8,
-                          shadowColor: const Color(0xFF10B981).withValues(alpha: 0.4),
+                          shadowColor: const Color(0xFF6366F1).withValues(alpha: 0.4),
                         ),
                       ),
                     ],
@@ -312,7 +322,7 @@ class _CustomerDirectoryScreenState extends State<CustomerDirectoryScreen> {
                         controller: _searchController,
                         style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
                         decoration: InputDecoration(
-                          hintText: 'Search customers by name, phone or email...',
+                          hintText: 'Search suppliers by company name, contact person or items...',
                           prefixIcon: const Icon(Icons.search_rounded),
                           filled: true,
                           fillColor: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
@@ -331,18 +341,18 @@ class _CustomerDirectoryScreenState extends State<CustomerDirectoryScreen> {
                     stream: db.select(db.customers).watch(),
                     builder: (context, snapshot) {
                       if (snapshot.connectionState == ConnectionState.waiting) {
-                        return const Center(child: CircularProgressIndicator(color: Color(0xFF3B82F6)));
+                        return const Center(child: CircularProgressIndicator(color: Color(0xFF6366F1)));
                       }
                       final all = snapshot.data ?? [];
                       
-                      final categoryFiltered = all.where((c) => c.customerType == 'CUSTOMER').toList();
+                      final categoryFiltered = all.where((c) => c.customerType == 'SUPPLIER').toList();
 
                       final filtered = categoryFiltered.where((c) {
                         final q = _searchQuery.toLowerCase();
                         return q.isEmpty ||
                             c.name.toLowerCase().contains(q) ||
-                            (c.phone?.toLowerCase().contains(q) ?? false) ||
-                            (c.email?.toLowerCase().contains(q) ?? false);
+                            (c.supplyItems?.toLowerCase().contains(q) ?? false) ||
+                            (c.contactPerson?.toLowerCase().contains(q) ?? false);
                       }).toList();
 
                       if (filtered.isEmpty) {
@@ -351,10 +361,10 @@ class _CustomerDirectoryScreenState extends State<CustomerDirectoryScreen> {
                             Container(
                               padding: const EdgeInsets.all(24),
                               decoration: BoxDecoration(color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.5), shape: BoxShape.circle),
-                              child: Icon(Icons.person_search_rounded, size: 48, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                              child: Icon(Icons.local_shipping_rounded, size: 48, color: Theme.of(context).colorScheme.onSurfaceVariant),
                             ),
                             const SizedBox(height: 20),
-                            Text(_searchQuery.isEmpty ? 'No customers found.' : 'No results for "$_searchQuery".',
+                            Text(_searchQuery.isEmpty ? 'No suppliers found.' : 'No results for "$_searchQuery".',
                                 style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 16, fontWeight: FontWeight.w600)),
                           ]),
                         );
@@ -383,12 +393,12 @@ class _CustomerDirectoryScreenState extends State<CustomerDirectoryScreen> {
                               spacing: 32,
                               runSpacing: 16,
                               children: [
-                                _summaryChip(Icons.people_rounded, 'TOTAL CUSTOMERS', '${filtered.length}', Colors.blue),
+                                _summaryChip(Icons.business_rounded, 'TOTAL SUPPLIERS', '${filtered.length}', Colors.indigoAccent),
                                 _summaryChip(
                                   Icons.account_balance_wallet_rounded,
-                                  'TOTAL TO COLLECT',
+                                  'TOTAL TO PAY',
                                   currency.format(totalBalance),
-                                  Colors.orange,
+                                  Colors.redAccent,
                                 ),
                               ],
                             ),
@@ -448,31 +458,37 @@ class _CustomerDirectoryScreenState extends State<CustomerDirectoryScreen> {
                                               headingRowColor: WidgetStateProperty.all(Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.3)),
                                               columnSpacing: 40,
                                               columns: [
-                                                DataColumn(label: Text('CONTACT NAME', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontWeight: FontWeight.w900, fontSize: 11, letterSpacing: 1))),
+                                                DataColumn(label: Text('COMPANY NAME', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontWeight: FontWeight.w900, fontSize: 11, letterSpacing: 1))),
+                                                DataColumn(label: Text('SUPPLY ITEMS', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontWeight: FontWeight.w900, fontSize: 11, letterSpacing: 1))),
+                                                DataColumn(label: Text('CONTACT PERSON', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontWeight: FontWeight.w900, fontSize: 11, letterSpacing: 1))),
                                                 DataColumn(label: Text('PHONE', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontWeight: FontWeight.w900, fontSize: 11, letterSpacing: 1))),
-                                                DataColumn(label: Text('EMAIL', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontWeight: FontWeight.w900, fontSize: 11, letterSpacing: 1))),
-                                                DataColumn(label: Text('ADDRESS', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontWeight: FontWeight.w900, fontSize: 11, letterSpacing: 1))),
-                                                DataColumn(label: Text('RECEIVABLE', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontWeight: FontWeight.w900, fontSize: 11, letterSpacing: 1))),
+                                                DataColumn(label: Text('DEBT / PAYABLE', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontWeight: FontWeight.w900, fontSize: 11, letterSpacing: 1))),
                                                 DataColumn(label: Text('ACTIONS', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontWeight: FontWeight.w900, fontSize: 11, letterSpacing: 1))),
                                               ],
                                               rows: filtered.map((c) => DataRow(cells: [
                                                 DataCell(Row(children: [
                                                   CircleAvatar(
                                                     radius: 14,
-                                                    backgroundColor: const Color(0xFF10B981).withValues(alpha: 0.15),
-                                                    child: Text(c.name[0].toUpperCase(), style: const TextStyle(color: Color(0xFF10B981), fontWeight: FontWeight.w900, fontSize: 11)),
+                                                    backgroundColor: const Color(0xFF6366F1).withValues(alpha: 0.15),
+                                                    child: Text(c.name[0].toUpperCase(), style: const TextStyle(color: Color(0xFF6366F1), fontWeight: FontWeight.w900, fontSize: 11)),
                                                   ),
                                                   const SizedBox(width: 14),
                                                   Text(c.name, style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.w700)),
                                                 ])),
+                                                DataCell(
+                                                  Container(
+                                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                                    decoration: BoxDecoration(color: Colors.blue.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(6)),
+                                                    child: Text(c.supplyItems ?? '—', style: const TextStyle(color: Colors.blue, fontWeight: FontWeight.w700, fontSize: 12)),
+                                                  ),
+                                                ),
+                                                DataCell(Text(c.contactPerson ?? '—', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontWeight: FontWeight.w500))),
                                                 DataCell(Text(c.phone ?? '—', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontWeight: FontWeight.w500))),
-                                                DataCell(Text(c.email ?? '—', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 13))),
-                                                DataCell(Text(c.address ?? '—', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 13))),
                                                 DataCell(Text(
                                                   currency.format(c.balanceOwed),
                                                   style: TextStyle(
                                                     fontWeight: FontWeight.w800,
-                                                    color: c.balanceOwed > 0 ? Colors.orangeAccent : const Color(0xFF10B981),
+                                                    color: c.balanceOwed > 0 ? Colors.redAccent : const Color(0xFF6366F1),
                                                   ),
                                                 )),
                                                 DataCell(Row(
@@ -481,13 +497,13 @@ class _CustomerDirectoryScreenState extends State<CustomerDirectoryScreen> {
                                                     if (c.balanceOwed > 0)
                                                       IconButton(
                                                         icon: const Icon(Icons.account_balance_wallet_rounded, size: 18), 
-                                                        color: Colors.orangeAccent, 
+                                                        color: Colors.redAccent, 
                                                         onPressed: () => _showSettleDialog(c), 
-                                                        tooltip: 'Collect Balance'
+                                                        tooltip: 'Settle Debt'
                                                       ),
-                                                    IconButton(icon: const Icon(Icons.edit_rounded, size: 18), color: const Color(0xFF3B82F6), onPressed: () => _showCustomerDialog(customer: c), tooltip: 'Edit'),
+                                                    IconButton(icon: const Icon(Icons.edit_rounded, size: 18), color: const Color(0xFF6366F1), onPressed: () => _showSupplierDialog(supplier: c), tooltip: 'Edit'),
                                                     const SizedBox(width: 8),
-                                                    IconButton(icon: const Icon(Icons.delete_outline_rounded, size: 18), color: Colors.redAccent.withValues(alpha: 0.7), onPressed: () => _deleteCustomer(c), tooltip: 'Delete'),
+                                                    IconButton(icon: const Icon(Icons.delete_outline_rounded, size: 18), color: Colors.redAccent.withValues(alpha: 0.7), onPressed: () => _deleteSupplier(c), tooltip: 'Delete'),
                                                   ],
                                                 )),
                                               ])).toList(),
@@ -516,7 +532,7 @@ class _CustomerDirectoryScreenState extends State<CustomerDirectoryScreen> {
     );
   }
 
-  Future<void> _showSettleDialog(Customer customer) async {
+  Future<void> _showSettleDialog(Customer supplier) async {
     final TextEditingController amountController = TextEditingController();
     final currency = NumberFormat.currency(symbol: 'GH₵ ', decimalDigits: 2);
     
@@ -526,19 +542,19 @@ class _CustomerDirectoryScreenState extends State<CustomerDirectoryScreen> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: Row(
           children: [
-            const Icon(Icons.payments_rounded, color: Colors.orangeAccent),
+            const Icon(Icons.payments_rounded, color: Colors.redAccent),
             const SizedBox(width: 12),
-            const Text('Settle Balance', style: TextStyle(fontWeight: FontWeight.w800)),
+            const Text('Settle Debt', style: TextStyle(fontWeight: FontWeight.w800)),
           ],
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Customer: ${customer.name}', style: const TextStyle(fontWeight: FontWeight.w600)),
+            Text('Supplier: ${supplier.name}', style: const TextStyle(fontWeight: FontWeight.w600)),
             const SizedBox(height: 8),
-            Text('Current Balance: ${currency.format(customer.balanceOwed)}', 
-              style: const TextStyle(color: Colors.orangeAccent, fontWeight: FontWeight.bold)),
+            Text('Current Debt: ${currency.format(supplier.balanceOwed)}', 
+              style: const TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold)),
             const SizedBox(height: 20),
             TextField(
               controller: amountController,
@@ -557,7 +573,7 @@ class _CustomerDirectoryScreenState extends State<CustomerDirectoryScreen> {
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
                 TextButton(
-                  onPressed: () => amountController.text = customer.balanceOwed.toString(),
+                  onPressed: () => amountController.text = supplier.balanceOwed.toString(),
                   child: const Text('Pay Full Amount'),
                 ),
               ],
@@ -572,34 +588,34 @@ class _CustomerDirectoryScreenState extends State<CustomerDirectoryScreen> {
               final amount = double.tryParse(amountController.text) ?? 0.0;
               if (amount <= 0) return;
               
-              final newBalance = customer.balanceOwed - amount;
+              final newBalance = supplier.balanceOwed - amount;
               
               await db.update(db.customers).replace(
-                customer.copyWith(
+                supplier.copyWith(
                   balanceOwed: newBalance < 0 ? 0 : newBalance,
                   updatedAt: DateTime.now(),
                   synced: false,
                 ),
               );
 
-              // Log the settlement (Collection from customer)
+              // Log the settlement (Payment to supplier)
               await db.into(db.settlements).insert(SettlementsCompanion.insert(
-                farmId: customer.farmId,
-                customerId: customer.id,
+                farmId: supplier.farmId,
+                customerId: supplier.id,
                 amount: amount,
                 settlementDate: Value(DateTime.now()),
-                settlementType: 'COLLECTION',
+                settlementType: 'PAYMENT',
                 synced: const Value(false),
               ));
               
               if (!ctx.mounted) return;
               Navigator.pop(ctx);
               ScaffoldMessenger.of(ctx).showSnackBar(
-                SnackBar(content: Text('Payment of ${currency.format(amount)} recorded for ${customer.name}')),
+                SnackBar(content: Text('Payment of ${currency.format(amount)} recorded for ${supplier.name}')),
               );
             },
             style: FilledButton.styleFrom(
-              backgroundColor: const Color(0xFF16A34A),
+              backgroundColor: const Color(0xFFE11D48),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             ),
             child: const Text('Record Payment'),

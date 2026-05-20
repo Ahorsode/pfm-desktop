@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:drift/drift.dart' hide Column, Table;
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -247,6 +248,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     child: TextFormField(
                       initialValue: _eggsPerCrate.toString(),
                       keyboardType: TextInputType.number,
+                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                       textAlign: TextAlign.center,
                       onChanged: (v) => setState(() => _eggsPerCrate = int.tryParse(v) ?? 30),
                       decoration: InputDecoration(

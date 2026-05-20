@@ -6,45 +6,61 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'login_screen.dart';
 import 'overview.dart';
 import 'livestock_manager.dart';
+import 'comparative_analytics_screen.dart';
+import 'egg_production_screen.dart';
 import 'inventory_manager.dart';
 import 'houses_screen.dart';
-import 'operation_log_screen.dart';
 import 'sales_screen.dart';
 import 'customer_directory_screen.dart';
+import 'supplier_directory_screen.dart';
 import 'financial_control_screen.dart';
 import 'team_management_screen.dart';
-import 'license_screen.dart';
 import 'settings_screen.dart';
-import 'audit_log_screen.dart';
-import 'mortality_quarantine_screen.dart';
+import 'report_log_screen.dart';
+
+import 'mortality_screen.dart';
+import 'quarantine_screen.dart';
+import 'feed_management_screen.dart';
 import '../widgets/app_sidebar.dart';
 
 class MainScaffold extends StatefulWidget {
   const MainScaffold({super.key});
 
   @override
-  State<MainScaffold> createState() => _MainScaffoldState();
+  State<MainScaffold> createState() => MainScaffoldState();
+
+  static MainScaffoldState? of(BuildContext context) {
+    return context.findAncestorStateOfType<MainScaffoldState>();
+  }
 }
 
-class _MainScaffoldState extends State<MainScaffold> {
+class MainScaffoldState extends State<MainScaffold> {
   int _selectedIndex = 0;
   bool _isCollapsed = false;
+
+  void setSelectedIndex(int index) {
+    setState(() {
+      _selectedIndex = index;
+    });
+  }
 
   final List<Widget> _pages = [
     const OverviewPage(), // 0
     const LivestockManager(), // 1
-    const HousesScreen(), // 2
-    const OperationLogScreen(type: OperationType.eggs), // 3
-    const OperationLogScreen(type: OperationType.feeding), // 4
-    const MortalityQuarantineScreen(), // 5
-    const SalesScreen(), // 6
-    const CustomerDirectoryScreen(), // 7
-    const FinancialControlScreen(), // 8
-    const InventoryManager(), // 9
-    const TeamManagementScreen(), // 10
-    const LicenseScreen(), // 11
-    const SettingsScreen(), // 12
-    const AuditLogScreen(), // 13
+    const ComparativeAnalyticsScreen(), // 2
+    const HousesScreen(), // 3
+    const EggProductionScreen(), // 4
+    const FeedManagementScreen(), // 5
+    const MortalityScreen(), // 6
+    const QuarantineScreen(), // 7
+    const SalesScreen(), // 8
+    const CustomerDirectoryScreen(), // 9
+    const SupplierDirectoryScreen(), // 10
+    const FinancialControlScreen(), // 11
+    const InventoryManager(), // 12
+    const TeamManagementScreen(), // 13
+    const SettingsScreen(), // 14
+    const ReportLogScreen(), // 15
   ];
 
   Future<void> _logout(BuildContext context) async {

@@ -19,18 +19,24 @@ class OverviewPage extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text('Dashboard',
-                      style: TextStyle(fontSize: 32, fontWeight: FontWeight.w800, color: cs.onSurface, letterSpacing: -0.5)),
-                  const SizedBox(height: 4),
-                  Text('Overview of your poultry farm performance',
-                      style: TextStyle(color: cs.onSurfaceVariant, fontSize: 16)),
-                ]),
-                _buildSyncStatusBadge(context),
-              ],
+            SizedBox(
+              width: double.infinity,
+              child: Wrap(
+                spacing: 16,
+                runSpacing: 16,
+                alignment: WrapAlignment.spaceBetween,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text('Dashboard',
+                        style: TextStyle(fontSize: 32, fontWeight: FontWeight.w800, color: cs.onSurface, letterSpacing: -0.5)),
+                    const SizedBox(height: 4),
+                    Text('Overview of your poultry farm performance',
+                        style: TextStyle(color: cs.onSurfaceVariant, fontSize: 16)),
+                  ]),
+                  _buildSyncStatusBadge(context),
+                ],
+              ),
             ),
             const SizedBox(height: 40),
             const _PremiumStatsGrid(),
@@ -100,6 +106,10 @@ class OverviewPage extends StatelessWidget {
         return LayoutBuilder(
           builder: (context, constraints) {
             final crossAxisCount = constraints.maxWidth < 600 ? 1 : (constraints.maxWidth < 1200 ? 2 : 3);
+            final double cardWidth = (constraints.maxWidth - (crossAxisCount - 1) * 24) / crossAxisCount;
+            const double desiredCardHeight = 190.0;
+            final double computedAspectRatio = cardWidth / desiredCardHeight;
+
             return GridView.builder(
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
@@ -107,7 +117,7 @@ class OverviewPage extends StatelessWidget {
                 crossAxisCount: crossAxisCount,
                 crossAxisSpacing: 24,
                 mainAxisSpacing: 24,
-                childAspectRatio: 1.1,
+                childAspectRatio: computedAspectRatio,
               ),
               itemCount: batches.length,
               itemBuilder: (context, index) => _PremiumBatchCard(batch: batches[index]),
@@ -292,7 +302,7 @@ class _PremiumBatchCard extends StatelessWidget {
     final typeColor = isLayer ? Colors.purple : Colors.blue;
 
     return Container(
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(24),
@@ -302,26 +312,28 @@ class _PremiumBatchCard extends StatelessWidget {
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
             decoration: BoxDecoration(color: typeColor.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
             child: Text(batch.type.split('_').last,
-                style: TextStyle(color: typeColor, fontWeight: FontWeight.w800, fontSize: 12)),
+                style: TextStyle(color: typeColor, fontWeight: FontWeight.w800, fontSize: 11)),
           ),
-          Icon(Icons.more_horiz, color: cs.onSurfaceVariant),
+          Icon(Icons.more_horiz, size: 20, color: cs.onSurfaceVariant),
         ]),
-        const SizedBox(height: 20),
-        Text(batch.batchName, style: TextStyle(fontWeight: FontWeight.w800, fontSize: 20, letterSpacing: -0.5, color: cs.onSurface)),
-        const SizedBox(height: 8),
-        Text('Age: $ageDays Days', style: TextStyle(color: cs.onSurfaceVariant, fontSize: 14)),
+        const SizedBox(height: 12),
+        Text(batch.batchName,
+            style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18, letterSpacing: -0.5, color: cs.onSurface),
+            overflow: TextOverflow.ellipsis,
+            maxLines: 1),
+        const SizedBox(height: 4),
+        Text('Age: $ageDays Days', style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13)),
         const Spacer(),
-        Divider(color: cs.outline),
-        const SizedBox(height: 8),
+        Divider(color: cs.outline, height: 16),
         Row(children: [
-          Icon(Icons.group_rounded, size: 18, color: cs.onSurfaceVariant),
-          const SizedBox(width: 8),
-          Text('${batch.currentCount}', style: TextStyle(fontWeight: FontWeight.w700, color: cs.onSurface)),
+          Icon(Icons.group_rounded, size: 16, color: cs.onSurfaceVariant),
+          const SizedBox(width: 6),
+          Text('${batch.currentCount}', style: TextStyle(fontWeight: FontWeight.w700, color: cs.onSurface, fontSize: 14)),
           const Spacer(),
-          Text('In Stock', style: TextStyle(color: Colors.green[600], fontWeight: FontWeight.w800, fontSize: 12)),
+          Text('In Stock', style: TextStyle(color: Colors.green[600], fontWeight: FontWeight.w800, fontSize: 11)),
         ]),
       ]),
     );

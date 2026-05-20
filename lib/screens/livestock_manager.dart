@@ -16,40 +16,52 @@ class LivestockManager extends StatefulWidget {
 
 class _LivestockManagerState extends State<LivestockManager> {
   String _selectedFilter = 'All';
+  final ScrollController _horizontalController = ScrollController();
+  final ScrollController _verticalController = ScrollController();
+
+  @override
+  void dispose() {
+    _horizontalController.dispose();
+    _verticalController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final db = Provider.of<AppDatabase>(context);
     final cs = Theme.of(context).colorScheme;
-    final screenWidth = MediaQuery.of(context).size.width;
-    final isCompact = screenWidth < 900;
 
     return Scaffold(
       backgroundColor: cs.surface,
-      body: Column(
-        children: [
-          // ── Header ──
-          _buildHeader(context, db, cs, isCompact),
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final isCompact = constraints.maxWidth < 900;
+          return Column(
+            children: [
+              // ── Header ──
+              _buildHeader(context, db, cs, isCompact),
 
-          // ── Body ──
-          Expanded(
-            child: Padding(
-              padding: EdgeInsets.all(isCompact ? 16.0 : 28.0),
-              child: Column(
-                children: [
-                  // Filter chips
-                  _buildFilterRow(cs),
-                  const SizedBox(height: 20),
+              // ── Body ──
+              Expanded(
+                child: Padding(
+                  padding: EdgeInsets.all(isCompact ? 16.0 : 28.0),
+                  child: Column(
+                    children: [
+                      // Filter chips
+                      _buildFilterRow(cs),
+                      const SizedBox(height: 20),
 
-                  // Table
-                  Expanded(
-                    child: _buildTableCard(db, cs, isCompact),
+                      // Table
+                      Expanded(
+                        child: _buildTableCard(db, cs, isCompact),
+                      ),
+                    ],
                   ),
-                ],
+                ),
               ),
-            ),
-          ),
-        ],
+            ],
+          );
+        },
       ),
     );
   }
@@ -233,43 +245,56 @@ class _LivestockManagerState extends State<LivestockManager> {
                       ),
                     ),
                     child: Scrollbar(
+                      controller: _verticalController,
                       thumbVisibility: true,
-                      child: SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        child: SingleChildScrollView(
-                          scrollDirection: Axis.vertical,
-                          child: ConstrainedBox(
-                            constraints: BoxConstraints(
-                              minWidth: tableConstraints.maxWidth > 1000 ? tableConstraints.maxWidth : 1000,
-                            ),
-                            child: DataTable(
-                              headingRowColor: WidgetStateProperty.all(isDark ? const Color(0xFF121417) : const Color(0xFF1E293B)),
-                              headingRowHeight: 52,
-                              dataRowMinHeight: 72,
-                              dataRowMaxHeight: 72,
-                              horizontalMargin: 20,
-                              columnSpacing: 24,
-                              columns: [
-                                _col('#'),
-                                _col('UNIT NAME / IDENTITY'),
-                                _col('TYPE & SPECIES'),
-                                _col('WORKER STAMPS'),
-                                _col('NO. COUNT'),
-                                _col('ARRIVAL DATE'),
-                                _col('STATUS'),
-                                _col('ACTIONS'),
-                              ],
-                              rows: batches.asMap().entries.map((entry) {
-                                final index = entry.key;
-                                final batch = entry.value;
-                                return _row(batch, index, db, cs, mortalityMap[batch.id] ?? 0);
-                              }).toList(),
+                      notificationPredicate: (n) => n.depth == 1,
+                      child: Scrollbar(
+                        controller: _horizontalController,
+                        thumbVisibility: true,
+                        notificationPredicate: (n) => n.depth == 0,
+                        child: SizedBox(
+                          height: tableConstraints.maxHeight,
+                          child: SingleChildScrollView(
+                            controller: _horizontalController,
+                            scrollDirection: Axis.horizontal,
+                            child: SingleChildScrollView(
+                              controller: _verticalController,
+                              scrollDirection: Axis.vertical,
+                              child: ConstrainedBox(
+                                constraints: BoxConstraints(
+                                  minWidth: tableConstraints.maxWidth > 1200 ? tableConstraints.maxWidth : 1200,
+                                  minHeight: tableConstraints.maxHeight,
+                                ),
+                              child: DataTable(
+                                headingRowColor: WidgetStateProperty.all(isDark ? const Color(0xFF121417) : const Color(0xFF1E293B)),
+                                headingRowHeight: 52,
+                                dataRowMinHeight: 72,
+                                dataRowMaxHeight: 72,
+                                horizontalMargin: 20,
+                                columnSpacing: 24,
+                                columns: [
+                                  _col('#'),
+                                  _col('UNIT NAME / IDENTITY'),
+                                  _col('TYPE & SPECIES'),
+                                  _col('WORKER STAMPS'),
+                                  _col('NO. COUNT'),
+                                  _col('ARRIVAL DATE'),
+                                  _col('STATUS'),
+                                  _col('ACTIONS'),
+                                ],
+                                rows: batches.asMap().entries.map((entry) {
+                                  final index = entry.key;
+                                  final batch = entry.value;
+                                  return _row(batch, index, db, cs, mortalityMap[batch.id] ?? 0);
+                                }).toList(),
+                              ),
                             ),
                           ),
                         ),
                       ),
                     ),
-                  );
+                  ),
+                );
                 },
               );
             },
@@ -315,6 +340,16 @@ class _LivestockManagerState extends State<LivestockManager> {
       'POULTRY_DUCK' => 'Duck',
       'OTHER' => 'Other Species',
       _ => type,
+    };
+  }
+
+  String _getAnimalLabel(String type) {
+    return switch (type.toUpperCase()) {
+      'POULTRY_BROILER' => 'broilers',
+      'POULTRY_LAYER' => 'layers',
+      'POULTRY_TURKEY' => 'turkeys',
+      'POULTRY_DUCK' => 'ducks',
+      _ => 'animals',
     };
   }
 
@@ -399,7 +434,7 @@ class _LivestockManagerState extends State<LivestockManager> {
               ),
               const SizedBox(width: 8),
               Text(
-                isLayer ? 'layers' : 'broilers',
+                _getAnimalLabel(batch.type),
                 style: TextStyle(color: cs.onSurfaceVariant.withValues(alpha: 0.6), fontSize: 10, fontWeight: FontWeight.w600),
               ),
             ],

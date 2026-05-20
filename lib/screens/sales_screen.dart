@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:drift/drift.dart' hide Column, Batch;
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
@@ -78,6 +79,7 @@ class _SalesScreenState extends State<SalesScreen> {
                   Expanded(child: TextFormField(
                     controller: qtyCtrl,
                     keyboardType: TextInputType.number,
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                     validator: (v) => (v == null || v.isEmpty) ? 'Required' : null,
                     decoration: InputDecoration(
                       labelText: 'Quantity',
@@ -89,6 +91,7 @@ class _SalesScreenState extends State<SalesScreen> {
                   Expanded(child: TextFormField(
                     controller: priceCtrl,
                     keyboardType: TextInputType.number,
+                    inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*'))],
                     validator: (v) => (v == null || v.isEmpty) ? 'Required' : null,
                     decoration: InputDecoration(
                       labelText: 'Unit Price (GHS)',
@@ -200,6 +203,7 @@ class _SalesScreenState extends State<SalesScreen> {
                     controller: paymentCtrl,
                     autofocus: true,
                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*'))],
                     style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 24),
                     decoration: InputDecoration(
                       prefixText: 'GH₵ ',

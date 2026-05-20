@@ -11,8 +11,16 @@ import 'package:poultry_pms_desktop/main.dart';
 import 'package:poultry_pms_desktop/data/local_db.dart';
 import 'package:poultry_pms_desktop/data/sync_engine.dart';
 
+import 'package:supabase_flutter/supabase_flutter.dart';
+
 void main() {
   testWidgets('Dashboard smoke test', (WidgetTester tester) async {
+    // Initialize Supabase with placeholder credentials for test environment
+    await Supabase.initialize(
+      url: 'https://dummy.supabase.co',
+      anonKey: 'dummy_key',
+    );
+
     final db = AppDatabase();
     final sync = SyncEngine(db);
 

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:drift/drift.dart' hide Column, Batch;
 import 'package:intl/intl.dart';
@@ -197,6 +198,7 @@ class InventoryManager extends StatelessWidget {
                       child: TextField(
                         controller: levelController,
                         keyboardType: TextInputType.number,
+                        inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*'))],
                         decoration: InputDecoration(
                           labelText: 'Initial Stock',
                           prefixIcon: const Icon(Icons.numbers_rounded),
@@ -224,6 +226,7 @@ class InventoryManager extends StatelessWidget {
                       child: TextField(
                         controller: costController,
                         keyboardType: TextInputType.number,
+                        inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*'))],
                         decoration: InputDecoration(
                           labelText: 'Cost Per Unit (GH₵)',
                           prefixIcon: const Icon(Icons.attach_money_rounded),
@@ -236,6 +239,7 @@ class InventoryManager extends StatelessWidget {
                       child: TextField(
                         controller: reorderController,
                         keyboardType: TextInputType.number,
+                        inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*'))],
                         decoration: InputDecoration(
                           labelText: 'Reorder Level',
                           prefixIcon: const Icon(Icons.notification_important_rounded),
@@ -438,6 +442,7 @@ class _InventoryItemTile extends StatelessWidget {
                     child: TextField(
                       controller: qtyController,
                       keyboardType: TextInputType.number,
+                      inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*'))],
                       decoration: InputDecoration(
                         labelText: 'Added Quantity',
                         suffixText: item.unit,
@@ -450,6 +455,7 @@ class _InventoryItemTile extends StatelessWidget {
                     child: TextField(
                       controller: costController,
                       keyboardType: TextInputType.number,
+                      inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*'))],
                       decoration: InputDecoration(
                         labelText: 'New Cost/Unit',
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
@@ -562,6 +568,7 @@ class _InventoryItemTile extends StatelessWidget {
               TextField(
                 controller: qtyController,
                 keyboardType: TextInputType.number,
+                inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*'))],
                 decoration: InputDecoration(
                   labelText: 'Quantity Used',
                   suffixText: item.unit,
