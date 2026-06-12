@@ -6,6 +6,9 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:drift/drift.dart' hide Column, Batch;
 import '../data/local_db.dart';
+import '../utils/inventory_constants.dart';
+import '../utils/livestock_breed_options.dart';
+import '../widgets/worker_stamp.dart';
 
 /// Represents a single unified log entry from any category with detailed auditing data.
 class _LogEntry {
@@ -21,6 +24,8 @@ class _LogEntry {
 
   /// Raw payload map to support rich, category-specific formatting and layouts.
   final Map<String, dynamic> rawData;
+  final String workerName;
+  final String workerPosition;
 
   const _LogEntry({
     required this.title,
@@ -31,7 +36,16 @@ class _LogEntry {
     required this.category,
     required this.auditDetails,
     required this.rawData,
+    required this.workerName,
+    required this.workerPosition,
   });
+}
+
+class _WorkerIdentity {
+  final String name;
+  final String position;
+
+  const _WorkerIdentity({required this.name, required this.position});
 }
 
 class ReportLogScreen extends StatefulWidget {
@@ -268,13 +282,15 @@ class _ReportLogScreenState extends State<ReportLogScreen> {
     final customersList = await db.select(db.customers).get();
     final customerMap = {for (var c in customersList) c.id: c.name};
 
-    final feedTypesList = await db.select(db.feedTypes).get();
-    final feedTypeMap = {for (var f in feedTypesList) f.id: f.name};
+    final feedTypesList = await (db.select(
+      db.inventory,
+    )..where((t) => t.category.equals(kFeedInventoryCategory))).get();
+    final feedTypeMap = {for (var f in feedTypesList) f.id: f.itemName};
 
     final formulationsList = await db.select(db.feedFormulations).get();
     final formulationMap = {for (var f in formulationsList) f.id: f.name};
 
-    String _formatUserDisplayName(User u) {
+    String formatUserDisplayName(User u) {
       final displayName = u.name?.trim().isNotEmpty == true
           ? u.name!.trim()
           : [
@@ -296,12 +312,29 @@ class _ReportLogScreenState extends State<ReportLogScreen> {
     }
 
     final usersList = await db.select(db.users).get();
-    final userMap = {for (var u in usersList) u.id: _formatUserDisplayName(u)};
+    final userMap = {for (var u in usersList) u.id: u};
 
-    String getLoggedUser(String? userId) {
-      if (userId == null || userId.isEmpty) return 'System / Unknown';
-      return userMap[userId] ??
-          'ID: ${userId.length > 8 ? userId.substring(0, 8) : userId}';
+    _WorkerIdentity getWorkerIdentity(String? userId) {
+      if (userId == null || userId.isEmpty) {
+        return const _WorkerIdentity(
+          name: 'System / Unknown',
+          position: 'System',
+        );
+      }
+      final user = userMap[userId];
+      if (user == null) {
+        return _WorkerIdentity(
+          name: 'ID: ${userId.length > 8 ? userId.substring(0, 8) : userId}',
+          position: 'Unknown Position',
+        );
+      }
+      final name = formatUserDisplayName(user);
+      final role = user.role.trim().isEmpty ? 'Unknown Position' : user.role;
+      return _WorkerIdentity(name: name, position: role);
+    }
+
+    String getLoggedUser(_WorkerIdentity worker) {
+      return '${worker.name} (${worker.position})';
     }
 
     // Egg Production
@@ -312,7 +345,8 @@ class _ReportLogScreenState extends State<ReportLogScreen> {
                 ..limit(100))
               .get();
       for (final log in eggLogs) {
-        final loggedUser = getLoggedUser(log.userId);
+        final worker = getWorkerIdentity(log.userId);
+        final loggedUser = getLoggedUser(worker);
         entries.add(
           _LogEntry(
             title: '${log.eggsCollected} Eggs Collected',
@@ -346,6 +380,8 @@ class _ReportLogScreenState extends State<ReportLogScreen> {
               'userId': loggedUser,
               'synced': log.synced,
             },
+            workerName: worker.name,
+            workerPosition: worker.position,
           ),
         );
       }
@@ -359,7 +395,8 @@ class _ReportLogScreenState extends State<ReportLogScreen> {
                 ..limit(100))
               .get();
       for (final log in salesLogs) {
-        final loggedUser = getLoggedUser(log.userId);
+        final worker = getWorkerIdentity(log.userId);
+        final loggedUser = getLoggedUser(worker);
         entries.add(
           _LogEntry(
             title: 'Sale: GHS ${log.totalAmount.toStringAsFixed(2)}',
@@ -399,6 +436,8 @@ class _ReportLogScreenState extends State<ReportLogScreen> {
               'userId': loggedUser,
               'synced': log.synced,
             },
+            workerName: worker.name,
+            workerPosition: worker.position,
           ),
         );
       }
@@ -409,7 +448,8 @@ class _ReportLogScreenState extends State<ReportLogScreen> {
                 ..limit(100))
               .get();
       for (final log in expenseLogs) {
-        final loggedUser = getLoggedUser(log.userId);
+        final worker = getWorkerIdentity(log.userId);
+        final loggedUser = getLoggedUser(worker);
         entries.add(
           _LogEntry(
             title: 'Expense: GHS ${log.amount.toStringAsFixed(2)}',
@@ -436,6 +476,8 @@ class _ReportLogScreenState extends State<ReportLogScreen> {
               'userId': loggedUser,
               'synced': log.synced,
             },
+            workerName: worker.name,
+            workerPosition: worker.position,
           ),
         );
       }
@@ -449,12 +491,13 @@ class _ReportLogScreenState extends State<ReportLogScreen> {
                 ..limit(100))
               .get();
       for (final log in batches) {
-        final loggedUser = getLoggedUser(log.userId);
+        final worker = getWorkerIdentity(log.userId);
+        final loggedUser = getLoggedUser(worker);
         entries.add(
           _LogEntry(
             title: log.batchName,
             subtitle:
-                '${log.currentCount} Birds | Breed: ${log.breedType ?? 'N/A'}',
+                '${log.currentCount} Birds | Breed: ${LivestockBreedCatalog.labelForKey(log.breedType)}',
             date: log.createdAt,
             icon: Icons.pets_rounded,
             color: const Color(0xFF3B82F6),
@@ -462,7 +505,7 @@ class _ReportLogScreenState extends State<ReportLogScreen> {
             auditDetails: {
               'Batch Name': log.batchName,
               'Type': log.type.replaceAll('POULTRY_', ''),
-              'Breed': log.breedType ?? 'N/A',
+              'Breed': LivestockBreedCatalog.labelForKey(log.breedType),
               'Arrival Date': DateFormat('dd MMM yyyy').format(log.arrivalDate),
               'Current Count': '${log.currentCount}',
               'Initial Count': '${log.initialCount}',
@@ -503,6 +546,8 @@ class _ReportLogScreenState extends State<ReportLogScreen> {
               'userId': loggedUser,
               'synced': log.synced,
             },
+            workerName: worker.name,
+            workerPosition: worker.position,
           ),
         );
       }
@@ -516,7 +561,8 @@ class _ReportLogScreenState extends State<ReportLogScreen> {
                 ..limit(100))
               .get();
       for (final log in items) {
-        final loggedUser = getLoggedUser(log.userId);
+        final worker = getWorkerIdentity(log.userId);
+        final loggedUser = getLoggedUser(worker);
         entries.add(
           _LogEntry(
             title: log.itemName,
@@ -559,6 +605,8 @@ class _ReportLogScreenState extends State<ReportLogScreen> {
               'userId': loggedUser,
               'synced': log.synced,
             },
+            workerName: worker.name,
+            workerPosition: worker.position,
           ),
         );
       }
@@ -572,7 +620,8 @@ class _ReportLogScreenState extends State<ReportLogScreen> {
                 ..limit(100))
               .get();
       for (final log in morts) {
-        final loggedUser = getLoggedUser(log.userId);
+        final worker = getWorkerIdentity(log.userId);
+        final loggedUser = getLoggedUser(worker);
         entries.add(
           _LogEntry(
             title: '${log.count} Mortality',
@@ -602,6 +651,8 @@ class _ReportLogScreenState extends State<ReportLogScreen> {
               'userId': loggedUser,
               'synced': log.synced,
             },
+            workerName: worker.name,
+            workerPosition: worker.position,
           ),
         );
       }
@@ -615,7 +666,8 @@ class _ReportLogScreenState extends State<ReportLogScreen> {
                 ..limit(100))
               .get();
       for (final log in feeds) {
-        final loggedUser = getLoggedUser(log.userId);
+        final worker = getWorkerIdentity(log.userId);
+        final loggedUser = getLoggedUser(worker);
         entries.add(
           _LogEntry(
             title: '${log.amountConsumed.toStringAsFixed(1)} kg Feed Consumed',
@@ -657,6 +709,8 @@ class _ReportLogScreenState extends State<ReportLogScreen> {
               'userId': loggedUser,
               'synced': log.synced,
             },
+            workerName: worker.name,
+            workerPosition: worker.position,
           ),
         );
       }
@@ -1391,30 +1445,19 @@ class _LogCardState extends State<_LogCard>
                                 children: [
                                   Row(
                                     children: [
-                                      CircleAvatar(
-                                        radius: 10,
-                                        backgroundColor: entry.color.withValues(
-                                          alpha: 0.15,
-                                        ),
-                                        child: Text(
-                                          (entry.auditDetails['Logged By'] ??
-                                                      'U')
-                                                  .isNotEmpty
-                                              ? (entry.auditDetails['Logged By'] ??
-                                                        'U')
-                                                    .substring(0, 1)
-                                                    .toUpperCase()
-                                              : 'U',
-                                          style: TextStyle(
-                                            fontSize: 9,
-                                            fontWeight: FontWeight.w800,
-                                            color: entry.color,
-                                          ),
+                                      WorkerStamp(
+                                        fullName: entry.workerName,
+                                        position: entry.workerPosition,
+                                        color: entry.color,
+                                        fontSize: 8.5,
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 5,
+                                          vertical: 2,
                                         ),
                                       ),
                                       const SizedBox(width: 8),
                                       Text(
-                                        'Operator: ${entry.auditDetails['Logged By'] ?? 'Unknown User'}',
+                                        'Operator: ${entry.workerName} (${entry.workerPosition})',
                                         style: TextStyle(
                                           fontSize: 11,
                                           fontWeight: FontWeight.w700,

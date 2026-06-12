@@ -6,6 +6,7 @@ import 'package:drift/drift.dart' hide Column, Batch;
 import 'package:rxdart/rxdart.dart';
 import '../data/local_db.dart';
 import '../utils/farm_utils.dart';
+import '../utils/id_utils.dart';
 
 class CombinedQuarantineLog {
   final Mortality mortality;
@@ -50,8 +51,8 @@ class QuarantineScreen extends StatefulWidget {
 }
 
 class _QuarantineScreenState extends State<QuarantineScreen> {
-  final Map<int, TextEditingController> _releaseControllers = {};
-  final Map<int, TextEditingController> _deathControllers = {};
+  final Map<String, TextEditingController> _releaseControllers = {};
+  final Map<String, TextEditingController> _deathControllers = {};
   final _roomNameController = TextEditingController();
   final _roomCapacityController = TextEditingController();
 
@@ -77,11 +78,11 @@ class _QuarantineScreenState extends State<QuarantineScreen> {
     super.dispose();
   }
 
-  TextEditingController _getReleaseController(int id) {
+  TextEditingController _getReleaseController(String id) {
     return _releaseControllers.putIfAbsent(id, () => TextEditingController());
   }
 
-  TextEditingController _getDeathController(int id) {
+  TextEditingController _getDeathController(String id) {
     return _deathControllers.putIfAbsent(id, () => TextEditingController());
   }
 
@@ -630,7 +631,7 @@ class _QuarantineScreenState extends State<QuarantineScreen> {
                             style: TextStyle(color: colorScheme.onSurface, fontSize: 13, fontWeight: FontWeight.bold),
                             decoration: InputDecoration(
                               hintText: 'Qty',
-                              hintStyle: TextStyle(color: colorScheme.onSurfaceVariant.withValues(alpha: 0.4)),
+                              hintStyle: TextStyle(color: colorScheme.onSurfaceVariant.withValues(alpha: 0.65), fontWeight: FontWeight.w600),
                               filled: true,
                               fillColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
                               contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -665,7 +666,7 @@ class _QuarantineScreenState extends State<QuarantineScreen> {
                             style: TextStyle(color: colorScheme.onSurface, fontSize: 13, fontWeight: FontWeight.bold),
                             decoration: InputDecoration(
                               hintText: 'Qty',
-                              hintStyle: TextStyle(color: colorScheme.onSurfaceVariant.withValues(alpha: 0.4)),
+                              hintStyle: TextStyle(color: colorScheme.onSurfaceVariant.withValues(alpha: 0.65), fontWeight: FontWeight.w600),
                               filled: true,
                               fillColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
                               contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -1137,18 +1138,21 @@ class _QuarantineScreenState extends State<QuarantineScreen> {
     }
 
     final farmId = await FarmUtils.getBoundFarmId();
+    final workerId = await FarmUtils.getRequiredUserId();
     if (farmId == null) return;
 
     try {
       await db.transaction(() async {
         // 1. Log mortality
         await db.into(db.mortalities).insert(MortalitiesCompanion.insert(
+              id: newLocalId(),
               farmId: farmId,
               batchId: batch.id,
               count: count,
               logDate: DateTime.now(),
               category: const Value('MORTALITY'),
               reason: const Value('Died inside quarantine isolation room'),
+              userId: Value(workerId),
               synced: const Value(false),
             ));
 
@@ -1192,13 +1196,16 @@ class _QuarantineScreenState extends State<QuarantineScreen> {
     }
 
     final farmId = await FarmUtils.getBoundFarmId();
+    final workerId = await FarmUtils.getRequiredUserId();
     if (farmId == null) return;
 
     try {
       await db.into(db.houses).insert(HousesCompanion.insert(
+            id: newLocalId(),
             farmId: farmId,
             name: name,
             capacity: capacity,
+            userId: Value(workerId),
             isIsolation: const Value(true),
             synced: const Value(false),
           ));
@@ -1273,7 +1280,7 @@ class _QuarantineScreenState extends State<QuarantineScreen> {
                   }
                   return DropdownButtonFormField<ActiveBatchWithHouse>(
                     decoration: _inputDecoration(context, 'Source House / Unit', Icons.storefront_outlined),
-                    value: validSelection,
+                    initialValue: validSelection,
                     isExpanded: true,
                     items: batches.map((b) {
                       return DropdownMenuItem(
@@ -1317,7 +1324,7 @@ class _QuarantineScreenState extends State<QuarantineScreen> {
                   final rooms = snapshot.data ?? [];
                   return DropdownButtonFormField<House>(
                     decoration: _inputDecoration(context, 'Target Isolation Room', Icons.health_and_safety_outlined),
-                    value: _selectedIsolationRoom,
+                    initialValue: _selectedIsolationRoom,
                     isExpanded: true,
                     items: rooms.map((r) {
                       final isFull = r.occupancy >= r.room.capacity;
@@ -1392,6 +1399,7 @@ class _QuarantineScreenState extends State<QuarantineScreen> {
     final room = _selectedIsolationRoom!;
     final reason = _isolateReasonController.text;
     final farmId = await FarmUtils.getBoundFarmId();
+    final workerId = await FarmUtils.getRequiredUserId();
     if (farmId == null) return;
 
     // Check capacity again
@@ -1410,6 +1418,7 @@ class _QuarantineScreenState extends State<QuarantineScreen> {
     try {
       await db.transaction(() async {
         await db.into(db.mortalities).insert(MortalitiesCompanion.insert(
+          id: newLocalId(),
           farmId: farmId,
           batchId: batch.id,
           count: count,
@@ -1417,6 +1426,7 @@ class _QuarantineScreenState extends State<QuarantineScreen> {
           category: const Value('ISOLATION'),
           subCategory: Value(room.name),
           reason: Value(reason),
+          userId: Value(workerId),
           synced: const Value(false),
         ));
 

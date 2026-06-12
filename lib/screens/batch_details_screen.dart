@@ -4,6 +4,7 @@ import 'package:drift/drift.dart' hide Column, Batch;
 import 'package:provider/provider.dart';
 import '../data/local_db.dart';
 import '../utils/farm_utils.dart';
+import '../utils/livestock_breed_options.dart';
 import '../widgets/batch_actions_dialogs.dart';
 import 'package:fl_chart/fl_chart.dart';
 
@@ -31,10 +32,20 @@ class _BatchDetailsScreenState extends State<BatchDetailsScreen> {
   }
 
   Future<void> _loadData() async {
-    final mortality = await (db.select(db.mortalities)..where((t) => t.batchId.equals(widget.batch.id))).get();
-    final feeding = await (db.select(db.feedingLogs)..where((t) => t.batchId.equals(widget.batch.id))).get();
-    final weights = await (db.select(db.weightRecords)..where((t) => t.batchId.equals(widget.batch.id))..orderBy([(t) => OrderingTerm.asc(t.logDate)])).get();
-    final sales = await (db.select(db.sales)..where((t) => t.batchId.equals(widget.batch.id))).get();
+    final mortality = await (db.select(
+      db.mortalities,
+    )..where((t) => t.batchId.equals(widget.batch.id))).get();
+    final feeding = await (db.select(
+      db.feedingLogs,
+    )..where((t) => t.batchId.equals(widget.batch.id))).get();
+    final weights =
+        await (db.select(db.weightRecords)
+              ..where((t) => t.batchId.equals(widget.batch.id))
+              ..orderBy([(t) => OrderingTerm.asc(t.logDate)]))
+            .get();
+    final sales = await (db.select(
+      db.sales,
+    )..where((t) => t.batchId.equals(widget.batch.id))).get();
     final canView = await FarmUtils.canViewFinancials();
 
     if (mounted) {
@@ -55,12 +66,22 @@ class _BatchDetailsScreenState extends State<BatchDetailsScreen> {
     final isDark = theme.brightness == Brightness.dark;
 
     return Scaffold(
-      backgroundColor: isDark ? const Color(0xFF0F1113) : const Color(0xFFF1F5F9),
+      backgroundColor: isDark
+          ? const Color(0xFF0F1113)
+          : const Color(0xFFF1F5F9),
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        iconTheme: IconThemeData(color: isDark ? Colors.white : const Color(0xFF1E293B)),
-        title: Text(widget.batch.batchName, style: TextStyle(fontWeight: FontWeight.w900, color: isDark ? Colors.white : const Color(0xFF1E293B))),
+        iconTheme: IconThemeData(
+          color: isDark ? Colors.white : const Color(0xFF1E293B),
+        ),
+        title: Text(
+          widget.batch.batchName,
+          style: TextStyle(
+            fontWeight: FontWeight.w900,
+            color: isDark ? Colors.white : const Color(0xFF1E293B),
+          ),
+        ),
         actions: [
           _buildStatusChip(widget.batch.status),
           const SizedBox(width: 16),
@@ -96,10 +117,9 @@ class _BatchDetailsScreenState extends State<BatchDetailsScreen> {
               ],
             ),
           );
-        }
+        },
       ),
     );
-
   }
 
   Widget _buildStatusChip(String status) {
@@ -113,7 +133,11 @@ class _BatchDetailsScreenState extends State<BatchDetailsScreen> {
       ),
       child: Text(
         status.toUpperCase(),
-        style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.w900),
+        style: TextStyle(
+          color: color,
+          fontSize: 10,
+          fontWeight: FontWeight.w900,
+        ),
       ),
     );
   }
@@ -126,8 +150,20 @@ class _BatchDetailsScreenState extends State<BatchDetailsScreen> {
         decoration: BoxDecoration(
           color: isDark ? const Color(0xFF1A1D21) : Colors.white,
           borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.05)),
-          boxShadow: isDark ? [] : [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10, offset: const Offset(0, 4))],
+          border: Border.all(
+            color: isDark
+                ? Colors.white.withValues(alpha: 0.05)
+                : Colors.black.withValues(alpha: 0.05),
+          ),
+          boxShadow: isDark
+              ? []
+              : [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.02),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
         ),
         child: Wrap(
           spacing: 16,
@@ -135,19 +171,35 @@ class _BatchDetailsScreenState extends State<BatchDetailsScreen> {
           children: [
             SizedBox(
               width: 150,
-              child: _heroStat('Stock', '${widget.batch.currentCount}', Icons.inventory_2_outlined),
+              child: _heroStat(
+                'Stock',
+                '${widget.batch.currentCount}',
+                Icons.inventory_2_outlined,
+              ),
             ),
             SizedBox(
               width: 150,
-              child: _heroStat('Age', '$age Days', Icons.calendar_today_outlined),
+              child: _heroStat(
+                'Age',
+                '$age Days',
+                Icons.calendar_today_outlined,
+              ),
             ),
             SizedBox(
               width: 150,
-              child: _heroStat('Initial', '${widget.batch.initialCount}', Icons.add_circle_outline),
+              child: _heroStat(
+                'Initial',
+                '${widget.batch.initialCount}',
+                Icons.add_circle_outline,
+              ),
             ),
             SizedBox(
               width: 150,
-              child: _heroStat('Breed', widget.batch.breedType ?? 'N/A', Icons.pets_outlined),
+              child: _heroStat(
+                'Breed',
+                LivestockBreedCatalog.labelForKey(widget.batch.breedType),
+                Icons.pets_outlined,
+              ),
             ),
           ],
         ),
@@ -158,23 +210,58 @@ class _BatchDetailsScreenState extends State<BatchDetailsScreen> {
       decoration: BoxDecoration(
         color: isDark ? const Color(0xFF1A1D21) : Colors.white,
         gradient: LinearGradient(
-          colors: [const Color(0xFF10B981).withValues(alpha: isDark ? 0.2 : 0.1), isDark ? Colors.transparent : Colors.white],
+          colors: [
+            const Color(0xFF10B981).withValues(alpha: isDark ? 0.2 : 0.1),
+            isDark ? Colors.transparent : Colors.white,
+          ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.05)),
-        boxShadow: isDark ? [] : [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10, offset: const Offset(0, 4))],
+        border: Border.all(
+          color: isDark
+              ? Colors.white.withValues(alpha: 0.05)
+              : Colors.black.withValues(alpha: 0.05),
+        ),
+        boxShadow: isDark
+            ? []
+            : [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.02),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+              ],
       ),
       child: Row(
         children: [
-          Expanded(child: _heroStat('Current Stock', '${widget.batch.currentCount}', Icons.inventory_2_outlined)),
+          Expanded(
+            child: _heroStat(
+              'Current Stock',
+              '${widget.batch.currentCount}',
+              Icons.inventory_2_outlined,
+            ),
+          ),
           _divider(),
-          Expanded(child: _heroStat('Age', '$age Days', Icons.calendar_today_outlined)),
+          Expanded(
+            child: _heroStat('Age', '$age Days', Icons.calendar_today_outlined),
+          ),
           _divider(),
-          Expanded(child: _heroStat('Initial Count', '${widget.batch.initialCount}', Icons.add_circle_outline)),
+          Expanded(
+            child: _heroStat(
+              'Initial Count',
+              '${widget.batch.initialCount}',
+              Icons.add_circle_outline,
+            ),
+          ),
           _divider(),
-          Expanded(child: _heroStat('Breed', widget.batch.breedType ?? 'N/A', Icons.pets_outlined)),
+          Expanded(
+            child: _heroStat(
+              'Breed',
+              LivestockBreedCatalog.labelForKey(widget.batch.breedType),
+              Icons.pets_outlined,
+            ),
+          ),
         ],
       ),
     );
@@ -184,10 +271,27 @@ class _BatchDetailsScreenState extends State<BatchDetailsScreen> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return Column(
       children: [
-        Icon(icon, color: isDark ? Colors.grey : Colors.grey.shade600, size: 20),
+        Icon(
+          icon,
+          color: isDark ? Colors.grey : Colors.grey.shade600,
+          size: 20,
+        ),
         const SizedBox(height: 8),
-        Text(label, style: TextStyle(color: isDark ? Colors.grey : Colors.grey.shade600, fontSize: 11)),
-        Text(value, style: TextStyle(color: isDark ? Colors.white : const Color(0xFF1E293B), fontSize: 18, fontWeight: FontWeight.w900)),
+        Text(
+          label,
+          style: TextStyle(
+            color: isDark ? Colors.grey : Colors.grey.shade600,
+            fontSize: 11,
+          ),
+        ),
+        Text(
+          value,
+          style: TextStyle(
+            color: isDark ? Colors.white : const Color(0xFF1E293B),
+            fontSize: 18,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
       ],
     );
   }
@@ -199,23 +303,47 @@ class _BatchDetailsScreenState extends State<BatchDetailsScreen> {
       scrollDirection: Axis.horizontal,
       child: Row(
         children: [
-          _actionBtn('Record Mortality', Icons.coronavirus_outlined, Colors.red, () {
-            showDialog(context: context, builder: (_) => MortalityDialog(batch: widget.batch)).then((_) => _loadData());
-          }),
+          _actionBtn(
+            'Record Mortality',
+            Icons.coronavirus_outlined,
+            Colors.red,
+            () {
+              showDialog(
+                context: context,
+                builder: (_) => MortalityDialog(batch: widget.batch),
+              ).then((_) => _loadData());
+            },
+          ),
           const SizedBox(width: 12),
-          _actionBtn('Quick Sale', Icons.point_of_sale_outlined, Colors.green, () {
-            showDialog(context: context, builder: (_) => QuickSaleDialog(batch: widget.batch)).then((_) => _loadData());
-          }),
+          _actionBtn(
+            'Quick Sale',
+            Icons.point_of_sale_outlined,
+            Colors.green,
+            () {
+              showDialog(
+                context: context,
+                builder: (_) => QuickSaleDialog(batch: widget.batch),
+              ).then((_) => _loadData());
+            },
+          ),
           const SizedBox(width: 12),
           _actionBtn('Edit Batch', Icons.edit_outlined, Colors.orange, () {
-            showDialog(context: context, builder: (_) => EditBatchDialog(batch: widget.batch)).then((_) => _loadData());
+            showDialog(
+              context: context,
+              builder: (_) => EditBatchDialog(batch: widget.batch),
+            ).then((_) => _loadData());
           }),
         ],
       ),
     );
   }
 
-  Widget _actionBtn(String label, IconData icon, Color color, VoidCallback onTap) {
+  Widget _actionBtn(
+    String label,
+    IconData icon,
+    Color color,
+    VoidCallback onTap,
+  ) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return Material(
       color: Colors.transparent,
@@ -267,8 +395,20 @@ class _BatchDetailsScreenState extends State<BatchDetailsScreen> {
       decoration: BoxDecoration(
         color: isDark ? const Color(0xFF1A1D21) : Colors.white,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.05)),
-        boxShadow: isDark ? [] : [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10, offset: const Offset(0, 4))],
+        border: Border.all(
+          color: isDark
+              ? Colors.white.withValues(alpha: 0.05)
+              : Colors.black.withValues(alpha: 0.05),
+        ),
+        boxShadow: isDark
+            ? []
+            : [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.02),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+              ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -277,51 +417,81 @@ class _BatchDetailsScreenState extends State<BatchDetailsScreen> {
             children: [
               Icon(icon, color: const Color(0xFF10B981), size: 20),
               const SizedBox(width: 8),
-              Text(title, style: TextStyle(color: isDark ? Colors.white : const Color(0xFF1E293B), fontWeight: FontWeight.bold)),
+              Text(
+                title,
+                style: TextStyle(
+                  color: isDark ? Colors.white : const Color(0xFF1E293B),
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 24),
           Expanded(
-            child: _weightRecords.isEmpty 
-              ? const Center(child: Text('No weight records yet.', style: TextStyle(color: Colors.grey, fontSize: 12)))
-              : LineChart(
-                  LineChartData(
-                    gridData: const FlGridData(show: false),
-                    titlesData: FlTitlesData(
-                      leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                      bottomTitles: AxisTitles(
-                        sideTitles: SideTitles(
-                          showTitles: true,
-                          getTitlesWidget: (value, meta) {
-                            if (value % 7 == 0) {
-                              return Text('Day ${value.toInt()}', style: const TextStyle(color: Colors.grey, fontSize: 10));
-                            }
-                            return const SizedBox();
-                          },
-                        ),
-                      ),
-                      rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                      topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+            child: _weightRecords.isEmpty
+                ? const Center(
+                    child: Text(
+                      'No weight records yet.',
+                      style: TextStyle(color: Colors.grey, fontSize: 12),
                     ),
-                    borderData: FlBorderData(show: false),
-                    lineBarsData: [
-                      LineChartBarData(
-                        spots: _weightRecords.asMap().entries.map((e) {
-                          final days = e.value.logDate.difference(widget.batch.arrivalDate).inDays;
-                          return FlSpot(days.toDouble(), e.value.averageWeight);
-                        }).toList(),
-                        isCurved: true,
-                        color: const Color(0xFF10B981),
-                        barWidth: 4,
-                        dotData: const FlDotData(show: true),
-                        belowBarData: BarAreaData(
-                          show: true,
-                          color: const Color(0xFF10B981).withValues(alpha: 0.1),
+                  )
+                : LineChart(
+                    LineChartData(
+                      gridData: const FlGridData(show: false),
+                      titlesData: FlTitlesData(
+                        leftTitles: const AxisTitles(
+                          sideTitles: SideTitles(showTitles: false),
+                        ),
+                        bottomTitles: AxisTitles(
+                          sideTitles: SideTitles(
+                            showTitles: true,
+                            getTitlesWidget: (value, meta) {
+                              if (value % 7 == 0) {
+                                return Text(
+                                  'Day ${value.toInt()}',
+                                  style: const TextStyle(
+                                    color: Colors.grey,
+                                    fontSize: 10,
+                                  ),
+                                );
+                              }
+                              return const SizedBox();
+                            },
+                          ),
+                        ),
+                        rightTitles: const AxisTitles(
+                          sideTitles: SideTitles(showTitles: false),
+                        ),
+                        topTitles: const AxisTitles(
+                          sideTitles: SideTitles(showTitles: false),
                         ),
                       ),
-                    ],
+                      borderData: FlBorderData(show: false),
+                      lineBarsData: [
+                        LineChartBarData(
+                          spots: _weightRecords.asMap().entries.map((e) {
+                            final days = e.value.logDate
+                                .difference(widget.batch.arrivalDate)
+                                .inDays;
+                            return FlSpot(
+                              days.toDouble(),
+                              e.value.averageWeight,
+                            );
+                          }).toList(),
+                          isCurved: true,
+                          color: const Color(0xFF10B981),
+                          barWidth: 4,
+                          dotData: const FlDotData(show: true),
+                          belowBarData: BarAreaData(
+                            show: true,
+                            color: const Color(
+                              0xFF10B981,
+                            ).withValues(alpha: 0.1),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
           ),
         ],
       ),
@@ -333,14 +503,34 @@ class _BatchDetailsScreenState extends State<BatchDetailsScreen> {
     return Column(
       children: [
         if (_showFinancials)
-          _infoTile('Financial Initialization', currency.format(widget.batch.initialActualCost ?? 0.0), Icons.payments_outlined, Colors.blue),
+          _infoTile(
+            'Financial Initialization',
+            currency.format(widget.batch.initialActualCost ?? 0.0),
+            Icons.payments_outlined,
+            Colors.blue,
+          ),
         if (_showFinancials) const SizedBox(height: 16),
-        _infoTile('Total Mortality', '$_totalMortality birds', Icons.coronavirus_outlined, Colors.red),
+        _infoTile(
+          'Total Mortality',
+          '$_totalMortality birds',
+          Icons.coronavirus_outlined,
+          Colors.red,
+        ),
         const SizedBox(height: 16),
-        _infoTile('Feed Consumed', '${_totalFeed.toStringAsFixed(1)} kg', Icons.restaurant_outlined, Colors.orange),
+        _infoTile(
+          'Feed Consumed',
+          '${_totalFeed.toStringAsFixed(1)} kg',
+          Icons.restaurant_outlined,
+          Colors.orange,
+        ),
         if (_showFinancials) const SizedBox(height: 16),
         if (_showFinancials)
-          _infoTile('Total Sales', currency.format(_totalSales), Icons.shopping_cart_outlined, Colors.green),
+          _infoTile(
+            'Total Sales',
+            currency.format(_totalSales),
+            Icons.shopping_cart_outlined,
+            Colors.green,
+          ),
       ],
     );
   }
@@ -352,22 +542,49 @@ class _BatchDetailsScreenState extends State<BatchDetailsScreen> {
       decoration: BoxDecoration(
         color: isDark ? const Color(0xFF1A1D21) : Colors.white,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.05)),
-        boxShadow: isDark ? [] : [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10, offset: const Offset(0, 4))],
+        border: Border.all(
+          color: isDark
+              ? Colors.white.withValues(alpha: 0.05)
+              : Colors.black.withValues(alpha: 0.05),
+        ),
+        boxShadow: isDark
+            ? []
+            : [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.02),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+              ],
       ),
       child: Row(
         children: [
           Container(
             padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(12)),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(12),
+            ),
             child: Icon(icon, color: color, size: 20),
           ),
           const SizedBox(width: 16),
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(label, style: TextStyle(color: isDark ? Colors.grey : Colors.grey.shade600, fontSize: 11)),
-              Text(value, style: TextStyle(color: isDark ? Colors.white : const Color(0xFF1E293B), fontWeight: FontWeight.w900)),
+              Text(
+                label,
+                style: TextStyle(
+                  color: isDark ? Colors.grey : Colors.grey.shade600,
+                  fontSize: 11,
+                ),
+              ),
+              Text(
+                value,
+                style: TextStyle(
+                  color: isDark ? Colors.white : const Color(0xFF1E293B),
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
             ],
           ),
         ],
@@ -382,15 +599,38 @@ class _BatchDetailsScreenState extends State<BatchDetailsScreen> {
       decoration: BoxDecoration(
         color: isDark ? const Color(0xFF1A1D21) : Colors.white,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.05)),
-        boxShadow: isDark ? [] : [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10, offset: const Offset(0, 4))],
+        border: Border.all(
+          color: isDark
+              ? Colors.white.withValues(alpha: 0.05)
+              : Colors.black.withValues(alpha: 0.05),
+        ),
+        boxShadow: isDark
+            ? []
+            : [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.02),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+              ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Recent Operations', style: TextStyle(color: isDark ? Colors.white : const Color(0xFF1E293B), fontWeight: FontWeight.bold)),
+          Text(
+            'Recent Operations',
+            style: TextStyle(
+              color: isDark ? Colors.white : const Color(0xFF1E293B),
+              fontWeight: FontWeight.bold,
+            ),
+          ),
           const SizedBox(height: 16),
-          const Center(child: Text('No recent logs found.', style: TextStyle(color: Colors.grey, fontSize: 12))),
+          const Center(
+            child: Text(
+              'No recent logs found.',
+              style: TextStyle(color: Colors.grey, fontSize: 12),
+            ),
+          ),
         ],
       ),
     );
@@ -401,17 +641,41 @@ class _BatchDetailsScreenState extends State<BatchDetailsScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Batch History', style: TextStyle(color: isDark ? Colors.white : const Color(0xFF1E293B), fontSize: 18, fontWeight: FontWeight.w900)),
+        Text(
+          'Batch History',
+          style: TextStyle(
+            color: isDark ? Colors.white : const Color(0xFF1E293B),
+            fontSize: 18,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
         const SizedBox(height: 16),
         Container(
           height: 200,
           decoration: BoxDecoration(
             color: isDark ? const Color(0xFF1A1D21) : Colors.white,
             borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.05)),
-            boxShadow: isDark ? [] : [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10, offset: const Offset(0, 4))],
+            border: Border.all(
+              color: isDark
+                  ? Colors.white.withValues(alpha: 0.05)
+                  : Colors.black.withValues(alpha: 0.05),
+            ),
+            boxShadow: isDark
+                ? []
+                : [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.02),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
           ),
-          child: const Center(child: Text('Timeline coming soon...', style: TextStyle(color: Colors.grey))),
+          child: const Center(
+            child: Text(
+              'Timeline coming soon...',
+              style: TextStyle(color: Colors.grey),
+            ),
+          ),
         ),
       ],
     );

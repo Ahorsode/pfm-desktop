@@ -6,6 +6,7 @@ import 'package:drift/drift.dart' hide Column, Batch;
 import 'package:rxdart/rxdart.dart';
 import '../data/local_db.dart';
 import '../utils/farm_utils.dart';
+import '../utils/id_utils.dart';
 
 class CombinedMortalityLog {
   final Mortality mortality;
@@ -21,7 +22,7 @@ class MortalityScreen extends StatefulWidget {
 }
 
 class _MortalityScreenState extends State<MortalityScreen> {
-  final Map<int, TextEditingController> _controllers = {};
+  final Map<String, TextEditingController> _controllers = {};
 
   @override
   void dispose() {
@@ -31,7 +32,7 @@ class _MortalityScreenState extends State<MortalityScreen> {
     super.dispose();
   }
 
-  TextEditingController _getController(int id) {
+  TextEditingController _getController(String id) {
     return _controllers.putIfAbsent(id, () => TextEditingController());
   }
 
@@ -490,10 +491,10 @@ class _MortalityScreenState extends State<MortalityScreen> {
                             controller: _getController(batch.id),
                             keyboardType: TextInputType.number,
                             inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                            style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.bold),
+                            style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.bold, fontSize: 14),
                             decoration: InputDecoration(
                               hintText: 'Lost',
-                              hintStyle: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.4)),
+                              hintStyle: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.6), fontWeight: FontWeight.w600),
                               filled: true,
                               fillColor: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
                               contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -678,17 +679,20 @@ class _MortalityScreenState extends State<MortalityScreen> {
     }
 
     final farmId = await FarmUtils.getBoundFarmId();
+    final workerId = await FarmUtils.getRequiredUserId();
     if (farmId == null) return;
 
     try {
       await db.transaction(() async {
         // 1. Insert mortality record
         await db.into(db.mortalities).insert(MortalitiesCompanion.insert(
+              id: newLocalId(),
               farmId: farmId,
               batchId: batch.id,
               count: count,
               logDate: DateTime.now(),
               category: const Value('MORTALITY'),
+              userId: Value(workerId),
               synced: const Value(false),
             ));
 

@@ -11,7 +11,7 @@ part 'local_db.g.dart';
 class Users extends Table {
   @override
   String get tableName => 'users';
-  
+
   TextColumn get id => text()();
   TextColumn get firstname => text().nullable()();
   TextColumn get surname => text().nullable()();
@@ -21,12 +21,57 @@ class Users extends Table {
   TextColumn get image => text().nullable()();
   TextColumn get password => text().nullable()();
   TextColumn get phoneNumber => text().nullable()();
-  BoolColumn get mustChangePassword => boolean().withDefault(const Constant(false))();
+  BoolColumn get mustChangePassword =>
+      boolean().withDefault(const Constant(false))();
   TextColumn get role => text().withDefault(const Constant('OWNER'))();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
   DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
   BoolColumn get synced => boolean().withDefault(const Constant(false))();
-  
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+// 1.7. Profiles Table (Worker provisioning: pending → active on mobile registration)
+@DataClassName('Profile')
+class Profiles extends Table {
+  @override
+  String get tableName => 'profiles';
+
+  TextColumn get id => text()();
+  TextColumn get farmId => text()();
+  TextColumn get phoneNumber => text()();
+  TextColumn get role => text().withDefault(const Constant('WORKER'))();
+  TextColumn get firstName => text().nullable()();
+  TextColumn get lastName => text().nullable()();
+  TextColumn get status => text().withDefault(
+    const Constant('PENDING'),
+  )(); // PENDING, ACTIVE, INACTIVE
+  TextColumn get customPermissionsJson =>
+      text().nullable()(); // JSON array of permission keys
+  DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+  DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
+  BoolColumn get synced => boolean().withDefault(const Constant(false))();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+// 1.5. User Permissions (pulled from cloud `user_permissions`)
+@DataClassName('UserPermission')
+class UserPermissions extends Table {
+  @override
+  String get tableName => 'user_permissions';
+
+  TextColumn get id => text()();
+  TextColumn get farmId => text()();
+  TextColumn get userId => text()();
+  TextColumn get permissionKey => text()();
+  BoolColumn get allowed => boolean().withDefault(const Constant(true))();
+  DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+  DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
+  BoolColumn get synced => boolean().withDefault(const Constant(false))();
+
   @override
   Set<Column> get primaryKey => {id};
 }
@@ -36,29 +81,36 @@ class Users extends Table {
 class Farms extends Table {
   @override
   String get tableName => 'farms';
-  
-  IntColumn get id => integer().autoIncrement()();
+
+  TextColumn get id => text()();
   TextColumn get name => text()();
   TextColumn get location => text().nullable()();
   IntColumn get capacity => integer()();
   TextColumn get userId => text()();
-  TextColumn get subscriptionTier => text().withDefault(const Constant('FREE'))();
+  TextColumn get subscriptionTier =>
+      text().withDefault(const Constant('FREE'))();
+  TextColumn get syncStatus =>
+      text().withDefault(const Constant('CLOUD_SYNCED'))();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
   DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
+
+  @override
+  Set<Column> get primaryKey => {id};
 }
 
-// 3. Batches Table (Updated ID to Int, added missing fields)
+// 3. Batches Table
 @DataClassName('Batch')
 class Batches extends Table {
   @override
   String get tableName => 'batches';
-  
-  IntColumn get id => integer().autoIncrement()();
-  IntColumn get farmId => integer()();
-  IntColumn get houseId => integer().nullable()();
+
+  TextColumn get id => text()();
+  TextColumn get farmId => text()();
+  TextColumn get houseId => text().nullable()();
   TextColumn get userId => text().nullable()();
   TextColumn get batchName => text().withDefault(const Constant('New Batch'))();
-  TextColumn get type => text().withDefault(const Constant('POULTRY_BROILER'))();
+  TextColumn get type =>
+      text().withDefault(const Constant('POULTRY_BROILER'))();
   TextColumn get status => text().withDefault(const Constant('active'))();
   TextColumn get breedType => text().nullable()();
   DateTimeColumn get arrivalDate => dateTime()();
@@ -70,6 +122,9 @@ class Batches extends Table {
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
   DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
   BoolColumn get synced => boolean().withDefault(const Constant(false))();
+
+  @override
+  Set<Column> get primaryKey => {id};
 }
 
 // 4. Inventory Table
@@ -77,9 +132,9 @@ class Batches extends Table {
 class Inventory extends Table {
   @override
   String get tableName => 'inventory';
-  
-  IntColumn get id => integer().autoIncrement()();
-  IntColumn get farmId => integer()();
+
+  TextColumn get id => text()();
+  TextColumn get farmId => text()();
   TextColumn get userId => text().nullable()();
   TextColumn get itemName => text()();
   RealColumn get stockLevel => real()();
@@ -87,27 +142,33 @@ class Inventory extends Table {
   TextColumn get unit => text()();
   TextColumn get category => text().nullable()();
   RealColumn get costPerUnit => real().nullable()();
-  IntColumn get supplierId => integer().nullable()();
+  TextColumn get supplierId => text().nullable()();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
   DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
   BoolColumn get synced => boolean().withDefault(const Constant(false))();
+
+  @override
+  Set<Column> get primaryKey => {id};
 }
 
-// 5. Feeding Logs (Updated field names to camelCase but matching Supabase snake_case in sync)
+// 5. Feeding Logs
 @DataClassName('FeedingLog')
 class FeedingLogs extends Table {
   @override
   String get tableName => 'daily_feeding_logs';
-  
-  IntColumn get id => integer().autoIncrement()();
-  IntColumn get farmId => integer()();
-  IntColumn get batchId => integer().nullable()();
-  IntColumn get feedTypeId => integer().nullable()();
-  IntColumn get formulationId => integer().nullable()();
+
+  TextColumn get id => text()();
+  TextColumn get farmId => text()();
+  TextColumn get batchId => text().nullable()();
+  TextColumn get feedTypeId => text().nullable()();
+  TextColumn get formulationId => text().nullable()();
   RealColumn get amountConsumed => real()();
   DateTimeColumn get logDate => dateTime()();
   TextColumn get userId => text().nullable()();
   BoolColumn get synced => boolean().withDefault(const Constant(false))();
+
+  @override
+  Set<Column> get primaryKey => {id};
 }
 
 // 6. Egg Production
@@ -115,11 +176,11 @@ class FeedingLogs extends Table {
 class EggProductions extends Table {
   @override
   String get tableName => 'egg_production';
-  
-  IntColumn get id => integer().autoIncrement()();
-  IntColumn get farmId => integer()();
-  IntColumn get batchId => integer()();
-  IntColumn get categoryId => integer().nullable()();
+
+  TextColumn get id => text()();
+  TextColumn get farmId => text()();
+  TextColumn get batchId => text()();
+  TextColumn get categoryId => text().nullable()();
   IntColumn get eggsCollected => integer()();
   IntColumn get unusableCount => integer().withDefault(const Constant(0))();
   IntColumn get eggsRemaining => integer().withDefault(const Constant(0))();
@@ -129,6 +190,9 @@ class EggProductions extends Table {
   TextColumn get userId => text().nullable()();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
   BoolColumn get synced => boolean().withDefault(const Constant(false))();
+
+  @override
+  Set<Column> get primaryKey => {id};
 }
 
 // 7. Mortality
@@ -136,10 +200,10 @@ class EggProductions extends Table {
 class Mortalities extends Table {
   @override
   String get tableName => 'mortality';
-  
-  IntColumn get id => integer().autoIncrement()();
-  IntColumn get farmId => integer()();
-  IntColumn get batchId => integer()();
+
+  TextColumn get id => text()();
+  TextColumn get farmId => text()();
+  TextColumn get batchId => text()();
   IntColumn get count => integer()();
   TextColumn get reason => text().nullable()();
   TextColumn get category => text().nullable()();
@@ -148,6 +212,9 @@ class Mortalities extends Table {
   TextColumn get userId => text().nullable()();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
   BoolColumn get synced => boolean().withDefault(const Constant(false))();
+
+  @override
+  Set<Column> get primaryKey => {id};
 }
 
 // 8. Houses
@@ -155,9 +222,9 @@ class Mortalities extends Table {
 class Houses extends Table {
   @override
   String get tableName => 'houses';
-  
-  IntColumn get id => integer().autoIncrement()();
-  IntColumn get farmId => integer()();
+
+  TextColumn get id => text()();
+  TextColumn get farmId => text()();
   TextColumn get userId => text().nullable()();
   TextColumn get name => text()();
   IntColumn get capacity => integer()();
@@ -167,6 +234,9 @@ class Houses extends Table {
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
   DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
   BoolColumn get synced => boolean().withDefault(const Constant(false))();
+
+  @override
+  Set<Column> get primaryKey => {id};
 }
 
 // 9. Customers
@@ -174,9 +244,9 @@ class Houses extends Table {
 class Customers extends Table {
   @override
   String get tableName => 'customers';
-  
-  IntColumn get id => integer().autoIncrement()();
-  IntColumn get farmId => integer()();
+
+  TextColumn get id => text()();
+  TextColumn get farmId => text()();
   TextColumn get name => text()();
   TextColumn get phone => text().nullable()();
   TextColumn get email => text().nullable()();
@@ -184,10 +254,14 @@ class Customers extends Table {
   RealColumn get balanceOwed => real().withDefault(const Constant(0.0))();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
   DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
-  TextColumn get customerType => text().withDefault(const Constant('CUSTOMER'))(); // 'CUSTOMER' or 'SUPPLIER'
+  TextColumn get customerType =>
+      text().withDefault(const Constant('CUSTOMER'))();
   TextColumn get supplyItems => text().nullable()();
   TextColumn get contactPerson => text().nullable()();
   BoolColumn get synced => boolean().withDefault(const Constant(false))();
+
+  @override
+  Set<Column> get primaryKey => {id};
 }
 
 // 10. Farm Settings
@@ -195,15 +269,18 @@ class Customers extends Table {
 class FarmSettings extends Table {
   @override
   String get tableName => 'farm_settings';
-  
-  IntColumn get id => integer().autoIncrement()();
-  IntColumn get farmId => integer()();
+
+  TextColumn get id => text()();
+  TextColumn get farmId => text()();
   TextColumn get currency => text().withDefault(const Constant('GHS'))();
   TextColumn get eggRecordReminderTime => text().nullable()();
   TextColumn get feedRecordReminderTime => text().nullable()();
   IntColumn get growthTargetStandard => integer().nullable()();
   IntColumn get eggsPerCrate => integer().withDefault(const Constant(30))();
   BoolColumn get synced => boolean().withDefault(const Constant(true))();
+
+  @override
+  Set<Column> get primaryKey => {id};
 }
 
 // 11. Weight Records
@@ -211,15 +288,18 @@ class FarmSettings extends Table {
 class WeightRecords extends Table {
   @override
   String get tableName => 'weight_records';
-  
-  IntColumn get id => integer().autoIncrement()();
-  IntColumn get farmId => integer()();
-  IntColumn get batchId => integer()();
+
+  TextColumn get id => text()();
+  TextColumn get farmId => text()();
+  TextColumn get batchId => text()();
   RealColumn get averageWeight => real()();
   DateTimeColumn get logDate => dateTime()();
   TextColumn get userId => text().nullable()();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
   BoolColumn get synced => boolean().withDefault(const Constant(false))();
+
+  @override
+  Set<Column> get primaryKey => {id};
 }
 
 // 12. Device Registrations (Hardware Binding)
@@ -227,60 +307,75 @@ class WeightRecords extends Table {
 class DeviceRegistrations extends Table {
   @override
   String get tableName => 'device_registrations';
-  
-  TextColumn get id => text()(); // UUID as text
-  IntColumn get farmId => integer()();
+
+  TextColumn get id => text()();
+  TextColumn get farmId => text()();
   TextColumn get userId => text()();
   TextColumn get deviceIdentifier => text()();
   TextColumn get deviceName => text().nullable()();
-  DateTimeColumn get registeredAt => dateTime().withDefault(currentDateAndTime)();
-  
+  DateTimeColumn get registeredAt =>
+      dateTime().withDefault(currentDateAndTime)();
+
   @override
   Set<Column> get primaryKey => {id};
 }
 
-// 13. Farm Members
+// 13. Owner-only local ↔ cloud user id mapping (offline genesis owner → cloud owner)
+@DataClassName('CloudUserIdMapping')
+class CloudUserIdMappings extends Table {
+  @override
+  String get tableName => 'cloud_user_id_mappings';
+
+  /// Local owner id (offline onboarding / genesis farm)
+  TextColumn get localUserId => text()();
+
+  /// Cloud owner `users.id` from pulled farm_members
+  TextColumn get cloudUserId => text()();
+
+  TextColumn get farmId => text()();
+
+  /// Email or username used to link local ↔ cloud (audit / debug)
+  TextColumn get matchKey => text().nullable()();
+
+  DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
+
+  @override
+  Set<Column> get primaryKey => {localUserId};
+}
+
+// 14. Farm Members
 @DataClassName('FarmMember')
 class FarmMembers extends Table {
   @override
   String get tableName => 'farm_members';
-  
-  IntColumn get id => integer().autoIncrement()();
-  IntColumn get farmId => integer()();
+
+  TextColumn get id => text()();
+  TextColumn get farmId => text()();
   TextColumn get userId => text()();
   TextColumn get role => text().withDefault(const Constant('WORKER'))();
   DateTimeColumn get joinedAt => dateTime().withDefault(currentDateAndTime)();
   BoolColumn get synced => boolean().withDefault(const Constant(false))();
-}
 
-// 14. Feed Types
-@DataClassName('FeedType')
-class FeedTypes extends Table {
   @override
-  String get tableName => 'feed_types';
-  
-  IntColumn get id => integer().autoIncrement()();
-  IntColumn get farmId => integer()();
-  TextColumn get name => text()();
-  TextColumn get description => text().nullable()();
-  RealColumn get currentStock => real().withDefault(const Constant(0.0))();
-  RealColumn get costPerKg => real().withDefault(const Constant(0.0))();
-  BoolColumn get synced => boolean().withDefault(const Constant(false))();
+  Set<Column> get primaryKey => {id};
 }
 
-// 15. Feed Formulations
+// 14. Feed Formulations (ingredient stock lives in `inventory` with category FEED)
 @DataClassName('FeedFormulation')
 class FeedFormulations extends Table {
   @override
   String get tableName => 'feed_formulations';
-  
-  IntColumn get id => integer().autoIncrement()();
-  IntColumn get farmId => integer()();
+
+  TextColumn get id => text()();
+  TextColumn get farmId => text()();
   TextColumn get name => text()();
-  TextColumn get ingredientsJson => text().nullable()(); // JSON string
+  TextColumn get ingredientsJson => text().nullable()();
   TextColumn get description => text().nullable()();
   BoolColumn get isActive => boolean().withDefault(const Constant(true))();
   BoolColumn get synced => boolean().withDefault(const Constant(false))();
+
+  @override
+  Set<Column> get primaryKey => {id};
 }
 
 // 16. Vaccination Schedules
@@ -288,15 +383,18 @@ class FeedFormulations extends Table {
 class VaccinationSchedules extends Table {
   @override
   String get tableName => 'vaccination_schedules';
-  
-  IntColumn get id => integer().autoIncrement()();
-  IntColumn get batchId => integer()();
+
+  TextColumn get id => text()();
+  TextColumn get batchId => text()();
   TextColumn get vaccineName => text()();
   DateTimeColumn get scheduledDate => dateTime()();
   TextColumn get status => text().withDefault(const Constant('PENDING'))();
   TextColumn get notes => text().nullable()();
-  IntColumn get farmId => integer()();
+  TextColumn get farmId => text()();
   BoolColumn get synced => boolean().withDefault(const Constant(false))();
+
+  @override
+  Set<Column> get primaryKey => {id};
 }
 
 // 17. Medication Schedules
@@ -304,15 +402,18 @@ class VaccinationSchedules extends Table {
 class MedicationSchedules extends Table {
   @override
   String get tableName => 'medication_schedules';
-  
-  IntColumn get id => integer().autoIncrement()();
-  IntColumn get batchId => integer()();
+
+  TextColumn get id => text()();
+  TextColumn get batchId => text()();
   TextColumn get medicationName => text()();
   DateTimeColumn get scheduledDate => dateTime()();
   TextColumn get status => text().withDefault(const Constant('PENDING'))();
   TextColumn get notes => text().nullable()();
-  IntColumn get farmId => integer()();
+  TextColumn get farmId => text()();
   BoolColumn get synced => boolean().withDefault(const Constant(false))();
+
+  @override
+  Set<Column> get primaryKey => {id};
 }
 
 // 18. Sales Table
@@ -320,135 +421,277 @@ class MedicationSchedules extends Table {
 class Sales extends Table {
   @override
   String get tableName => 'sales';
-  
-  IntColumn get id => integer().autoIncrement()();
-  IntColumn get farmId => integer()();
-  IntColumn get batchId => integer().nullable()();
-  IntColumn get customerId => integer().nullable()();
+
+  TextColumn get id => text()();
+  TextColumn get farmId => text()();
+  TextColumn get batchId => text().nullable()();
+  TextColumn get customerId => text().nullable()();
   IntColumn get quantity => integer()();
   RealColumn get unitPrice => real()();
   RealColumn get totalAmount => real()();
   DateTimeColumn get saleDate => dateTime().withDefault(currentDateAndTime)();
   TextColumn get userId => text().nullable()();
   BoolColumn get synced => boolean().withDefault(const Constant(false))();
+
+  @override
+  Set<Column> get primaryKey => {id};
 }
 
 // 19. Expenses
 @DataClassName('Expense')
 class Expenses extends Table {
-  IntColumn get id => integer().autoIncrement()();
-  IntColumn get farmId => integer()();
-  TextColumn get category => text()(); // Feed, Meds, Labor, Fuel, etc.
+  TextColumn get id => text()();
+  TextColumn get farmId => text()();
+  TextColumn get batchId => text().nullable()();
+  TextColumn get supplierId => text().nullable()();
+  TextColumn get category => text()();
   RealColumn get amount => real()();
   DateTimeColumn get date => dateTime().withDefault(currentDateAndTime)();
   TextColumn get description => text().nullable()();
+  TextColumn get allocationGroupId => text().nullable()();
+  RealColumn get allocationPercent => real().nullable()();
+  BoolColumn get isSharedAllocation =>
+      boolean().withDefault(const Constant(false))();
   TextColumn get userId => text().nullable()();
   BoolColumn get synced => boolean().withDefault(const Constant(false))();
+
+  @override
+  Set<Column> get primaryKey => {id};
 }
 
-// 20. Settlements (Tracking balance payments)
+// 20. Settlements (local ledger; cloud uses customers.balanceOwed + expenses)
 @DataClassName('Settlement')
 class Settlements extends Table {
-  IntColumn get id => integer().autoIncrement()();
-  IntColumn get farmId => integer()();
-  IntColumn get customerId => integer()();
+  TextColumn get id => text()();
+  TextColumn get farmId => text()();
+  TextColumn get customerId => text()();
   RealColumn get amount => real()();
-  DateTimeColumn get settlementDate => dateTime().withDefault(currentDateAndTime)();
-  TextColumn get settlementType => text()(); // 'COLLECTION' or 'PAYMENT'
+  DateTimeColumn get settlementDate =>
+      dateTime().withDefault(currentDateAndTime)();
+  TextColumn get settlementType => text()();
   TextColumn get userId => text().nullable()();
   BoolColumn get synced => boolean().withDefault(const Constant(false))();
+
+  @override
+  Set<Column> get primaryKey => {id};
 }
 
-// 21. Pending Deletions (to track what needs to be deleted from cloud)
+// 21. Pending Deletions
 @DataClassName('PendingDeletion')
 class PendingDeletions extends Table {
-  IntColumn get id => integer().autoIncrement()();
+  TextColumn get id => text()();
   TextColumn get targetTableName => text()();
-  TextColumn get recordId => text()(); 
-  IntColumn get farmId => integer()();
+  TextColumn get recordId => text()();
+  TextColumn get farmId => text()();
   DateTimeColumn get deletedAt => dateTime().withDefault(currentDateAndTime)();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+// 21. Stock Logs (local movement history; cloud uses inventory.stockLevel)
+@DataClassName('StockLog')
+class StockLogs extends Table {
+  @override
+  String get tableName => 'stock_logs';
+
+  TextColumn get id => text()();
+  TextColumn get farmId => text()();
+  TextColumn get itemId => text()();
+  RealColumn get quantity => real()();
+  TextColumn get logType => text()();
+  TextColumn get batchId => text().nullable()();
+  TextColumn get supplierId => text().nullable()();
+  TextColumn get note => text().nullable()();
+  DateTimeColumn get logDate => dateTime().withDefault(currentDateAndTime)();
+  BoolColumn get synced => boolean().withDefault(const Constant(false))();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+// 22. License Configuration (singleton row – id always 'singleton')
+@DataClassName('LicenseConfig')
+class LicenseConfigs extends Table {
+  @override
+  String get tableName => 'license_configs';
+
+  /// Always 'singleton' – only one row ever exists.
+  TextColumn get id => text()();
+
+  /// 'CLOUD' | 'OFFLINE' | 'GRACE_PERIOD' | 'LOCKED'
+  TextColumn get mode => text().withDefault(const Constant('OFFLINE'))();
+
+  /// Local SQLite farm_id (may be overwritten by webFarmId after cascade)
+  TextColumn get farmId => text().nullable()();
+
+  /// Cloud user id after authentication
+  TextColumn get userId => text().nullable()();
+
+  /// Hardware fingerprint for this machine
+  TextColumn get hardwareId => text().nullable()();
+
+  /// Timestamp when the app was first installed/activated
+  DateTimeColumn get installedAt =>
+      dateTime().withDefault(currentDateAndTime)();
+
+  /// Timestamp when the license expires; compared on every boot
+  DateTimeColumn get expiresAt => dateTime()();
+
+  /// Updated on every DB write; used for anti-clock-tamper detection
+  DateTimeColumn get lastUsed => dateTime().withDefault(currentDateAndTime)();
+
+  @override
+  Set<Column> get primaryKey => {id};
 }
 
 LazyDatabase _openConnection() {
   return LazyDatabase(() async {
     final dbFolder = await getApplicationDocumentsDirectory();
     final file = File(p.join(dbFolder.path, 'poultry_pms.sqlite'));
-    
+
     return NativeDatabase.createInBackground(file);
   });
 }
 
-// 23. Stock Logs
-@DataClassName('StockLog')
-class StockLogs extends Table {
-  @override
-  String get tableName => 'stock_logs';
-  
-  IntColumn get id => integer().autoIncrement()();
-  IntColumn get farmId => integer()();
-  IntColumn get itemId => integer()();
-  RealColumn get quantity => real()();
-  TextColumn get logType => text()(); // 'PROCURED', 'CONSUMED', 'ADJUSTED'
-  IntColumn get batchId => integer().nullable()();
-  IntColumn get supplierId => integer().nullable()();
-  TextColumn get note => text().nullable()();
-  DateTimeColumn get logDate => dateTime().withDefault(currentDateAndTime)();
-  BoolColumn get synced => boolean().withDefault(const Constant(false))();
-}
-
-@DriftDatabase(tables: [
-  Users, 
-  Farms, 
-  Batches, 
-  Inventory, 
-  FeedingLogs, 
-  EggProductions, 
-  Mortalities,
-  Houses,
-  Customers,
-  FarmSettings,
-  WeightRecords,
-  DeviceRegistrations,
-  FarmMembers,
-  FeedTypes,
-  FeedFormulations,
-  VaccinationSchedules,
-  MedicationSchedules,
-  Sales,
-  Expenses,
-  Settlements,
-  PendingDeletions,
-  StockLogs
-])
+@DriftDatabase(
+  tables: [
+    Users,
+    Farms,
+    Batches,
+    Inventory,
+    FeedingLogs,
+    EggProductions,
+    Mortalities,
+    Houses,
+    Customers,
+    FarmSettings,
+    WeightRecords,
+    DeviceRegistrations,
+    FarmMembers,
+    CloudUserIdMappings,
+    FeedFormulations,
+    VaccinationSchedules,
+    MedicationSchedules,
+    Sales,
+    Expenses,
+    Settlements,
+    PendingDeletions,
+    StockLogs,
+    LicenseConfigs,
+    UserPermissions,
+    Profiles,
+  ],
+)
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
+  /// In-memory database for tests (schema v15 string primary keys).
+  AppDatabase.forTesting(super.executor);
+
   @override
-  int get schemaVersion => 14;
+  int get schemaVersion => 22;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
-        onCreate: (m) async {
-          await m.createAll();
-        },
-        onUpgrade: (m, from, to) async {
-          if (from < 10) {
-            for (final table in allTables) {
-              await m.drop(table);
-              await m.create(table);
-            }
+    onCreate: (m) async {
+      await m.createAll();
+    },
+    onUpgrade: (m, from, to) async {
+      if (from < 15) {
+        for (final table in allTables) {
+          await m.drop(table);
+          await m.create(table);
+        }
+      } else {
+        if (from < 10) {
+          for (final table in allTables) {
+            await m.drop(table);
+            await m.create(table);
           }
-          if (from < 12) {
-            await m.addColumn(customers, customers.supplyItems);
-            await m.addColumn(customers, customers.contactPerson);
-          }
-          if (from < 13) {
-            await m.createTable(expenses);
-            await m.createTable(settlements);
-          }
-          if (from < 14) {
-            await m.createTable(stockLogs);
-          }
-        },
-      );
+        }
+        if (from < 12) {
+          await m.addColumn(customers, customers.supplyItems);
+          await m.addColumn(customers, customers.contactPerson);
+        }
+        if (from < 13) {
+          await m.createTable(expenses);
+          await m.createTable(settlements);
+        }
+        if (from < 14) {
+          await m.createTable(stockLogs);
+        }
+        if (from < 16) {
+          // feed_types merged into inventory (cloud has no feed_types table)
+          await m.database.customStatement('''
+                INSERT OR IGNORE INTO inventory (
+                  id, farm_id, item_name, stock_level, unit, category,
+                  cost_per_unit, synced, created_at, updated_at
+                )
+                SELECT
+                  id, farm_id, name, current_stock, 'kg', 'FEED',
+                  cost_per_kg, synced, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+                FROM feed_types
+                WHERE EXISTS (
+                  SELECT 1 FROM sqlite_master
+                  WHERE type = 'table' AND name = 'feed_types'
+                )
+              ''');
+          try {
+            await m.database.customStatement('DROP TABLE IF EXISTS feed_types');
+          } catch (_) {}
+        }
+        if (from < 17) {
+          await m.createTable(licenseConfigs);
+        }
+        if (from < 18) {
+          await m.addColumn(farms, farms.syncStatus);
+        }
+        if (from < 19) {
+          await m.createTable(cloudUserIdMappings);
+        }
+        if (from < 20) {
+          await m.addColumn(expenses, expenses.batchId);
+          await m.addColumn(expenses, expenses.supplierId);
+          await m.addColumn(expenses, expenses.allocationGroupId);
+          await m.addColumn(expenses, expenses.allocationPercent);
+          await m.addColumn(expenses, expenses.isSharedAllocation);
+        }
+      }
+      if (from < 22) {
+        await _ensureProvisioningLocalTables(m);
+      }
+    },
+  );
+}
+
+Future<void> _ensureProvisioningLocalTables(Migrator m) async {
+  await m.database.customStatement('''
+    CREATE TABLE IF NOT EXISTS user_permissions (
+      id TEXT NOT NULL PRIMARY KEY,
+      farm_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      permission_key TEXT NOT NULL,
+      allowed INTEGER NOT NULL DEFAULT 1 CHECK (allowed IN (0, 1)),
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      synced INTEGER NOT NULL DEFAULT 0 CHECK (synced IN (0, 1))
+    )
+  ''');
+
+  await m.database.customStatement('''
+    CREATE TABLE IF NOT EXISTS profiles (
+      id TEXT NOT NULL PRIMARY KEY,
+      farm_id TEXT NOT NULL,
+      phone_number TEXT NOT NULL,
+      role TEXT NOT NULL DEFAULT 'WORKER',
+      first_name TEXT,
+      last_name TEXT,
+      status TEXT NOT NULL DEFAULT 'PENDING',
+      custom_permissions_json TEXT,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      synced INTEGER NOT NULL DEFAULT 0 CHECK (synced IN (0, 1))
+    )
+  ''');
 }

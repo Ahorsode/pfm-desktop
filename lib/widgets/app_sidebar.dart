@@ -2,6 +2,25 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../theme/theme_provider.dart';
 
+class SidebarMenuItem {
+  final int index;
+  final IconData icon;
+  final String label;
+
+  const SidebarMenuItem({
+    required this.index,
+    required this.icon,
+    required this.label,
+  });
+}
+
+class SidebarMenuSection {
+  final String title;
+  final List<SidebarMenuItem> items;
+
+  const SidebarMenuSection({required this.title, required this.items});
+}
+
 class AppSidebar extends StatelessWidget {
   final int selectedIndex;
   final bool isCollapsed;
@@ -9,6 +28,8 @@ class AppSidebar extends StatelessWidget {
   final Function(int) onDestinationSelected;
   final VoidCallback onLogout;
   final Widget syncStatus;
+  final Widget? sessionMode;
+  final List<SidebarMenuSection> sections;
 
   const AppSidebar({
     super.key,
@@ -18,6 +39,8 @@ class AppSidebar extends StatelessWidget {
     required this.onDestinationSelected,
     required this.onLogout,
     required this.syncStatus,
+    this.sessionMode,
+    required this.sections,
   });
 
   @override
@@ -49,125 +72,19 @@ class AppSidebar extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  if (!isCollapsed) _buildSectionHeader('OPERATIONS'),
-                  _buildMenuItem(
-                    context,
-                    0,
-                    Icons.grid_view_rounded,
-                    'Dashboard',
-                    sidebarAccent,
-                  ),
-                  _buildMenuItem(
-                    context,
-                    1,
-                    Icons.pets_rounded,
-                    'Livestock',
-                    sidebarAccent,
-                  ),
-                  _buildMenuItem(
-                    context,
-                    2,
-                    Icons.analytics_rounded,
-                    'Comparative Analytics',
-                    sidebarAccent,
-                  ),
-                  _buildMenuItem(
-                    context,
-                    3,
-                    Icons.home_work_rounded,
-                    'Houses',
-                    sidebarAccent,
-                  ),
-                  _buildMenuItem(
-                    context,
-                    4,
-                    Icons.egg_rounded,
-                    'Eggs',
-                    sidebarAccent,
-                  ),
-                  _buildMenuItem(
-                    context,
-                    5,
-                    Icons.restaurant_rounded,
-                    'Feeding',
-                    sidebarAccent,
-                  ),
-                  _buildMenuItem(
-                    context,
-                    6,
-                    Icons.dangerous_outlined,
-                    'Mortality',
-                    sidebarAccent,
-                  ),
-                  _buildMenuItem(
-                    context,
-                    7,
-                    Icons.health_and_safety_outlined,
-                    'Quarantine',
-                    sidebarAccent,
-                  ),
-
-                  const SizedBox(height: 20),
-                  if (!isCollapsed) _buildSectionHeader('COMMERCIAL HUB'),
-                  _buildMenuItem(
-                    context,
-                    8,
-                    Icons.receipt_long_rounded,
-                    'Sales',
-                    sidebarAccent,
-                  ),
-                  _buildMenuItem(
-                    context,
-                    9,
-                    Icons.people_alt_rounded,
-                    'Customers',
-                    sidebarAccent,
-                  ),
-                  _buildMenuItem(
-                    context,
-                    10,
-                    Icons.local_shipping_rounded,
-                    'Suppliers',
-                    sidebarAccent,
-                  ),
-                  _buildMenuItem(
-                    context,
-                    11,
-                    Icons.account_balance_wallet_rounded,
-                    'Finance',
-                    sidebarAccent,
-                  ),
-                  _buildMenuItem(
-                    context,
-                    12,
-                    Icons.inventory_2_rounded,
-                    'Inventory',
-                    sidebarAccent,
-                  ),
-
-                  const SizedBox(height: 20),
-                  if (!isCollapsed) _buildSectionHeader('GOVERNANCE'),
-                  _buildMenuItem(
-                    context,
-                    13,
-                    Icons.group_rounded,
-                    'Team',
-                    sidebarAccent,
-                  ),
-                  _buildMenuItem(
-                    context,
-                    14,
-                    Icons.settings_rounded,
-                    'Settings',
-                    sidebarAccent,
-                  ),
-                  _buildMenuItem(
-                    context,
-                    15,
-                    Icons.library_books_rounded,
-                    'Reports & Logs',
-                    sidebarAccent,
-                  ),
+                  for (var i = 0; i < sections.length; i++) ...[
+                    if (!isCollapsed) _buildSectionHeader(sections[i].title),
+                    ...sections[i].items.map(
+                      (item) => _buildMenuItem(
+                        context,
+                        item.index,
+                        item.icon,
+                        item.label,
+                        sidebarAccent,
+                      ),
+                    ),
+                    if (i < sections.length - 1) const SizedBox(height: 20),
+                  ],
                 ],
               ),
             ),
@@ -181,75 +98,86 @@ class AppSidebar extends StatelessWidget {
   Widget _buildHeader(Color accent) {
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 24, 12, 20),
-      child: Row(
-        mainAxisAlignment: isCollapsed
-            ? MainAxisAlignment.center
-            : MainAxisAlignment.start,
+      child: Column(
         children: [
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [accent, const Color(0xFF15803D)],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
+          Row(
+            mainAxisAlignment: isCollapsed
+                ? MainAxisAlignment.center
+                : MainAxisAlignment.start,
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [accent, const Color(0xFF15803D)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [
+                    BoxShadow(
+                      color: accent.withValues(alpha: 0.4),
+                      blurRadius: 8,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: const Icon(
+                  Icons.agriculture_rounded,
+                  color: Colors.white,
+                  size: 22,
+                ),
               ),
-              borderRadius: BorderRadius.circular(12),
-              boxShadow: [
-                BoxShadow(
-                  color: accent.withValues(alpha: 0.4),
-                  blurRadius: 8,
-                  offset: const Offset(0, 4),
+              if (!isCollapsed) ...[
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'POULTRY PMS',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w900,
+                          fontSize: 16,
+                          letterSpacing: 1,
+                        ),
+                      ),
+                      Text(
+                        'ENTERPRISE',
+                        style: TextStyle(
+                          color: accent,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 9,
+                          letterSpacing: 2.5,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ],
-            ),
-            child: const Icon(
-              Icons.agriculture_rounded,
-              color: Colors.white,
-              size: 22,
-            ),
+              if (!isCollapsed)
+                IconButton(
+                  icon: const Icon(
+                    Icons.menu_open_rounded,
+                    color: Colors.white54,
+                    size: 20,
+                  ),
+                  onPressed: onToggleCollapse,
+                  tooltip: 'Collapse Menu',
+                )
+              else
+                const SizedBox.shrink(),
+            ],
           ),
-          if (!isCollapsed) ...[
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'POULTRY PMS',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w900,
-                      fontSize: 16,
-                      letterSpacing: 1,
-                    ),
-                  ),
-                  Text(
-                    'ENTERPRISE',
-                    style: TextStyle(
-                      color: accent,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 9,
-                      letterSpacing: 2.5,
-                    ),
-                  ),
-                ],
-              ),
+          if (sessionMode != null) ...[
+            const SizedBox(height: 12),
+            Align(
+              alignment: isCollapsed ? Alignment.center : Alignment.centerLeft,
+              child: sessionMode!,
             ),
           ],
-          if (!isCollapsed)
-            IconButton(
-              icon: const Icon(
-                Icons.menu_open_rounded,
-                color: Colors.white54,
-                size: 20,
-              ),
-              onPressed: onToggleCollapse,
-              tooltip: 'Collapse Menu',
-            )
-          else
-            const SizedBox.shrink(),
         ],
       ),
     );
@@ -284,7 +212,9 @@ class AppSidebar extends StatelessWidget {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         decoration: BoxDecoration(
-          color: isSelected ? accent.withValues(alpha: 0.18) : Colors.transparent,
+          color: isSelected
+              ? accent.withValues(alpha: 0.18)
+              : Colors.transparent,
           borderRadius: BorderRadius.circular(10),
           border: isSelected
               ? Border.all(color: accent.withValues(alpha: 0.35))
@@ -296,7 +226,7 @@ class AppSidebar extends StatelessWidget {
           hoverColor: Colors.white.withValues(alpha: 0.05),
           child: Padding(
             padding: EdgeInsets.symmetric(
-              horizontal: isCollapsed ? 6 : 12, 
+              horizontal: isCollapsed ? 6 : 12,
               vertical: 10,
             ),
             child: Row(
@@ -352,7 +282,9 @@ class AppSidebar extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        border: Border(top: BorderSide(color: Colors.white.withValues(alpha: 0.06))),
+        border: Border(
+          top: BorderSide(color: Colors.white.withValues(alpha: 0.06)),
+        ),
       ),
       child: Column(
         children: [
@@ -395,7 +327,9 @@ class AppSidebar extends StatelessWidget {
                       width: 36,
                       height: 20,
                       decoration: BoxDecoration(
-                        color: isDark ? accent : Colors.white.withValues(alpha: 0.15),
+                        color: isDark
+                            ? accent
+                            : Colors.white.withValues(alpha: 0.15),
                         borderRadius: BorderRadius.circular(10),
                       ),
                       child: Align(

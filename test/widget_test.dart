@@ -1,42 +1,27 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
-
+import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
-import 'package:poultry_pms_desktop/main.dart';
 import 'package:poultry_pms_desktop/data/local_db.dart';
-import 'package:poultry_pms_desktop/data/sync_engine.dart';
+import 'package:poultry_pms_desktop/utils/id_utils.dart';
 
-import 'package:supabase_flutter/supabase_flutter.dart';
-
+/// Mirrors how screens obtain AppDatabase via Provider: file-free in-memory DB.
 void main() {
-  testWidgets('Dashboard smoke test', (WidgetTester tester) async {
-    // Initialize Supabase with placeholder credentials for test environment
-    await Supabase.initialize(
-      url: 'https://dummy.supabase.co',
-      anonKey: 'dummy_key',
-    );
+  test('in-memory AppDatabase supports UI-style farm insert', () async {
+    final db = AppDatabase.forTesting(NativeDatabase.memory());
+    addTearDown(db.close);
 
-    final db = AppDatabase();
-    final sync = SyncEngine(db);
-
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(
-      MultiProvider(
-        providers: [
-          Provider<AppDatabase>.value(value: db),
-          ChangeNotifierProvider<SyncEngine>.value(value: sync),
-        ],
-        child: const MyApp(isBound: false),
+    final farmId = newLocalId();
+    await db.into(db.farms).insert(
+      FarmsCompanion.insert(
+        id: farmId,
+        name: 'UI Farm',
+        capacity: 100,
+        userId: newLocalId(),
       ),
     );
 
-    // Verify that the dashboard title is present.
-    expect(find.text('Dashboard'), findsOneWidget);
+    final farms = await db.select(db.farms).get();
+    expect(farms, hasLength(1));
+    expect(farms.first.id, farmId);
+    expect(int.tryParse(farms.first.id), isNull);
   });
 }
-

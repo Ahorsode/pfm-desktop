@@ -3,9 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../data/local_db.dart';
 import '../data/sync_engine.dart';
+import '../utils/farm_utils.dart';
+import '../utils/id_utils.dart';
 
 class CustomerDirectoryScreen extends StatefulWidget {
   const CustomerDirectoryScreen({super.key});
@@ -36,13 +37,11 @@ class _CustomerDirectoryScreenState extends State<CustomerDirectoryScreen> {
     super.dispose();
   }
 
-  Future<int> _getFarmId() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getInt('bound_farm_id') ?? 0;
-  }
+  Future<String?> _getFarmId() async => FarmUtils.getBoundFarmId();
 
   Future<void> _showCustomerDialog({Customer? customer}) async {
     final farmId = await _getFarmId();
+    if (farmId == null) return;
     final nameCtrl = TextEditingController(text: customer?.name ?? '');
     final phoneCtrl = TextEditingController(text: customer?.phone ?? '');
     final emailCtrl = TextEditingController(text: customer?.email ?? '');
@@ -115,6 +114,7 @@ class _CustomerDirectoryScreenState extends State<CustomerDirectoryScreen> {
                                     onPressed: () async {
                                       if (!formKey.currentState!.validate()) return;
                                       final companion = CustomersCompanion(
+                                        id: Value(customer?.id ?? newLocalId()),
                                         farmId: Value(farmId),
                                         name: Value(nameCtrl.text),
                                         phone: Value(phoneCtrl.text.isEmpty ? null : phoneCtrl.text),
@@ -198,11 +198,11 @@ class _CustomerDirectoryScreenState extends State<CustomerDirectoryScreen> {
           keyboardType: isNumber ? const TextInputType.numberWithOptions(decimal: true) : TextInputType.text,
           validator: required ? (v) => (v == null || v.isEmpty) ? 'Required' : null : null,
           inputFormatters: isNumber ? [FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))] : [],
-          style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.w600, fontSize: 15),
+          style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.w700, fontSize: 15),
           decoration: InputDecoration(
             hintText: hint,
-            hintStyle: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.5), fontSize: 14),
-            prefixIcon: Icon(icon, size: 20, color: Theme.of(context).colorScheme.onSurfaceVariant),
+            hintStyle: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.7), fontSize: 14, fontWeight: FontWeight.w600),
+            prefixIcon: Icon(icon, size: 20, color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.7)),
             filled: true,
             fillColor: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
             border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.1))),
@@ -570,6 +570,7 @@ class _CustomerDirectoryScreenState extends State<CustomerDirectoryScreen> {
             onPressed: () async {
               final ctx = context;
               final amount = double.tryParse(amountController.text) ?? 0.0;
+              final workerId = await FarmUtils.getRequiredUserId();
               if (amount <= 0) return;
               
               final newBalance = customer.balanceOwed - amount;
@@ -584,11 +585,13 @@ class _CustomerDirectoryScreenState extends State<CustomerDirectoryScreen> {
 
               // Log the settlement (Collection from customer)
               await db.into(db.settlements).insert(SettlementsCompanion.insert(
+                id: newLocalId(),
                 farmId: customer.farmId,
                 customerId: customer.id,
                 amount: amount,
                 settlementDate: Value(DateTime.now()),
                 settlementType: 'COLLECTION',
+                userId: Value(workerId),
                 synced: const Value(false),
               ));
               

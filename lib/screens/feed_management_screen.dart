@@ -6,6 +6,8 @@ import 'package:intl/intl.dart';
 import 'package:drift/drift.dart' hide Column, Table, Batch;
 import '../data/local_db.dart';
 import '../utils/farm_utils.dart';
+import '../utils/id_utils.dart';
+import '../utils/inventory_constants.dart';
 
 class FeedManagementScreen extends StatefulWidget {
   const FeedManagementScreen({super.key});
@@ -406,8 +408,8 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
 
             for (var log in logs) {
               if (log.formulationId != null) {
-                final form = formulations.firstWhere((f) => f.id == log.formulationId, orElse: () => const FeedFormulation(id: 0, farmId: 0, name: '', isActive: false, synced: false));
-                if (form.id != 0 && form.ingredientsJson != null) {
+                final form = formulations.firstWhere((f) => f.id == log.formulationId, orElse: () => const FeedFormulation(id: '', farmId: '', name: '', isActive: false, synced: false));
+                if (form.id.isNotEmpty && form.ingredientsJson != null) {
                   try {
                     final Map<String, dynamic> ratios = jsonDecode(form.ingredientsJson!);
                     ratios.forEach((ingredient, percentage) {
@@ -512,9 +514,9 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
   // --- DIALOG: LOG FEEDING ---
   void _showLogFeedingDialog(AppDatabase db) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    int? selectedBatch;
-    int? selectedFeedType;
-    int? selectedFormulation;
+    String? selectedBatch;
+    String? selectedFeedType;
+    String? selectedFormulation;
     final amountCtrl = TextEditingController();
     DateTime selectedDate = DateTime.now();
 
@@ -559,7 +561,7 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
                       stream: (db.select(db.batches)..where((t) => t.status.equals('active'))).watch(),
                       builder: (context, snapshot) {
                         final list = snapshot.data ?? [];
-                        return DropdownButtonFormField<int>(
+                        return DropdownButtonFormField<String>(
                           dropdownColor: isDark ? const Color(0xFF0F172A) : Colors.white,
                           style: TextStyle(color: isDark ? Colors.white : Colors.black87),
                           items: list.map((b) => DropdownMenuItem(value: b.id, child: Text(b.batchName))).toList(),
@@ -573,14 +575,14 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
                     // Feed Type Dropdown
                     Text('Feed Type', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: isDark ? Colors.white70 : const Color(0xFF475569))),
                     const SizedBox(height: 8),
-                    StreamBuilder<List<FeedType>>(
-                      stream: db.select(db.feedTypes).watch(),
+                    StreamBuilder<List<InventoryItem>>(
+                      stream: (db.select(db.inventory)..where((t) => t.category.equals(kFeedInventoryCategory))).watch(),
                       builder: (context, snapshot) {
                         final list = snapshot.data ?? [];
-                        return DropdownButtonFormField<int>(
+                        return DropdownButtonFormField<String>(
                           dropdownColor: isDark ? const Color(0xFF0F172A) : Colors.white,
                           style: TextStyle(color: isDark ? Colors.white : Colors.black87),
-                          items: list.map((f) => DropdownMenuItem(value: f.id, child: Text(f.name))).toList(),
+                          items: list.map((f) => DropdownMenuItem(value: f.id, child: Text(f.itemName))).toList(),
                           onChanged: (val) => setDialogState(() => selectedFeedType = val),
                           decoration: _dialogInputDecoration('Select raw feed ingredient', isDark),
                         );
@@ -595,7 +597,7 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
                       stream: db.select(db.feedFormulations).watch(),
                       builder: (context, snapshot) {
                         final list = snapshot.data ?? [];
-                        return DropdownButtonFormField<int>(
+                        return DropdownButtonFormField<String>(
                           dropdownColor: isDark ? const Color(0xFF0F172A) : Colors.white,
                           style: TextStyle(color: isDark ? Colors.white : Colors.black87),
                           items: list.map((f) => DropdownMenuItem(value: f.id, child: Text(f.name))).toList(),
@@ -692,28 +694,31 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
                           }
 
                           final farmId = await FarmUtils.getBoundFarmId();
+                          final workerId = await FarmUtils.getRequiredUserId();
                           if (farmId == null) return;
 
                           try {
                             await db.transaction(() async {
                               // 1. Insert Feeding log record
                               await db.into(db.feedingLogs).insert(FeedingLogsCompanion.insert(
+                                id: newLocalId(),
                                 farmId: farmId,
                                 batchId: Value(selectedBatch),
                                 feedTypeId: Value(selectedFeedType),
                                 formulationId: Value(selectedFormulation),
                                 amountConsumed: amount,
                                 logDate: selectedDate,
+                                userId: Value(workerId),
                                 synced: const Value(false),
                               ));
 
-                              // 2. Decrement corresponding stock levels from FeedTypes
-                              final currentFeedList = await (db.select(db.feedTypes)..where((t) => t.id.equals(selectedFeedType!))).get();
+                              // 2. Decrement feed ingredient stock (cloud: inventory.category = FEED)
+                              final currentFeedList = await (db.select(db.inventory)..where((t) => t.id.equals(selectedFeedType!) & t.category.equals(kFeedInventoryCategory))).get();
                               if (currentFeedList.isNotEmpty) {
                                 final feed = currentFeedList.first;
-                                await (db.update(db.feedTypes)..where((t) => t.id.equals(selectedFeedType!))).write(
-                                  FeedTypesCompanion(
-                                    currentStock: Value((feed.currentStock - amount).clamp(0.0, 999999.0)),
+                                await (db.update(db.inventory)..where((t) => t.id.equals(selectedFeedType!))).write(
+                                  InventoryCompanion(
+                                    stockLevel: Value((feed.stockLevel - amount).clamp(0.0, 999999.0)),
                                     synced: const Value(false),
                                   ),
                                 );
@@ -930,6 +935,7 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
 
                           try {
                             await db.into(db.feedFormulations).insert(FeedFormulationsCompanion.insert(
+                              id: newLocalId(),
                               farmId: farmId,
                               name: name,
                               ingredientsJson: Value(jsonEncode(ratios)),
@@ -1156,13 +1162,18 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
                             if (name.isEmpty || stock <= 0) return;
 
                             final farmId = await FarmUtils.getBoundFarmId();
+                            final workerId = await FarmUtils.getRequiredUserId();
                             if (farmId == null) return;
 
                             try {
-                              await db.into(db.feedTypes).insert(FeedTypesCompanion.insert(
+                              await db.into(db.inventory).insert(InventoryCompanion.insert(
+                                id: newLocalId(),
                                 farmId: farmId,
-                                name: name,
-                                currentStock: Value(stock),
+                                itemName: name,
+                                stockLevel: stock,
+                                unit: kDefaultFeedUnit,
+                                category: Value(kFeedInventoryCategory),
+                                userId: Value(workerId),
                                 synced: const Value(false),
                               ));
                               nameCtrl.clear();
@@ -1180,8 +1191,8 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
                     // List of current items
                     Text('Current Ingredient Stock Levels', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: isDark ? Colors.white70 : const Color(0xFF475569))),
                     const SizedBox(height: 12),
-                    StreamBuilder<List<FeedType>>(
-                      stream: db.select(db.feedTypes).watch(),
+                    StreamBuilder<List<InventoryItem>>(
+                      stream: (db.select(db.inventory)..where((t) => t.category.equals(kFeedInventoryCategory))).watch(),
                       builder: (context, snapshot) {
                         final list = snapshot.data ?? [];
                         if (list.isEmpty) {
@@ -1198,7 +1209,7 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
                             itemCount: list.length,
                             itemBuilder: (context, index) {
                               final item = list[index];
-                              final isLow = item.currentStock < 100.0;
+                              final isLow = item.stockLevel < 100.0;
 
                               return Padding(
                                 padding: const EdgeInsets.only(bottom: 12.0),
@@ -1215,7 +1226,7 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
                                       Column(
                                         crossAxisAlignment: CrossAxisAlignment.start,
                                         children: [
-                                          Text(item.name, style: TextStyle(fontWeight: FontWeight.bold, color: isDark ? Colors.white : const Color(0xFF0F172A))),
+                                          Text(item.itemName, style: TextStyle(fontWeight: FontWeight.bold, color: isDark ? Colors.white : const Color(0xFF0F172A))),
                                           if (isLow)
                                             Text('LOW STOCK WARNING', style: TextStyle(color: isDark ? Colors.amberAccent : Colors.orange.shade800, fontSize: 9, fontWeight: FontWeight.bold)),
                                         ],
@@ -1223,7 +1234,7 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
                                       Row(
                                         children: [
                                           Text(
-                                            '${item.currentStock.toStringAsFixed(1)} kg',
+                                            '${item.stockLevel.toStringAsFixed(1)} ${item.unit}',
                                             style: TextStyle(
                                               fontWeight: FontWeight.bold,
                                               color: isLow ? (isDark ? Colors.amberAccent : Colors.orange.shade800) : (isDark ? Colors.green.shade400 : const Color(0xFF16A34A)),
@@ -1245,7 +1256,7 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
                                                       mainAxisSize: MainAxisSize.min,
                                                       crossAxisAlignment: CrossAxisAlignment.start,
                                                       children: [
-                                                        Text('Enter amount to restock ${item.name} in kilograms (KG):', style: TextStyle(color: isDark ? Colors.white70 : const Color(0xFF475569))),
+                                                        Text('Enter amount to restock ${item.itemName} (${item.unit}):', style: TextStyle(color: isDark ? Colors.white70 : const Color(0xFF475569))),
                                                         const SizedBox(height: 12),
                                                         TextField(
                                                           controller: restockController,
@@ -1280,9 +1291,9 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
                                                 },
                                               );
                                               if (restockAmount != null && restockAmount > 0) {
-                                                await (db.update(db.feedTypes)..where((t) => t.id.equals(item.id))).write(
-                                                  FeedTypesCompanion(
-                                                    currentStock: Value(item.currentStock + restockAmount),
+                                                await (db.update(db.inventory)..where((t) => t.id.equals(item.id))).write(
+                                                  InventoryCompanion(
+                                                    stockLevel: Value(item.stockLevel + restockAmount),
                                                     synced: const Value(false),
                                                   ),
                                                 );
@@ -1294,7 +1305,7 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
                                           IconButton(
                                             icon: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 20),
                                             onPressed: () async {
-                                              await (db.delete(db.feedTypes)..where((t) => t.id.equals(item.id))).go();
+                                              await (db.delete(db.inventory)..where((t) => t.id.equals(item.id))).go();
                                               setDialogState(() {});
                                             },
                                           ),
@@ -1323,17 +1334,17 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
   InputDecoration _dialogInputDecoration(String hint, bool isDark) {
     return InputDecoration(
       hintText: hint,
-      hintStyle: TextStyle(color: isDark ? Colors.white38 : Colors.black38, fontSize: 13),
+      hintStyle: TextStyle(color: isDark ? Colors.white54 : Colors.black54, fontSize: 13, fontWeight: FontWeight.w600),
       filled: true,
-      fillColor: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.grey.shade100,
+      fillColor: isDark ? Colors.white.withValues(alpha: 0.08) : Colors.grey.shade50,
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(8),
-        borderSide: BorderSide(color: isDark ? Colors.transparent : Colors.grey.shade300),
+        borderSide: BorderSide(color: isDark ? Colors.white.withValues(alpha: 0.12) : Colors.grey.shade300),
       ),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(8),
-        borderSide: BorderSide(color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.grey.shade300),
+        borderSide: BorderSide(color: isDark ? Colors.white.withValues(alpha: 0.12) : Colors.grey.shade400),
       ),
     );
   }
@@ -1410,17 +1421,17 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
               return FutureBuilder<List<dynamic>>(
                 future: Future.wait([
                   db.select(db.batches).get(),
-                  db.select(db.feedTypes).get(),
+                  (db.select(db.inventory)..where((t) => t.category.equals(kFeedInventoryCategory))).get(),
                   db.select(db.feedFormulations).get(),
                 ]),
                 builder: (context, dynamicSnapshot) {
                   final data = dynamicSnapshot.data;
                   final List<Batch> batches = data != null ? data[0] as List<Batch> : [];
-                  final List<FeedType> feedTypes = data != null ? data[1] as List<FeedType> : [];
+                  final List<InventoryItem> feedTypes = data != null ? data[1] as List<InventoryItem> : [];
                   final List<FeedFormulation> formulations = data != null ? data[2] as List<FeedFormulation> : [];
 
                   final batchMap = {for (var b in batches) b.id: b.batchName};
-                  final feedTypeMap = {for (var f in feedTypes) f.id: f.name};
+                  final feedTypeMap = {for (var f in feedTypes) f.id: f.itemName};
                   final formulationMap = {for (var f in formulations) f.id: f.name};
 
                   return LayoutBuilder(
@@ -1570,7 +1581,7 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
     );
   }
 
-  void _confirmDeleteFeedingLog(AppDatabase db, int logId) {
+  void _confirmDeleteFeedingLog(AppDatabase db, String logId) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     showDialog(
       context: context,

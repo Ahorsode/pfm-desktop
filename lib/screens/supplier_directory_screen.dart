@@ -3,9 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../data/local_db.dart';
 import '../data/sync_engine.dart';
+import '../utils/farm_utils.dart';
+import '../utils/id_utils.dart';
 
 class SupplierDirectoryScreen extends StatefulWidget {
   const SupplierDirectoryScreen({super.key});
@@ -36,13 +37,11 @@ class _SupplierDirectoryScreenState extends State<SupplierDirectoryScreen> {
     super.dispose();
   }
 
-  Future<int> _getFarmId() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getInt('bound_farm_id') ?? 0;
-  }
+  Future<String?> _getFarmId() async => FarmUtils.getBoundFarmId();
 
   Future<void> _showSupplierDialog({Customer? supplier}) async {
     final farmId = await _getFarmId();
+    if (farmId == null) return;
     final nameCtrl = TextEditingController(text: supplier?.name ?? '');
     final phoneCtrl = TextEditingController(text: supplier?.phone ?? '');
     final emailCtrl = TextEditingController(text: supplier?.email ?? '');
@@ -124,6 +123,7 @@ class _SupplierDirectoryScreenState extends State<SupplierDirectoryScreen> {
                                   onPressed: () async {
                                     if (!formKey.currentState!.validate()) return;
                                     final companion = CustomersCompanion(
+                                      id: Value(supplier?.id ?? newLocalId()),
                                       farmId: Value(farmId),
                                       name: Value(nameCtrl.text),
                                       phone: Value(phoneCtrl.text.isEmpty ? null : phoneCtrl.text),
@@ -208,11 +208,11 @@ class _SupplierDirectoryScreenState extends State<SupplierDirectoryScreen> {
           keyboardType: isNumber ? const TextInputType.numberWithOptions(decimal: true) : TextInputType.text,
           validator: required ? (v) => (v == null || v.isEmpty) ? 'Required' : null : null,
           inputFormatters: isNumber ? [FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))] : [],
-          style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.w600, fontSize: 15),
+          style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.w700, fontSize: 15),
           decoration: InputDecoration(
             hintText: hint,
-            hintStyle: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.5), fontSize: 14),
-            prefixIcon: Icon(icon, size: 20, color: Theme.of(context).colorScheme.onSurfaceVariant),
+            hintStyle: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.7), fontSize: 14, fontWeight: FontWeight.w600),
+            prefixIcon: Icon(icon, size: 20, color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.7)),
             filled: true,
             fillColor: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
             border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.1))),
@@ -586,6 +586,7 @@ class _SupplierDirectoryScreenState extends State<SupplierDirectoryScreen> {
             onPressed: () async {
               final ctx = context;
               final amount = double.tryParse(amountController.text) ?? 0.0;
+              final workerId = await FarmUtils.getRequiredUserId();
               if (amount <= 0) return;
               
               final newBalance = supplier.balanceOwed - amount;
@@ -600,11 +601,13 @@ class _SupplierDirectoryScreenState extends State<SupplierDirectoryScreen> {
 
               // Log the settlement (Payment to supplier)
               await db.into(db.settlements).insert(SettlementsCompanion.insert(
+                id: newLocalId(),
                 farmId: supplier.farmId,
                 customerId: supplier.id,
                 amount: amount,
                 settlementDate: Value(DateTime.now()),
                 settlementType: 'PAYMENT',
+                userId: Value(workerId),
                 synced: const Value(false),
               ));
               

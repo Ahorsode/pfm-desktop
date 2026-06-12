@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import '../data/local_db.dart';
 import '../data/sync_engine.dart';
 import '../utils/farm_utils.dart';
+import '../utils/id_utils.dart';
 
 class InventoryManager extends StatelessWidget {
   const InventoryManager({super.key});
@@ -263,10 +264,12 @@ class InventoryManager extends StatelessWidget {
               if (nameController.text.isEmpty) return;
 
               final farmId = await FarmUtils.getBoundFarmId();
+              final workerId = await FarmUtils.getRequiredUserId();
               if (farmId == null) return;
 
               await db.into(db.inventory).insert(
                     InventoryCompanion.insert(
+                      id: newLocalId(),
                       farmId: farmId,
                       itemName: nameController.text,
                       category: Value(selectedCategory),
@@ -274,6 +277,7 @@ class InventoryManager extends StatelessWidget {
                       unit: unitController.text,
                       costPerUnit: Value(cost),
                       reorderLevel: Value(reorder),
+                      userId: Value(workerId),
                       synced: const Value(false),
                     ),
                   );
@@ -482,6 +486,7 @@ class _InventoryItemTile extends StatelessWidget {
                 if (qty <= 0) return;
 
                 final farmId = await FarmUtils.getBoundFarmId();
+                final workerId = await FarmUtils.getRequiredUserId();
                 if (farmId == null) return;
 
                 // 1. Update Inventory
@@ -495,6 +500,7 @@ class _InventoryItemTile extends StatelessWidget {
 
                 // 2. Log Stock movement
                 await db.into(db.stockLogs).insert(StockLogsCompanion.insert(
+                      id: newLocalId(),
                       farmId: farmId,
                       itemId: item.id,
                       quantity: qty,
@@ -508,11 +514,13 @@ class _InventoryItemTile extends StatelessWidget {
                 final total = qty * cost;
                 final descSuffix = selectedSupplier != null ? ' (Supplier: ${selectedSupplier!.name})' : '';
                 await db.into(db.expenses).insert(ExpensesCompanion.insert(
+                      id: newLocalId(),
                       farmId: farmId,
                       amount: total,
                       category: item.category ?? 'INVENTORY',
                       description: Value('Restocked ${item.itemName} x $qty ${item.unit}$descSuffix${isCredit ? ' [CREDIT]' : ''}'),
                       date: Value(DateTime.now()),
+                      userId: Value(workerId),
                       synced: const Value(false),
                     ));
 
@@ -585,6 +593,7 @@ class _InventoryItemTile extends StatelessWidget {
                 if (qty <= 0 || qty > item.stockLevel) return;
 
                 final farmId = await FarmUtils.getBoundFarmId();
+                final workerId = await FarmUtils.getRequiredUserId();
                 if (farmId == null) return;
 
                 // 1. Update Inventory
@@ -597,6 +606,7 @@ class _InventoryItemTile extends StatelessWidget {
 
                 // 2. Log Stock movement
                 await db.into(db.stockLogs).insert(StockLogsCompanion.insert(
+                      id: newLocalId(),
                       farmId: farmId,
                       itemId: item.id,
                       quantity: -qty,

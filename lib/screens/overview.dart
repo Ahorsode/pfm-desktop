@@ -34,7 +34,12 @@ class OverviewPage extends StatelessWidget {
                     Text('Overview of your poultry farm performance',
                         style: TextStyle(color: cs.onSurfaceVariant, fontSize: 16)),
                   ]),
-                  _buildSyncStatusBadge(context),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _buildSyncStatusBadge(context),
+                    ],
+                  ),
                 ],
               ),
             ),
@@ -175,6 +180,7 @@ class OverviewPage extends StatelessWidget {
       ]),
     );
   }
+
 }
 
 class _PremiumStatsGrid extends StatelessWidget {

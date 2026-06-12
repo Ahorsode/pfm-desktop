@@ -5,8 +5,12 @@ import 'package:lucide_icons/lucide_icons.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'dart:io' show Platform;
+import '../data/local_db.dart';
 import '../data/sync_engine.dart';
-import 'login_screen.dart';
+import '../services/cloud_owner_bind_service.dart';
+import '../utils/farm_utils.dart';
+import '../utils/id_utils.dart';
+import 'offline_terminal_login_screen.dart';
 
 class DeviceSetupScreen extends StatefulWidget {
   const DeviceSetupScreen({super.key});
@@ -127,9 +131,9 @@ class _DeviceSetupScreenState extends State<DeviceSetupScreen> {
       return;
     }
 
-    final farmId = int.tryParse(_farmIdController.text);
-    if (farmId == null) {
-      setState(() => _errorMessage = "Invalid Farm ID. Must be a number.");
+    final farmId = safeIdString(_farmIdController.text);
+    if (farmId.isEmpty) {
+      setState(() => _errorMessage = "Invalid Farm ID.");
       return;
     }
 
@@ -151,9 +155,9 @@ class _DeviceSetupScreenState extends State<DeviceSetupScreen> {
       final isValid = await supabase.rpc('verify_farm_binding', params: {
         'p_farm_id': farmId,
       });
-      
+
       if (isValid != true) {
-        throw Exception("Access Denied: You are not the owner of Farm #$farmId.");
+        throw Exception("Access Denied: You are not the owner of Farm $farmId.");
       }
 
       // 2. Hardware Binding: Capture device ID and register via SECURITY DEFINER RPC
@@ -175,15 +179,23 @@ class _DeviceSetupScreenState extends State<DeviceSetupScreen> {
 
       await syncEngine.initialFullSync(farmId);
 
+      final db = Provider.of<AppDatabase>(context, listen: false);
+      await CloudOwnerBindService(db).rebindLocalOwnerToCloud(farmId: farmId);
+
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool('is_bound', true);
-      await prefs.setInt('bound_farm_id', farmId);
+      await FarmUtils.setBoundFarmId(farmId);
 
       if (mounted) {
         Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (context) => const LoginScreen()),
+          MaterialPageRoute(
+            builder: (context) => const OfflineTerminalLoginScreen(),
+          ),
         );
       }
+    } on PostgrestException catch (databaseError) {
+      debugPrint('SUPABASE POSTGRES CRASH LOG: ${databaseError.message}');
+      setState(() => _errorMessage = databaseError.message ?? 'Database activation failed.');
     } catch (e) {
       setState(() => _errorMessage = e.toString().replaceAll("Exception: ", ""));
     } finally {
@@ -343,13 +355,13 @@ class _DeviceSetupScreenState extends State<DeviceSetupScreen> {
                   controller: _farmIdController,
                   decoration: InputDecoration(
                     labelText: 'Farm ID',
-                    hintText: 'e.g. 2',
+                    hintText: 'Cuid2 farm id',
                     prefixIcon: const Icon(LucideIcons.layoutGrid, size: 20),
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                     filled: true,
                     fillColor: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
                   ),
-                  keyboardType: TextInputType.number,
+                  keyboardType: TextInputType.text,
                   autofocus: true,
                 ),
                 const SizedBox(height: 24),

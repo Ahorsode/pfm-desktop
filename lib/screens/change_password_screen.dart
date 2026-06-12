@@ -4,8 +4,9 @@ import 'package:supabase_flutter/supabase_flutter.dart' hide User;
 import 'package:provider/provider.dart';
 import 'package:bcrypt/bcrypt.dart';
 import 'package:drift/drift.dart' as drift;
-import 'main_scaffold.dart';
+import 'role_dashboard_router.dart';
 import '../data/local_db.dart';
+import '../theme/theme_provider.dart';
 
 class ChangePasswordScreen extends StatefulWidget {
   final String userId;
@@ -93,7 +94,9 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
       await Future.delayed(const Duration(milliseconds: 800));
       if (!mounted) return;
       Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const MainScaffold()),
+        MaterialPageRoute(
+          builder: (_) => RoleDashboardRouter(role: 'OWNER'),
+        ),
       );
     } catch (e) {
       setState(() => _errorMessage = e.toString().replaceAll('Exception: ', ''));
@@ -104,52 +107,63 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Card is always light; global theme may be dark (white-on-white title bug).
+    final lightTheme = context.watch<ThemeProvider>().lightTheme;
+    final onSurface = lightTheme.colorScheme.onSurface;
+    final onSurfaceVariant = lightTheme.colorScheme.onSurfaceVariant;
+
     return Scaffold(
-      backgroundColor: Colors.grey[50],
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: Center(
-        child: Container(
-          width: 420,
-          padding: const EdgeInsets.all(40),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: Colors.grey.shade200),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.06),
-                blurRadius: 24,
-                offset: const Offset(0, 8),
-              ),
-            ],
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // Icon + heading
-              Container(
-                width: 56,
-                height: 56,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF0FDF4),
-                  borderRadius: BorderRadius.circular(14),
+        child: Theme(
+          data: lightTheme,
+          child: Container(
+            width: 420,
+            padding: const EdgeInsets.all(40),
+            decoration: BoxDecoration(
+              color: lightTheme.cardColor,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: lightTheme.colorScheme.outline),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.06),
+                  blurRadius: 24,
+                  offset: const Offset(0, 8),
                 ),
-                child: const Icon(LucideIcons.keyRound, color: Color(0xFF16A34A), size: 28),
-              ),
-              const SizedBox(height: 20),
-              const Text(
-                'Set Your Password',
-                style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: -0.5,
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // Icon + heading
+                Container(
+                  width: 56,
+                  height: 56,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF0FDF4),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: const Icon(LucideIcons.keyRound, color: Color(0xFF16A34A), size: 28),
                 ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'You\'re using a default password. Please create a new secure password to continue.',
-                style: TextStyle(fontSize: 14, color: Colors.grey[600], height: 1.5),
-              ),
+                const SizedBox(height: 20),
+                Text(
+                  'Set Your Password',
+                  style: lightTheme.textTheme.headlineSmall?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: -0.5,
+                    color: onSurface,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'You\'re using a default password. Please create a new secure password to continue.',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: onSurfaceVariant,
+                    height: 1.5,
+                  ),
+                ),
               const SizedBox(height: 28),
 
               // Error banner
@@ -180,6 +194,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
               TextField(
                 controller: _newPasswordController,
                 obscureText: _obscureNew,
+                style: TextStyle(color: onSurface),
                 decoration: InputDecoration(
                   labelText: 'New password',
                   hintText: 'At least 8 characters',
@@ -201,6 +216,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
               TextField(
                 controller: _confirmController,
                 obscureText: _obscureConfirm,
+                style: TextStyle(color: onSurface),
                 onSubmitted: (_) => _isLoading ? null : _changePassword(),
                 decoration: InputDecoration(
                   labelText: 'Confirm new password',
@@ -246,6 +262,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
               ),
             ],
           ),
+        ),
         ),
       ),
     );

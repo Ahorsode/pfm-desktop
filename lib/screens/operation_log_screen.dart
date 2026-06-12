@@ -4,6 +4,8 @@ import 'package:drift/drift.dart' hide Column, Batch;
 import 'package:flutter/services.dart';
 import '../data/local_db.dart';
 import '../utils/farm_utils.dart';
+import '../utils/id_utils.dart';
+import '../utils/inventory_constants.dart';
 
 enum OperationType { feeding, mortality, eggs }
 
@@ -17,9 +19,9 @@ class OperationLogScreen extends StatefulWidget {
 
 class _OperationLogScreenState extends State<OperationLogScreen> {
   final _valueController = TextEditingController();
-  int? _selectedBatchId;
-  int? _selectedFeedTypeId;
-  int? _selectedFormulationId;
+  String? _selectedBatchId;
+  String? _selectedFeedTypeId;
+  String? _selectedFormulationId;
 
   @override
   Widget build(BuildContext context) {
@@ -70,13 +72,13 @@ class _OperationLogScreenState extends State<OperationLogScreen> {
                           builder: (context, snapshot) {
                             final batches = snapshot.data ?? [];
                             final validBatch = batches.any((b) => b.id == _selectedBatchId);
-                            return DropdownButtonFormField<int>(
+                            return DropdownButtonFormField<String>(
                               initialValue: validBatch ? _selectedBatchId : null,
                               hint: Text('Choose an active batch', style: TextStyle(color: cs.onSurfaceVariant, fontSize: 14)),
                               dropdownColor: Colors.white,
                               alignment: AlignmentDirectional.bottomStart,
                               menuMaxHeight: 300,
-                              items: batches.map((b) => DropdownMenuItem<int>(
+                              items: batches.map((b) => DropdownMenuItem<String>(
                                 value: b.id, 
                                 child: Text(b.batchName, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14))
                               )).toList(),
@@ -97,20 +99,20 @@ class _OperationLogScreenState extends State<OperationLogScreen> {
                                   children: [
                                     _buildLabel('Feed Type'),
                                     const SizedBox(height: 12),
-                                    StreamBuilder<List<FeedType>>(
-                                      stream: db.select(db.feedTypes).watch(),
+                                    StreamBuilder<List<InventoryItem>>(
+                                      stream: (db.select(db.inventory)..where((t) => t.category.equals(kFeedInventoryCategory))).watch(),
                                       builder: (context, snapshot) {
                                         final types = snapshot.data ?? [];
                                         final validType = types.any((t) => t.id == _selectedFeedTypeId);
-                                        return DropdownButtonFormField<int>(
+                                        return DropdownButtonFormField<String>(
                                           initialValue: validType ? _selectedFeedTypeId : null,
                                           hint: const Text('Select Feed', style: TextStyle(fontSize: 14)),
                                           dropdownColor: Colors.white,
                                           alignment: AlignmentDirectional.bottomStart,
                                           menuMaxHeight: 300,
-                                          items: types.map((t) => DropdownMenuItem<int>(
+                                          items: types.map((t) => DropdownMenuItem<String>(
                                             value: t.id, 
-                                            child: Text(t.name, style: const TextStyle(fontSize: 14))
+                                            child: Text(t.itemName, style: const TextStyle(fontSize: 14))
                                           )).toList(),
                                           onChanged: (v) => setState(() => _selectedFeedTypeId = v),
                                           decoration: _inputDecoration(Icons.restaurant_menu_rounded, context),
@@ -132,13 +134,13 @@ class _OperationLogScreenState extends State<OperationLogScreen> {
                                       builder: (context, snapshot) {
                                         final forms = snapshot.data ?? [];
                                         final validForm = forms.any((f) => f.id == _selectedFormulationId);
-                                        return DropdownButtonFormField<int>(
+                                        return DropdownButtonFormField<String>(
                                           initialValue: validForm ? _selectedFormulationId : null,
                                           hint: const Text('Select Formula', style: TextStyle(fontSize: 14)),
                                           dropdownColor: Colors.white,
                                           alignment: AlignmentDirectional.bottomStart,
                                           menuMaxHeight: 300,
-                                          items: forms.map((f) => DropdownMenuItem<int>(
+                                          items: forms.map((f) => DropdownMenuItem<String>(
                                             value: f.id, 
                                             child: Text(f.name, style: const TextStyle(fontSize: 14))
                                           )).toList(),
@@ -271,6 +273,7 @@ class _OperationLogScreenState extends State<OperationLogScreen> {
     }
 
     final farmId = await FarmUtils.getBoundFarmId();
+    final workerId = await FarmUtils.getRequiredUserId();
     if (farmId == null) {
       _showError('Farm ID not found');
       return;
@@ -286,21 +289,35 @@ class _OperationLogScreenState extends State<OperationLogScreen> {
       switch (widget.type) {
         case OperationType.feeding:
           await db.into(db.feedingLogs).insert(FeedingLogsCompanion.insert(
-              farmId: farmId, 
-              batchId: Value(_selectedBatchId), 
+              id: newLocalId(),
+              farmId: farmId,
+              batchId: Value(_selectedBatchId),
               feedTypeId: Value(_selectedFeedTypeId),
               formulationId: Value(_selectedFormulationId),
-              amountConsumed: value, 
-              logDate: DateTime.now(), 
+              amountConsumed: value,
+              logDate: DateTime.now(),
+              userId: Value(workerId),
               synced: const Value(false)));
           break;
         case OperationType.mortality:
           await db.into(db.mortalities).insert(MortalitiesCompanion.insert(
-              farmId: farmId, batchId: _selectedBatchId!, count: value.toInt(), logDate: DateTime.now(), synced: const Value(false)));
+              id: newLocalId(),
+              farmId: farmId,
+              batchId: _selectedBatchId!,
+              count: value.toInt(),
+              logDate: DateTime.now(),
+              userId: Value(workerId),
+              synced: const Value(false)));
           break;
         case OperationType.eggs:
           await db.into(db.eggProductions).insert(EggProductionsCompanion.insert(
-              farmId: farmId, batchId: _selectedBatchId!, eggsCollected: value.toInt(), logDate: DateTime.now(), synced: const Value(false)));
+              id: newLocalId(),
+              farmId: farmId,
+              batchId: _selectedBatchId!,
+              eggsCollected: value.toInt(),
+              logDate: DateTime.now(),
+              userId: Value(workerId),
+              synced: const Value(false)));
           break;
       }
       

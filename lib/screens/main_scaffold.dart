@@ -3,7 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../data/sync_engine.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'login_screen.dart';
+import 'offline_terminal_login_screen.dart';
 import 'overview.dart';
 import 'livestock_manager.dart';
 import 'comparative_analytics_screen.dart';
@@ -22,9 +22,14 @@ import 'mortality_screen.dart';
 import 'quarantine_screen.dart';
 import 'feed_management_screen.dart';
 import '../widgets/app_sidebar.dart';
+import '../widgets/session_mode_badge.dart';
+import '../services/auth_service.dart';
+import '../utils/user_role.dart';
 
 class MainScaffold extends StatefulWidget {
-  const MainScaffold({super.key});
+  final String role;
+
+  const MainScaffold({super.key, required this.role});
 
   @override
   State<MainScaffold> createState() => MainScaffoldState();
@@ -37,35 +42,29 @@ class MainScaffold extends StatefulWidget {
 class MainScaffoldState extends State<MainScaffold> {
   int _selectedIndex = 0;
   bool _isCollapsed = false;
+  late final String _normalizedRole;
+  late final List<Widget> _pages;
+  late final List<SidebarMenuSection> _sections;
+
+  @override
+  void initState() {
+    super.initState();
+    _normalizedRole = UserRoleUtils.normalize(widget.role);
+    final config = _buildRoleConfig(_normalizedRole);
+    _pages = config.pages;
+    _sections = config.sections;
+  }
 
   void setSelectedIndex(int index) {
+    if (index < 0 || index >= _pages.length) return;
     setState(() {
       _selectedIndex = index;
     });
   }
 
-  final List<Widget> _pages = [
-    const OverviewPage(), // 0
-    const LivestockManager(), // 1
-    const ComparativeAnalyticsScreen(), // 2
-    const HousesScreen(), // 3
-    const EggProductionScreen(), // 4
-    const FeedManagementScreen(), // 5
-    const MortalityScreen(), // 6
-    const QuarantineScreen(), // 7
-    const SalesScreen(), // 8
-    const CustomerDirectoryScreen(), // 9
-    const SupplierDirectoryScreen(), // 10
-    const FinancialControlScreen(), // 11
-    const InventoryManager(), // 12
-    const TeamManagementScreen(), // 13
-    const SettingsScreen(), // 14
-    const ReportLogScreen(), // 15
-  ];
-
   Future<void> _logout(BuildContext context) async {
     final prefs = await SharedPreferences.getInstance();
-    
+
     // 1. Sign out of Supabase (Online)
     try {
       await Supabase.instance.client.auth.signOut();
@@ -76,11 +75,14 @@ class MainScaffoldState extends State<MainScaffold> {
     // 2. Clear user session (Local) — keep device binding (is_bound, bound_farm_id)
     await prefs.remove('user_id');
     await prefs.remove('user_email');
+    await prefs.remove('user_name');
     await prefs.remove('user_role');
-    
+    await UserSession().clearSession();
+
     if (context.mounted) {
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const LoginScreen()),
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const OfflineTerminalLoginScreen()),
+        (route) => false,
       );
     }
   }
@@ -94,7 +96,7 @@ class MainScaffoldState extends State<MainScaffold> {
         builder: (context, constraints) {
           // Breakpoints for Desktop Responsiveness
           final bool isNarrow = constraints.maxWidth < 1000;
-          
+
           // Auto-collapse sidebar on narrow screens
           final bool effectiveCollapsed = _isCollapsed || isNarrow;
 
@@ -104,21 +106,29 @@ class MainScaffoldState extends State<MainScaffold> {
               AppSidebar(
                 selectedIndex: _selectedIndex,
                 isCollapsed: effectiveCollapsed,
-                onToggleCollapse: () => setState(() => _isCollapsed = !_isCollapsed),
-                onDestinationSelected: (index) => setState(() => _selectedIndex = index),
+                onToggleCollapse: () =>
+                    setState(() => _isCollapsed = !_isCollapsed),
+                onDestinationSelected: setSelectedIndex,
                 onLogout: () => _logout(context),
+                sections: _sections,
+                sessionMode: SessionModeBadge(compact: effectiveCollapsed),
                 syncStatus: StreamBuilder<bool>(
                   stream: syncEngine.syncStatus,
                   initialData: syncEngine.isSyncing,
                   builder: (context, snapshot) {
                     final isSyncing = snapshot.data ?? false;
                     return Tooltip(
-                      message: isSyncing ? 'Synchronizing data...' : 'Click to sync now',
+                      message: isSyncing
+                          ? 'Synchronizing data...'
+                          : 'Click to sync now',
                       child: InkWell(
                         onTap: isSyncing ? null : () => syncEngine.syncNow(),
                         borderRadius: BorderRadius.circular(8),
                         child: Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                          padding: const EdgeInsets.symmetric(
+                            vertical: 8,
+                            horizontal: 12,
+                          ),
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
@@ -128,11 +138,17 @@ class MainScaffoldState extends State<MainScaffold> {
                                   width: 16,
                                   child: CircularProgressIndicator(
                                     strokeWidth: 2,
-                                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white70),
+                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                      Colors.white70,
+                                    ),
                                   ),
                                 )
                               else
-                                const Icon(Icons.cloud_done_rounded, color: Color(0xFF22C55E), size: 16),
+                                const Icon(
+                                  Icons.cloud_done_rounded,
+                                  color: Color(0xFF22C55E),
+                                  size: 16,
+                                ),
                               if (!effectiveCollapsed) ...[
                                 const SizedBox(width: 8),
                                 Flexible(
@@ -143,7 +159,9 @@ class MainScaffoldState extends State<MainScaffold> {
                                       fontSize: 10,
                                       fontWeight: FontWeight.w900,
                                       letterSpacing: 0.5,
-                                      color: isSyncing ? Colors.white70 : const Color(0xFF22C55E),
+                                      color: isSyncing
+                                          ? Colors.white70
+                                          : const Color(0xFF22C55E),
                                     ),
                                   ),
                                 ),
@@ -156,18 +174,192 @@ class MainScaffoldState extends State<MainScaffold> {
                   },
                 ),
               ),
-              const VerticalDivider(thickness: 1, width: 1, color: Colors.black12),
+              const VerticalDivider(
+                thickness: 1,
+                width: 1,
+                color: Colors.black12,
+              ),
               // Main Content
               Expanded(
                 child: Container(
                   color: Theme.of(context).scaffoldBackgroundColor,
-                  child: _pages[_selectedIndex],
+                  child: _selectedIndex < _pages.length
+                      ? _pages[_selectedIndex]
+                      : _pages.first,
                 ),
               ),
             ],
           );
         },
       ),
-  );
+    );
+  }
 }
+
+class _RoleDashboardConfig {
+  final List<Widget> pages;
+  final List<SidebarMenuSection> sections;
+
+  const _RoleDashboardConfig({required this.pages, required this.sections});
+}
+
+_RoleDashboardConfig _buildRoleConfig(String role) {
+  if (role == UserRoleUtils.operational) {
+    return _RoleDashboardConfig(
+      pages: const [
+        OverviewPage(),
+        EggProductionScreen(),
+        FeedManagementScreen(),
+        MortalityScreen(),
+        ReportLogScreen(),
+      ],
+      sections: const [
+        SidebarMenuSection(
+          title: 'OPERATIONS',
+          items: [
+            SidebarMenuItem(
+              index: 0,
+              icon: Icons.grid_view_rounded,
+              label: 'Dashboard',
+            ),
+            SidebarMenuItem(
+              index: 1,
+              icon: Icons.egg_rounded,
+              label: 'Egg Collection',
+            ),
+            SidebarMenuItem(
+              index: 2,
+              icon: Icons.restaurant_rounded,
+              label: 'Feed Consumption',
+            ),
+            SidebarMenuItem(
+              index: 3,
+              icon: Icons.dangerous_outlined,
+              label: 'Mortality',
+            ),
+          ],
+        ),
+        SidebarMenuSection(
+          title: 'SUPPORT',
+          items: [
+            SidebarMenuItem(
+              index: 4,
+              icon: Icons.library_books_rounded,
+              label: 'Operation Logs',
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  return _RoleDashboardConfig(
+    pages: const [
+      OverviewPage(),
+      LivestockManager(),
+      ComparativeAnalyticsScreen(),
+      HousesScreen(),
+      EggProductionScreen(),
+      FeedManagementScreen(),
+      MortalityScreen(),
+      QuarantineScreen(),
+      SalesScreen(),
+      CustomerDirectoryScreen(),
+      SupplierDirectoryScreen(),
+      FinancialControlScreen(),
+      InventoryManager(),
+      TeamManagementScreen(),
+      SettingsScreen(),
+      ReportLogScreen(),
+    ],
+    sections: const [
+      SidebarMenuSection(
+        title: 'OPERATIONS',
+        items: [
+          SidebarMenuItem(
+            index: 0,
+            icon: Icons.grid_view_rounded,
+            label: 'Dashboard',
+          ),
+          SidebarMenuItem(
+            index: 1,
+            icon: Icons.pets_rounded,
+            label: 'Livestock',
+          ),
+          SidebarMenuItem(
+            index: 2,
+            icon: Icons.analytics_rounded,
+            label: 'Comparative Analytics',
+          ),
+          SidebarMenuItem(
+            index: 3,
+            icon: Icons.home_work_rounded,
+            label: 'Houses',
+          ),
+          SidebarMenuItem(index: 4, icon: Icons.egg_rounded, label: 'Eggs'),
+          SidebarMenuItem(
+            index: 5,
+            icon: Icons.restaurant_rounded,
+            label: 'Feeding',
+          ),
+          SidebarMenuItem(
+            index: 6,
+            icon: Icons.dangerous_outlined,
+            label: 'Mortality',
+          ),
+          SidebarMenuItem(
+            index: 7,
+            icon: Icons.health_and_safety_outlined,
+            label: 'Quarantine',
+          ),
+        ],
+      ),
+      SidebarMenuSection(
+        title: 'COMMERCIAL HUB',
+        items: [
+          SidebarMenuItem(
+            index: 8,
+            icon: Icons.receipt_long_rounded,
+            label: 'Sales',
+          ),
+          SidebarMenuItem(
+            index: 9,
+            icon: Icons.people_alt_rounded,
+            label: 'Customers',
+          ),
+          SidebarMenuItem(
+            index: 10,
+            icon: Icons.local_shipping_rounded,
+            label: 'Suppliers',
+          ),
+          SidebarMenuItem(
+            index: 11,
+            icon: Icons.account_balance_wallet_rounded,
+            label: 'Finance',
+          ),
+          SidebarMenuItem(
+            index: 12,
+            icon: Icons.inventory_2_rounded,
+            label: 'Inventory',
+          ),
+        ],
+      ),
+      SidebarMenuSection(
+        title: 'GOVERNANCE',
+        items: [
+          SidebarMenuItem(index: 13, icon: Icons.group_rounded, label: 'Team'),
+          SidebarMenuItem(
+            index: 14,
+            icon: Icons.settings_rounded,
+            label: 'Settings',
+          ),
+          SidebarMenuItem(
+            index: 15,
+            icon: Icons.library_books_rounded,
+            label: 'Reports & Logs',
+          ),
+        ],
+      ),
+    ],
+  );
 }

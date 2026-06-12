@@ -1,24 +1,34 @@
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:drift/drift.dart';
-import 'dart:async';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:http/http.dart' as http;
+import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'dart:io' show Platform;
+import '../utils/farm_utils.dart';
+import '../utils/id_utils.dart';
+import '../utils/user_role.dart';
+import '../services/cloud_owner_bind_service.dart';
+import '../services/license_service.dart';
 import 'local_db.dart';
+
+const _localProfileOwnerIdKey = 'LOCAL_PROFILE_OWNER_ID';
 
 class SyncEngine extends ChangeNotifier {
   final AppDatabase db;
   final _supabase = Supabase.instance.client;
   final Connectivity _connectivity = Connectivity();
-  
+
   bool _isOnline = false;
   bool get isOnline => _isOnline;
-  
+
   bool _isSyncing = false;
   bool get isSyncing => _isSyncing;
-  
+
   final _syncStatusController = StreamController<bool>.broadcast();
   Stream<bool> get syncStatus => _syncStatusController.stream;
 
@@ -28,7 +38,76 @@ class SyncEngine extends ChangeNotifier {
     }
   }
 
+  int? _safeInt(dynamic value) {
+    if (value == null) return null;
+    if (value is int) return value;
+    if (value is double) return value.toInt();
+    if (value is String) {
+      return int.tryParse(value) ?? double.tryParse(value)?.toInt();
+    }
+    return null;
+  }
+
+  String? _safeStr(dynamic value) {
+    if (value == null) return null;
+    final s = value.toString().trim();
+    return s.isEmpty ? null : s;
+  }
+
+  bool _isSharedAllocationDescription(String? description) {
+    return description?.contains('[SHARED ALLOCATION:') ?? false;
+  }
+
+  String? _allocationGroupFromDescription(String? description) {
+    if (description == null) return null;
+    final match = RegExp(r'group=([^;\]]+)').firstMatch(description);
+    return match?.group(1)?.trim();
+  }
+
+  double? _allocationPercentFromDescription(String? description) {
+    if (description == null) return null;
+    final match = RegExp(
+      r'percent=([0-9]+(?:\.[0-9]+)?)%',
+    ).firstMatch(description);
+    return double.tryParse(match?.group(1) ?? '');
+  }
+
+  double? _safeDouble(dynamic value) {
+    if (value == null) return null;
+    if (value is double) return value;
+    if (value is int) return value.toDouble();
+    return double.tryParse(value.toString());
+  }
+
+  bool _safeBool(dynamic value, {bool fallback = false}) {
+    if (value is bool) return value;
+    if (value is num) return value != 0;
+    final string = value?.toString().toLowerCase();
+    if (string == 'true' || string == '1' || string == 'yes') return true;
+    if (string == 'false' || string == '0' || string == 'no') return false;
+    return fallback;
+  }
+
+  DateTime? _safeDateTime(dynamic value) {
+    if (value == null) return null;
+    if (value is DateTime) return value;
+    return DateTime.tryParse(value.toString());
+  }
+
+  String _remoteFarmIdForPush(String localFarmId, String? webFarmId) {
+    final local = safeIdString(localFarmId);
+    if (local == FarmUtils.localGenesisFarmId &&
+        webFarmId != null &&
+        webFarmId.trim().isNotEmpty) {
+      return safeIdString(webFarmId);
+    }
+    return webFarmId != null && webFarmId.trim().isNotEmpty
+        ? safeIdString(webFarmId)
+        : local;
+  }
+
   Timer? _syncTimer;
+  Timer? _reachabilityTimer;
 
   SyncEngine(this.db) {
     _initConnectivity();
@@ -41,12 +120,50 @@ class SyncEngine extends ChangeNotifier {
     });
   }
 
-  Future<void> syncNow() => performSync();
+  Future<void> syncNow() => _syncWhenSupabaseReachable();
+
+  Future<bool> _canReachSupabase() async {
+    final url = dotenv.env['SUPABASE_URL'];
+    final uri = Uri.tryParse(url ?? '');
+    if (uri == null ||
+        uri.host.isEmpty ||
+        uri.host == 'PLACEHOLDER.supabase.co') {
+      return true;
+    }
+
+    try {
+      final response = await http.head(uri).timeout(const Duration(seconds: 3));
+      return response.statusCode < 500;
+    } catch (e) {
+      debugPrint('[Sync] Supabase reachability check failed: $e');
+      return false;
+    }
+  }
+
+  Future<void> _syncWhenSupabaseReachable() async {
+    if (!_isOnline) return;
+    if (await _canReachSupabase()) {
+      _reachabilityTimer?.cancel();
+      _reachabilityTimer = null;
+      unawaited(performSync());
+      return;
+    }
+
+    _reachabilityTimer ??= Timer.periodic(const Duration(seconds: 20), (
+      _,
+    ) async {
+      if (!_isOnline) return;
+      if (!await _canReachSupabase()) return;
+      _reachabilityTimer?.cancel();
+      _reachabilityTimer = null;
+      unawaited(performSync());
+    });
+  }
 
   Future<void> _initConnectivity() async {
     final results = await _connectivity.checkConnectivity();
     _updateOnlineStatus(results);
-    
+
     _connectivity.onConnectivityChanged.listen((results) {
       _updateOnlineStatus(results);
     });
@@ -58,36 +175,48 @@ class SyncEngine extends ChangeNotifier {
       _isOnline = online;
       notifyListeners();
       if (_isOnline) {
-        performSync();
+        unawaited(_syncWhenSupabaseReachable());
+      } else {
+        _reachabilityTimer?.cancel();
+        _reachabilityTimer = null;
       }
     }
   }
 
   Future<void> performSync() async {
     if (_isSyncing || !_isOnline) return;
+    if (!await _canReachSupabase()) return;
 
-    final prefs = await SharedPreferences.getInstance();
-    final farmId = prefs.getInt('bound_farm_id');
-    final userId = prefs.getString('user_id');
+    // Stamp last_used so anti-clock-tamper guard has a fresh timestamp.
+    await LicenseService(db).touchLastUsed();
+
+    final farmId = await FarmUtils.getBoundFarmId();
     if (farmId == null) return;
-    
+
     _isSyncing = true;
     _updateSyncStatus(true);
     notifyListeners();
 
     try {
-      final bool isOwner = await _supabase.rpc('verify_farm_binding', params: {
-        'p_farm_id': farmId,
-      });
-
-      if (!isOwner) {
-        throw Exception("Unauthorized: You do not have permission to manage this Farm ID (#$farmId). Sync aborted.");
+      final webFarmId = await _resolveWebFarmId();
+      if (webFarmId != null) {
+        try {
+          await LicenseService(db).reconcileToCloudFarmId(webFarmId);
+        } catch (e, st) {
+          debugPrint('[Sync] Farm ID reconcile failed: $e\n$st');
+        }
       }
 
-      await _pushChanges(userId);
+      final farmIdFilter = (webFarmId != null && webFarmId.trim().isNotEmpty)
+          ? safeIdString(webFarmId)
+          : safeIdString(farmId);
+      await _syncFarmMembersFromCloud(farmIdFilter);
+      final userIdMap = CloudUserIdMapService(db);
+      await userIdMap.warmCacheForFarm(farmIdFilter);
+
+      await _pushChanges(webFarmId: webFarmId, userIdMap: userIdMap);
       await _pushDeletions();
       await _pullChanges();
-      
     } finally {
       _isSyncing = false;
       _updateSyncStatus(false);
@@ -95,7 +224,7 @@ class SyncEngine extends ChangeNotifier {
     }
   }
 
-  Future<void> initialFullSync(int farmId) async {
+  Future<void> initialFullSync(String farmId) async {
     if (!_isOnline) throw Exception("No internet connection for initial sync");
 
     _isSyncing = true;
@@ -103,12 +232,16 @@ class SyncEngine extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final data = await _supabase.rpc('get_farm_sync_data', params: {
-        'p_farm_id': farmId,
-      });
+      final farmIdFilter = safeIdString(farmId);
+      final data = await _supabase.rpc(
+        'get_farm_sync_data',
+        params: {'p_farm_id': farmIdFilter},
+      );
 
       if (data == null) {
-        throw Exception("Farm not found or Permission Denied. Binding refused.");
+        throw Exception(
+          "Farm not found or Permission Denied. Binding refused.",
+        );
       }
 
       // 0. Hardware Binding
@@ -119,186 +252,254 @@ class SyncEngine extends ChangeNotifier {
 
         if (Platform.isWindows) {
           final windowsInfo = await deviceInfo.windowsInfo;
-          deviceId = windowsInfo.deviceId; 
+          deviceId = windowsInfo.deviceId;
           deviceName = windowsInfo.computerName;
         }
 
-        await _supabase.rpc('register_hardware_device', params: {
-          'p_farm_id': farmId,
-          'p_device_id': deviceId,
-          'p_device_name': deviceName,
-        });
+        await _supabase.rpc(
+          'register_hardware_device',
+          params: {
+            'p_farm_id': farmIdFilter,
+            'p_device_id': deviceId,
+            'p_device_name': deviceName,
+          },
+        );
       } catch (e) {
         debugPrint("Hardware registration warning: $e");
       }
 
       // 1. Farm
       final remoteFarm = data['farm'] as Map<String, dynamic>;
-      await db.into(db.farms).insertOnConflictUpdate(FarmsCompanion.insert(
-        id: Value(remoteFarm['id'] as int),
-        name: remoteFarm['name'] as String,
-        capacity: remoteFarm['capacity'] as int,
-        userId: remoteFarm['userId'] as String? ?? '',
-        location: Value(remoteFarm['location'] as String?),
-        subscriptionTier: Value(remoteFarm['subscriptionTier'] as String? ?? 'FREE'),
-      ));
+      await db
+          .into(db.farms)
+          .insertOnConflictUpdate(
+            FarmsCompanion.insert(
+              id: safeIdString(remoteFarm['id']),
+              name: remoteFarm['name'] as String,
+              capacity: remoteFarm['capacity'] as int,
+              userId: remoteFarm['userId'] as String? ?? '',
+              location: Value(remoteFarm['location'] as String?),
+              subscriptionTier: Value(
+                remoteFarm['subscriptionTier'] as String? ?? 'FREE',
+              ),
+            ),
+          );
 
       // 2. Farm Settings
       final remoteSettings = data['farm_settings'] as Map<String, dynamic>?;
       if (remoteSettings != null) {
-        await db.into(db.farmSettings).insertOnConflictUpdate(FarmSettingsCompanion.insert(
-          id: Value(remoteSettings['id'] as int),
-          farmId: remoteSettings['farmId'] as int,
-          currency: Value(remoteSettings['currency'] as String? ?? 'GHS'),
-          eggRecordReminderTime: Value(remoteSettings['eggRecordReminderTime'] as String?),
-          feedRecordReminderTime: Value(remoteSettings['feedRecordReminderTime'] as String?),
-          growthTargetStandard: Value(remoteSettings['growth_target_standard'] as int?),
-          eggsPerCrate: Value(remoteSettings['eggsPerCrate'] as int? ?? 30),
-        ));
+        await db
+            .into(db.farmSettings)
+            .insertOnConflictUpdate(
+              FarmSettingsCompanion.insert(
+                id: safeIdString(remoteSettings['id']),
+                farmId: safeIdString(remoteSettings['farmId']),
+                currency: Value(remoteSettings['currency'] as String? ?? 'GHS'),
+                eggRecordReminderTime: Value(
+                  remoteSettings['eggRecordReminderTime'] as String?,
+                ),
+                feedRecordReminderTime: Value(
+                  remoteSettings['feedRecordReminderTime'] as String?,
+                ),
+                growthTargetStandard: Value(
+                  remoteSettings['growth_target_standard'] as int?,
+                ),
+                eggsPerCrate: Value(
+                  remoteSettings['eggsPerCrate'] as int? ?? 30,
+                ),
+              ),
+            );
       }
 
-      // 3. Users
+      // 3. Users and farm memberships are downstream-only on desktop.
       final remoteUsers = (data['users'] as List<dynamic>?) ?? [];
-      for (var u in remoteUsers) {
-        final user = u as Map<String, dynamic>;
-        await db.into(db.users).insertOnConflictUpdate(UsersCompanion.insert(
-          id: user['id'] as String,
-          firstname: Value(user['firstname'] as String?),
-          surname: Value(user['surname'] as String?),
-          middleName: Value(user['middle_name'] as String?),
-          name: Value(user['name'] as String?),
-          email: Value(user['email'] as String?),
-          image: Value(user['image'] as String?),
-          password: Value(user['password'] as String?),
-          phoneNumber: Value(user['phone_number'] as String?),
-          mustChangePassword: Value(user['must_change_password'] as bool? ?? false),
-          role: Value(user['role'] as String? ?? 'WORKER'),
-        ));
-      }
+      await _syncFarmMembersFromCloud(farmIdFilter, rpcUsers: remoteUsers);
 
       // 4. Houses
       final remoteHouses = (data['houses'] as List<dynamic>?) ?? [];
       for (var h in remoteHouses) {
         final house = h as Map<String, dynamic>;
-        await db.into(db.houses).insertOnConflictUpdate(HousesCompanion.insert(
-          id: Value(house['id'] as int),
-          farmId: farmId,
-          userId: Value(house['user_id'] as String? ?? house['userId'] as String?),
-          name: house['name'] as String,
-          capacity: house['capacity'] as int,
-          currentTemperature: Value((house['current_temperature'] ?? house['currentTemperature']) != null ? double.parse((house['current_temperature'] ?? house['currentTemperature']).toString()) : null),
-          currentHumidity: Value((house['current_humidity'] ?? house['currentHumidity']) != null ? double.parse((house['current_humidity'] ?? house['currentHumidity']).toString()) : null),
-          isIsolation: Value((house['is_isolation'] ?? house['isIsolation'] ?? false) as bool),
-          synced: const Value(true),
-        ));
+        await db
+            .into(db.houses)
+            .insertOnConflictUpdate(
+              HousesCompanion.insert(
+                id: safeIdString(house['id']),
+                farmId: farmIdFilter,
+                userId: Value(
+                  house['user_id'] as String? ?? house['userId'] as String?,
+                ),
+                name: house['name'] as String,
+                capacity: _safeInt(house['capacity']) ?? 0,
+                currentTemperature: Value(
+                  _safeDouble(
+                    house['current_temperature'] ?? house['currentTemperature'],
+                  ),
+                ),
+                currentHumidity: Value(
+                  _safeDouble(
+                    house['current_humidity'] ?? house['currentHumidity'],
+                  ),
+                ),
+                isIsolation: Value(
+                  _safeBool(
+                    house['is_isolation'] ?? house['isIsolation'],
+                    fallback: false,
+                  ),
+                ),
+                synced: const Value(true),
+              ),
+            );
       }
 
       // 5. Inventory
       final remoteInventory = (data['inventory'] as List<dynamic>?) ?? [];
       for (var i in remoteInventory) {
         final item = i as Map<String, dynamic>;
-        await db.into(db.inventory).insertOnConflictUpdate(InventoryCompanion.insert(
-          id: Value(item['id'] as int),
-          farmId: farmId,
-          userId: Value(item['user_id'] as String? ?? item['userId'] as String?),
-          itemName: (item['item_name'] ?? item['itemName']) as String,
-          stockLevel: double.parse((item['stock_level'] ?? item['stockLevel']).toString()),
-          reorderLevel: Value((item['reorder_level'] ?? item['reorderLevel']) != null ? double.parse((item['reorder_level'] ?? item['reorderLevel']).toString()) : null),
-          unit: item['unit'] as String,
-          category: Value(item['category'] as String?),
-          costPerUnit: Value((item['cost_per_unit'] ?? item['costPerUnit']) != null ? double.parse((item['cost_per_unit'] ?? item['costPerUnit']).toString()) : null),
-          supplierId: Value((item['supplier_id'] ?? item['supplierId']) as int?),
-          synced: const Value(true),
-        ));
+        await db
+            .into(db.inventory)
+            .insertOnConflictUpdate(
+              InventoryCompanion.insert(
+                id: safeIdString(item['id']),
+                farmId: farmIdFilter,
+                userId: Value(
+                  item['user_id'] as String? ?? item['userId'] as String?,
+                ),
+                itemName: (item['item_name'] ?? item['itemName']) as String,
+                stockLevel:
+                    _safeDouble(item['stock_level'] ?? item['stockLevel']) ??
+                    0.0,
+                reorderLevel: Value(
+                  _safeDouble(item['reorder_level'] ?? item['reorderLevel']),
+                ),
+                unit: item['unit'] as String,
+                category: Value(item['category'] as String?),
+                costPerUnit: Value(
+                  _safeDouble(item['cost_per_unit'] ?? item['costPerUnit']),
+                ),
+                supplierId: Value(
+                  _safeStr(item['supplier_id'] ?? item['supplierId']),
+                ),
+                synced: const Value(true),
+              ),
+            );
       }
 
       // 6. Batches
       final remoteBatches = (data['batches'] as List<dynamic>?) ?? [];
       for (var b in remoteBatches) {
         final batch = b as Map<String, dynamic>;
-        await db.into(db.batches).insertOnConflictUpdate(BatchesCompanion.insert(
-          id: Value(batch['id'] as int),
-          farmId: farmId,
-          houseId: Value(batch['house_id'] as int? ?? batch['houseId'] as int?),
-          userId: Value(batch['user_id'] as String? ?? batch['userId'] as String?),
-          batchName: Value(batch['batch_name'] as String? ?? batch['batchName'] as String? ?? ''),
-          type: Value(batch['type'] as String? ?? ''),
-          breedType: Value(batch['breed_type'] as String? ?? batch['breedType'] as String?),
-          status: Value(batch['status'] as String? ?? ''),
-          arrivalDate: DateTime.parse((batch['arrival_date'] ?? batch['arrivalDate']) as String),
-          currentCount: (batch['current_count'] ?? batch['currentCount']) as int,
-          initialCount: (batch['initial_count'] ?? batch['initialCount']) as int,
-          isolationCount: Value((batch['isolation_count'] ?? batch['isolationCount'] ?? 0) as int),
-          initialActualCost: Value(batch['initial_actual_cost'] != null ? double.parse(batch['initial_actual_cost'].toString()) : null),
-          growthTarget: Value(batch['growth_target'] as String?),
-          synced: const Value(true),
-        ));
+        await db
+            .into(db.batches)
+            .insertOnConflictUpdate(
+              BatchesCompanion.insert(
+                id: safeIdString(batch['id']),
+                farmId: farmIdFilter,
+                houseId: Value(_safeStr(batch['house_id'] ?? batch['houseId'])),
+                userId: Value(
+                  batch['user_id'] as String? ?? batch['userId'] as String?,
+                ),
+                batchName: Value(
+                  batch['batch_name'] as String? ??
+                      batch['batchName'] as String? ??
+                      '',
+                ),
+                type: Value(batch['type'] as String? ?? ''),
+                breedType: Value(
+                  batch['breed_type'] as String? ??
+                      batch['breedType'] as String?,
+                ),
+                status: Value(batch['status'] as String? ?? ''),
+                arrivalDate:
+                    _safeDateTime(
+                      batch['arrival_date'] ?? batch['arrivalDate'],
+                    ) ??
+                    DateTime.now().toUtc(),
+                currentCount:
+                    _safeInt(batch['current_count'] ?? batch['currentCount']) ??
+                    0,
+                initialCount:
+                    _safeInt(batch['initial_count'] ?? batch['initialCount']) ??
+                    0,
+                isolationCount: Value(
+                  _safeInt(
+                        batch['isolation_count'] ?? batch['isolationCount'],
+                      ) ??
+                      0,
+                ),
+                initialActualCost: Value(
+                  _safeDouble(batch['initial_actual_cost']),
+                ),
+                growthTarget: Value(batch['growth_target'] as String?),
+                synced: const Value(true),
+              ),
+            );
       }
 
       // 7. Customers
       final remoteCustomers = (data['customers'] as List<dynamic>?) ?? [];
       for (var c in remoteCustomers) {
         final customer = c as Map<String, dynamic>;
-        await db.into(db.customers).insertOnConflictUpdate(CustomersCompanion.insert(
-          id: Value(customer['id'] as int),
-          farmId: farmId,
-          name: customer['name'] as String,
-          phone: Value(customer['phone'] as String?),
-          email: Value(customer['email'] as String?),
-          address: Value(customer['address'] as String?),
-          balanceOwed: Value(customer['balanceOwed'] != null ? double.parse(customer['balanceOwed'].toString()) : 0.0),
-          customerType: Value(customer['customerType'] as String? ?? 'CUSTOMER'),
-          supplyItems: Value(customer['supplyItems'] as String?),
-          contactPerson: Value(customer['contactPerson'] as String?),
-          synced: const Value(true),
-        ));
+        await db
+            .into(db.customers)
+            .insertOnConflictUpdate(
+              CustomersCompanion.insert(
+                id: safeIdString(customer['id']),
+                farmId: farmIdFilter,
+                name: customer['name'] as String,
+                phone: Value(customer['phone'] as String?),
+                email: Value(customer['email'] as String?),
+                address: Value(customer['address'] as String?),
+                balanceOwed: Value(_safeDouble(customer['balanceOwed']) ?? 0.0),
+                customerType: Value(
+                  customer['customerType'] as String? ?? 'CUSTOMER',
+                ),
+                supplyItems: Value(customer['supplyItems'] as String?),
+                contactPerson: Value(customer['contactPerson'] as String?),
+                synced: const Value(true),
+              ),
+            );
       }
 
       // 8. Expenses
-      final remoteExpenses = await _supabase.from('expenses').select().eq('farmId', farmId);
+      final remoteExpenses = await _supabase
+          .from('expenses')
+          .select()
+          .eq('farmId', farmIdFilter);
       for (var e in remoteExpenses) {
-        await db.into(db.expenses).insertOnConflictUpdate(ExpensesCompanion.insert(
-          id: Value(e['id'] as int),
-          farmId: farmId,
-          category: e['category'] as String,
-          amount: double.parse(e['amount'].toString()),
-          date: Value(DateTime.parse(e['date'] as String)),
-          description: Value(e['description'] as String?),
-          synced: const Value(true),
-        ));
+        final description = _safeStr(e['description']);
+        await db
+            .into(db.expenses)
+            .insertOnConflictUpdate(
+              ExpensesCompanion.insert(
+                id: safeIdString(e['id']),
+                farmId: farmIdFilter,
+                batchId: Value(_safeStr(e['batch_id'] ?? e['batchId'])),
+                supplierId: Value(
+                  _safeStr(e['supplierId'] ?? e['supplier_id']),
+                ),
+                category: e['category'] as String,
+                amount: _safeDouble(e['amount']) ?? 0.0,
+                date: Value(
+                  _safeDateTime(e['expense_date'] ?? e['date']) ??
+                      DateTime.now().toUtc(),
+                ),
+                description: Value(description),
+                allocationGroupId: Value(
+                  _allocationGroupFromDescription(description),
+                ),
+                allocationPercent: Value(
+                  _allocationPercentFromDescription(description),
+                ),
+                isSharedAllocation: Value(
+                  _isSharedAllocationDescription(description),
+                ),
+                userId: Value(_safeStr(e['user_id'] ?? e['userId'])),
+                synced: const Value(true),
+              ),
+            );
       }
 
-      // 9. Settlements
-      final remoteSettlements = await _supabase.from('settlements').select().eq('farmId', farmId);
-      for (var s in remoteSettlements) {
-        await db.into(db.settlements).insertOnConflictUpdate(SettlementsCompanion.insert(
-          id: Value(s['id'] as int),
-          farmId: farmId,
-          customerId: s['customerId'] as int,
-          amount: double.parse(s['amount'].toString()),
-          settlementDate: Value(DateTime.parse(s['settlementDate'] as String)),
-          settlementType: s['settlementType'] as String,
-          synced: const Value(true),
-        ));
-      }
-
-      // 10. Stock Logs
-      final remoteStockLogs = await _supabase.from('stock_logs').select().eq('farm_id', farmId);
-      for (var sl in remoteStockLogs) {
-        await db.into(db.stockLogs).insertOnConflictUpdate(StockLogsCompanion.insert(
-          id: Value(sl['id'] as int),
-          farmId: farmId,
-          itemId: sl['item_id'] as int,
-          quantity: double.parse(sl['quantity'].toString()),
-          logType: sl['log_type'] as String,
-          batchId: Value(sl['batch_id'] as int?),
-          supplierId: Value(sl['supplier_id'] as int?),
-          note: Value(sl['note'] as String?),
-          logDate: Value(DateTime.parse(sl['log_date'] as String)),
-          synced: const Value(true),
-        ));
-      }
-
+      await _pullHealthSchedules(farmIdFilter);
     } catch (e) {
       debugPrint("Initial Sync Error: $e");
       rethrow;
@@ -309,19 +510,77 @@ class SyncEngine extends ChangeNotifier {
     }
   }
 
-  Future<void> _pushChanges(String? legacyUserId) async {
-    debugPrint('--- SYNC PUSH START ---');
+  Future<String?> _resolveWebFarmId() async {
+    try {
+      final user = _supabase.auth.currentUser;
+      if (user != null) {
+        final farmRow = await _supabase
+            .from('farms')
+            .select('id')
+            .eq('user_id', user.id)
+            .maybeSingle();
+        final fromAuth = _safeStr(farmRow?['id']);
+        if (fromAuth != null) return safeIdString(fromAuth);
+      }
+    } catch (e) {
+      debugPrint('Could not fetch web_farm_id from auth: $e');
+    }
+
+    final bound = await FarmUtils.getBoundFarmId();
+    if (bound != null &&
+        bound.isNotEmpty &&
+        bound != FarmUtils.localGenesisFarmId) {
+      return safeIdString(bound);
+    }
+
+    final config = await (db.select(
+      db.licenseConfigs,
+    )..where((t) => t.id.equals('singleton'))).getSingleOrNull();
+    final fromLicense = _safeStr(config?.farmId);
+    if (fromLicense != null && fromLicense != FarmUtils.localGenesisFarmId) {
+      return safeIdString(fromLicense);
+    }
+
+    return null;
+  }
+
+  Future<void> _pushChanges({
+    String? webFarmId,
+    CloudUserIdMapService? userIdMap,
+  }) async {
+    debugPrint('--- SYNC PUSH START (webFarmId=$webFarmId) ---');
 
     try {
+      final pushUserId = await FarmUtils.getUserId();
+      final map = userIdMap ?? CloudUserIdMapService(db);
+      final farmIdForMap = _remoteFarmIdForPush(
+        await FarmUtils.getBoundFarmId() ?? '',
+        webFarmId,
+      );
+      if (userIdMap == null) {
+        await map.warmCacheForFarm(farmIdForMap);
+      }
+      String? pushUserIdForPayload(String? localUserId) {
+        return map.resolveForPush(localUserId, sessionUserId: pushUserId);
+      }
+
       // 1. Push Houses (camelCase columns)
-      final pendingHouses = await (db.select(db.houses)..where((t) => t.synced.equals(false))).get();
+      final pendingHouses = await (db.select(
+        db.houses,
+      )..where((t) => t.synced.equals(false))).get();
       for (var h in pendingHouses) {
         try {
-          final existing = await _supabase.from('houses').select('id').eq('id', h.id).maybeSingle();
+          final id = safeIdString(h.id);
+          final existing = await _supabase
+              .from('houses')
+              .select('id')
+              .eq('id', id)
+              .maybeSingle();
           final now = DateTime.now().toUtc().toIso8601String();
           final payload = {
-            'farmId': h.farmId,
-            'userId': h.userId ?? legacyUserId,
+            'id': id,
+            'farmId': _remoteFarmIdForPush(h.farmId, webFarmId),
+            'userId': pushUserIdForPayload(h.userId ?? pushUserId),
             'name': h.name,
             'capacity': h.capacity,
             'currentTemperature': h.currentTemperature,
@@ -330,33 +589,39 @@ class SyncEngine extends ChangeNotifier {
             'updatedAt': now,
           };
 
+          assertSyncPayloadUsesStringIds(payload);
           if (existing != null) {
-            await _supabase.from('houses').update(payload).eq('id', h.id);
-            await (db.update(db.houses)..where((t) => t.id.equals(h.id))).write(const HousesCompanion(synced: Value(true)));
+            await _supabase.from('houses').update(payload).eq('id', id);
           } else {
             payload['createdAt'] = now;
-            final response = await _supabase.from('houses').insert(payload).select().single();
-            final newId = response['id'] as int;
-            if (newId != h.id) {
-              await (db.update(db.batches)..where((t) => t.houseId.equals(h.id))).write(BatchesCompanion(houseId: Value(newId)));
-            }
-            await (db.update(db.houses)..where((t) => t.id.equals(h.id))).write(HousesCompanion(id: Value(newId), synced: const Value(true)));
+            await _supabase.from('houses').insert(payload);
           }
+          await (db.update(db.houses)..where((t) => t.id.equals(h.id))).write(
+            const HousesCompanion(synced: Value(true)),
+          );
         } catch (e) {
           debugPrint("House push error: $e");
         }
       }
 
       // 2. Push Batches (Mixed camel/snake columns)
-      final pendingBatches = await (db.select(db.batches)..where((t) => t.synced.equals(false))).get();
+      final pendingBatches = await (db.select(
+        db.batches,
+      )..where((t) => t.synced.equals(false))).get();
       for (var b in pendingBatches) {
         try {
-          final existing = await _supabase.from('batches').select('id').eq('id', b.id).maybeSingle();
+          final id = safeIdString(b.id);
+          final existing = await _supabase
+              .from('batches')
+              .select('id')
+              .eq('id', id)
+              .maybeSingle();
           final now = DateTime.now().toUtc().toIso8601String();
           final payload = {
-            'farmId': b.farmId,
-            'houseId': b.houseId,
-            'userId': b.userId ?? legacyUserId,
+            'id': id,
+            'farmId': _remoteFarmIdForPush(b.farmId, webFarmId),
+            'houseId': optionalIdString(b.houseId),
+            'userId': pushUserIdForPayload(b.userId ?? pushUserId),
             'batchName': b.batchName,
             'type': b.type,
             'breedType': b.breedType,
@@ -365,196 +630,244 @@ class SyncEngine extends ChangeNotifier {
             'currentCount': b.currentCount,
             'initialCount': b.initialCount,
             'isolationCount': b.isolationCount,
-            'initial_actual_cost': b.initialActualCost, // snake in Prisma
-            'growth_target': b.growthTarget, // snake in Prisma
+            'initial_actual_cost': b.initialActualCost,
+            'growth_target': b.growthTarget,
             'updatedAt': now,
           };
+          assertSyncPayloadUsesStringIds(payload);
 
           if (existing != null) {
-            await _supabase.from('batches').update(payload).eq('id', b.id);
-            await (db.update(db.batches)..where((t) => t.id.equals(b.id))).write(const BatchesCompanion(synced: Value(true)));
+            await _supabase.from('batches').update(payload).eq('id', id);
           } else {
             payload['createdAt'] = now;
-            final response = await _supabase.from('batches').insert(payload).select().single();
-            final newId = response['id'] as int;
-            if (newId != b.id) {
-              await (db.update(db.mortalities)..where((t) => t.batchId.equals(b.id))).write(MortalitiesCompanion(batchId: Value(newId)));
-              await (db.update(db.eggProductions)..where((t) => t.batchId.equals(b.id))).write(EggProductionsCompanion(batchId: Value(newId)));
-              await (db.update(db.feedingLogs)..where((t) => t.batchId.equals(b.id))).write(FeedingLogsCompanion(batchId: Value(newId)));
-            }
-            await (db.update(db.batches)..where((t) => t.id.equals(b.id))).write(BatchesCompanion(id: Value(newId), synced: const Value(true)));
+            await _supabase.from('batches').insert(payload);
           }
+          await (db.update(db.batches)..where((t) => t.id.equals(b.id))).write(
+            const BatchesCompanion(synced: Value(true)),
+          );
         } catch (e) {
           debugPrint("Batch push error: $e");
         }
       }
 
       // 3. Push Inventory (camelCase columns)
-      final pendingInventory = await (db.select(db.inventory)..where((t) => t.synced.equals(false))).get();
+      final pendingInventory = await (db.select(
+        db.inventory,
+      )..where((t) => t.synced.equals(false))).get();
       for (var i in pendingInventory) {
         try {
-          final existing = await _supabase.from('inventory').select('id').eq('id', i.id).maybeSingle();
+          final id = safeIdString(i.id);
+          final existing = await _supabase
+              .from('inventory')
+              .select('id')
+              .eq('id', id)
+              .maybeSingle();
           final now = DateTime.now().toUtc().toIso8601String();
           final payload = {
-            'farmId': i.farmId,
-            'userId': i.userId ?? legacyUserId,
+            'id': id,
+            'farmId': _remoteFarmIdForPush(i.farmId, webFarmId),
+            'userId': pushUserIdForPayload(i.userId),
             'itemName': i.itemName,
             'stockLevel': i.stockLevel,
             'reorderLevel': i.reorderLevel,
             'unit': i.unit,
             'category': i.category,
             'costPerUnit': i.costPerUnit,
-            'supplierId': i.supplierId,
+            'supplierId': optionalIdString(i.supplierId),
             'updatedAt': now,
           };
+          assertSyncPayloadUsesStringIds(payload);
 
           if (existing != null) {
-            await _supabase.from('inventory').update(payload).eq('id', i.id);
-            await (db.update(db.inventory)..where((t) => t.id.equals(i.id))).write(const InventoryCompanion(synced: Value(true)));
+            await _supabase.from('inventory').update(payload).eq('id', id);
           } else {
             payload['createdAt'] = now;
-            final response = await _supabase.from('inventory').insert(payload).select().single();
-            final newId = response['id'] as int;
-            await (db.update(db.inventory)..where((t) => t.id.equals(i.id))).write(InventoryCompanion(id: Value(newId), synced: const Value(true)));
+            await _supabase.from('inventory').insert(payload);
           }
+          await (db.update(db.inventory)..where((t) => t.id.equals(i.id)))
+              .write(const InventoryCompanion(synced: Value(true)));
         } catch (e) {
           debugPrint("Inventory push error: $e");
         }
       }
 
       // 4. Push Mortality (Mixed camel/snake columns)
-      final pendingMortality = await (db.select(db.mortalities)..where((t) => t.synced.equals(false))).get();
+      final pendingMortality = await (db.select(
+        db.mortalities,
+      )..where((t) => t.synced.equals(false))).get();
       for (var m in pendingMortality) {
         try {
-          final existing = await _supabase.from('mortality').select('id').eq('id', m.id).maybeSingle();
+          final id = safeIdString(m.id);
+          final existing = await _supabase
+              .from('mortality')
+              .select('id')
+              .eq('id', id)
+              .maybeSingle();
           final now = DateTime.now().toUtc().toIso8601String();
           final payload = {
-            'farmId': m.farmId,
-            'batch_id': m.batchId,
+            'id': id,
+            'farmId': _remoteFarmIdForPush(m.farmId, webFarmId),
+            'batchId': safeIdString(m.batchId),
             'count': m.count,
             'reason': m.reason,
             'logDate': m.logDate.toIso8601String(),
-            'user_id': m.userId ?? legacyUserId,
+            'user_id': pushUserIdForPayload(m.userId),
             'category': m.category,
             'sub_category': m.subCategory,
             'updatedAt': now,
           };
+          assertSyncPayloadUsesStringIds(payload);
 
           if (existing != null) {
-            await _supabase.from('mortality').update(payload).eq('id', m.id);
-            await (db.update(db.mortalities)..where((t) => t.id.equals(m.id))).write(const MortalitiesCompanion(synced: Value(true)));
+            await _supabase.from('mortality').update(payload).eq('id', id);
           } else {
             payload['createdAt'] = now;
-            final response = await _supabase.from('mortality').insert(payload).select().single();
-            final newId = response['id'] as int;
-            await (db.update(db.mortalities)..where((t) => t.id.equals(m.id))).write(MortalitiesCompanion(id: Value(newId), synced: const Value(true)));
+            await _supabase.from('mortality').insert(payload);
           }
+          await (db.update(db.mortalities)..where((t) => t.id.equals(m.id)))
+              .write(const MortalitiesCompanion(synced: Value(true)));
         } catch (e) {
           debugPrint("Mortality push error: $e");
         }
       }
 
       // 5. Push Feeding Logs (camelCase columns)
-      final pendingFeeding = await (db.select(db.feedingLogs)..where((t) => t.synced.equals(false))).get();
+      final pendingFeeding = await (db.select(
+        db.feedingLogs,
+      )..where((t) => t.synced.equals(false))).get();
       for (var fl in pendingFeeding) {
         try {
-          final existing = await _supabase.from('daily_feeding_logs').select('id').eq('id', fl.id).maybeSingle();
+          final id = safeIdString(fl.id);
+          final existing = await _supabase
+              .from('daily_feeding_logs')
+              .select('id')
+              .eq('id', id)
+              .maybeSingle();
           final now = DateTime.now().toUtc().toIso8601String();
           final payload = {
-            'farmId': fl.farmId,
-            'batch_id': fl.batchId,
-            'feed_type_id': fl.feedTypeId,
-            'formulation_id': fl.formulationId,
+            'id': id,
+            'farmId': _remoteFarmIdForPush(fl.farmId, webFarmId),
+            'batch_id': optionalIdString(fl.batchId),
+            'feed_type_id': optionalIdString(fl.feedTypeId),
+            'formulation_id': optionalIdString(fl.formulationId),
             'amount_consumed': fl.amountConsumed,
             'log_date': fl.logDate.toIso8601String(),
-            'user_id': fl.userId ?? legacyUserId,
+            'user_id': pushUserIdForPayload(fl.userId),
             'updatedAt': now,
           };
+          assertSyncPayloadUsesStringIds(payload);
 
           if (existing != null) {
-            await _supabase.from('daily_feeding_logs').update(payload).eq('id', fl.id);
-            await (db.update(db.feedingLogs)..where((t) => t.id.equals(fl.id))).write(const FeedingLogsCompanion(synced: Value(true)));
+            await _supabase
+                .from('daily_feeding_logs')
+                .update(payload)
+                .eq('id', id);
           } else {
             payload['createdAt'] = now;
-            final response = await _supabase.from('daily_feeding_logs').insert(payload).select().single();
-            final newId = response['id'] as int;
-            await (db.update(db.feedingLogs)..where((t) => t.id.equals(fl.id))).write(FeedingLogsCompanion(id: Value(newId), synced: const Value(true)));
+            await _supabase.from('daily_feeding_logs').insert(payload);
           }
+          await (db.update(db.feedingLogs)..where((t) => t.id.equals(fl.id)))
+              .write(const FeedingLogsCompanion(synced: Value(true)));
         } catch (e) {
           debugPrint("Feeding push error: $e");
         }
       }
 
       // 6. Push Egg Production (camelCase columns)
-      final pendingEggs = await (db.select(db.eggProductions)..where((t) => t.synced.equals(false))).get();
+      final pendingEggs = await (db.select(
+        db.eggProductions,
+      )..where((t) => t.synced.equals(false))).get();
       for (var ep in pendingEggs) {
         try {
-          final existing = await _supabase.from('egg_production').select('id').eq('id', ep.id).maybeSingle();
+          final id = safeIdString(ep.id);
+          final existing = await _supabase
+              .from('egg_production')
+              .select('id')
+              .eq('id', id)
+              .maybeSingle();
           final now = DateTime.now().toUtc().toIso8601String();
           final payload = {
-            'farmId': ep.farmId,
-            'batchId': ep.batchId,
-            'categoryId': ep.categoryId,
+            'id': id,
+            'farmId': _remoteFarmIdForPush(ep.farmId, webFarmId),
+            'batchId': safeIdString(ep.batchId),
+            'categoryId': optionalIdString(ep.categoryId),
             'eggsCollected': ep.eggsCollected,
             'unusableCount': ep.unusableCount,
             'eggsRemaining': ep.eggsRemaining,
             'cratesCollected': ep.cratesCollected,
             'qualityGrade': ep.qualityGrade,
             'logDate': ep.logDate.toIso8601String(),
-            'userId': ep.userId ?? legacyUserId,
+            'userId': pushUserIdForPayload(ep.userId),
           };
+          assertSyncPayloadUsesStringIds(payload);
 
           if (existing != null) {
-            await _supabase.from('egg_production').update(payload).eq('id', ep.id);
-            await (db.update(db.eggProductions)..where((t) => t.id.equals(ep.id))).write(const EggProductionsCompanion(synced: Value(true)));
+            await _supabase.from('egg_production').update(payload).eq('id', id);
           } else {
             payload['createdAt'] = now;
-            final response = await _supabase.from('egg_production').insert(payload).select().single();
-            final newId = response['id'] as int;
-            await (db.update(db.eggProductions)..where((t) => t.id.equals(ep.id))).write(EggProductionsCompanion(id: Value(newId), synced: const Value(true)));
+            await _supabase.from('egg_production').insert(payload);
           }
+          await (db.update(db.eggProductions)..where((t) => t.id.equals(ep.id)))
+              .write(const EggProductionsCompanion(synced: Value(true)));
         } catch (e) {
           debugPrint("Egg push error: $e");
         }
       }
 
       // 7. Push Sales (camelCase columns)
-      final pendingSales = await (db.select(db.sales)..where((t) => t.synced.equals(false))).get();
+      final pendingSales = await (db.select(
+        db.sales,
+      )..where((t) => t.synced.equals(false))).get();
       for (var s in pendingSales) {
         try {
-          final existing = await _supabase.from('sales').select('id').eq('id', s.id).maybeSingle();
+          final id = safeIdString(s.id);
+          final existing = await _supabase
+              .from('sales')
+              .select('id')
+              .eq('id', id)
+              .maybeSingle();
           final now = DateTime.now().toUtc().toIso8601String();
           final payload = {
-            'farmId': s.farmId,
-            'customerId': s.customerId,
-            'userId': s.userId ?? legacyUserId,
+            'id': id,
+            'farmId': _remoteFarmIdForPush(s.farmId, webFarmId),
+            'customerId': optionalIdString(s.customerId),
+            'userId': pushUserIdForPayload(s.userId),
             'totalAmount': s.totalAmount,
             'saleDate': s.saleDate.toIso8601String(),
             'updatedAt': now,
           };
+          assertSyncPayloadUsesStringIds(payload);
 
           if (existing != null) {
-            await _supabase.from('sales').update(payload).eq('id', s.id);
-            await (db.update(db.sales)..where((t) => t.id.equals(s.id))).write(const SalesCompanion(synced: Value(true)));
+            await _supabase.from('sales').update(payload).eq('id', id);
           } else {
             payload['createdAt'] = now;
-            final response = await _supabase.from('sales').insert(payload).select().single();
-            final newId = response['id'] as int;
-            await (db.update(db.sales)..where((t) => t.id.equals(s.id))).write(SalesCompanion(id: Value(newId), synced: const Value(true)));
+            await _supabase.from('sales').insert(payload);
           }
+          await (db.update(db.sales)..where((t) => t.id.equals(s.id))).write(
+            const SalesCompanion(synced: Value(true)),
+          );
         } catch (e) {
           debugPrint("Sale push error: $e");
         }
       }
 
       // 8. Push Customers (camelCase columns)
-      final pendingCustomers = await (db.select(db.customers)..where((t) => t.synced.equals(false))).get();
+      final pendingCustomers = await (db.select(
+        db.customers,
+      )..where((t) => t.synced.equals(false))).get();
       for (var c in pendingCustomers) {
         try {
-          final existing = await _supabase.from('customers').select('id').eq('id', c.id).maybeSingle();
+          final id = safeIdString(c.id);
+          final existing = await _supabase
+              .from('customers')
+              .select('id')
+              .eq('id', id)
+              .maybeSingle();
           final now = DateTime.now().toUtc().toIso8601String();
           final payload = {
-            'farmId': c.farmId,
+            'id': id,
+            'farmId': _remoteFarmIdForPush(c.farmId, webFarmId),
             'name': c.name,
             'phone': c.phone,
             'email': c.email,
@@ -565,148 +878,135 @@ class SyncEngine extends ChangeNotifier {
             'contactPerson': c.contactPerson,
             'updatedAt': now,
           };
+          assertSyncPayloadUsesStringIds(payload);
 
           if (existing != null) {
-            await _supabase.from('customers').update(payload).eq('id', c.id);
-            await (db.update(db.customers)..where((t) => t.id.equals(c.id))).write(const CustomersCompanion(synced: Value(true)));
+            await _supabase.from('customers').update(payload).eq('id', id);
           } else {
             payload['createdAt'] = now;
-            final response = await _supabase.from('customers').insert(payload).select().single();
-            final newId = response['id'] as int;
-            await (db.update(db.customers)..where((t) => t.id.equals(c.id))).write(CustomersCompanion(id: Value(newId), synced: const Value(true)));
+            await _supabase.from('customers').insert(payload);
           }
+          await (db.update(db.customers)..where((t) => t.id.equals(c.id)))
+              .write(const CustomersCompanion(synced: Value(true)));
         } catch (e) {
           debugPrint("Customer push error: $e");
         }
       }
 
-      // 9. Push Feed Types
-      final pendingFeedTypes = await (db.select(db.feedTypes)..where((t) => t.synced.equals(false))).get();
-      for (var ft in pendingFeedTypes) {
-        try {
-          final payload = {
-            'farmId': ft.farmId,
-            'name': ft.name,
-            'description': ft.description,
-            'currentStock': ft.currentStock,
-            'costPerKg': ft.costPerKg,
-            'updatedAt': DateTime.now().toUtc().toIso8601String(),
-          };
-          final existing = await _supabase.from('feed_types').select('id').eq('id', ft.id).maybeSingle();
-          if (existing != null) {
-            await _supabase.from('feed_types').update(payload).eq('id', ft.id);
-            await (db.update(db.feedTypes)..where((t) => t.id.equals(ft.id))).write(const FeedTypesCompanion(synced: Value(true)));
-          } else {
-            final resp = await _supabase.from('feed_types').insert(payload).select().single();
-            await (db.update(db.feedTypes)..where((t) => t.id.equals(ft.id))).write(FeedTypesCompanion(id: Value(resp['id']), synced: const Value(true)));
-          }
-        } catch (e) { debugPrint("FeedType push error: $e"); }
-      }
-
-      // 10. Push Feed Formulations
-      final pendingFormulations = await (db.select(db.feedFormulations)..where((t) => t.synced.equals(false))).get();
+      // 9. Push Feed Formulations
+      final pendingFormulations = await (db.select(
+        db.feedFormulations,
+      )..where((t) => t.synced.equals(false))).get();
       for (var ff in pendingFormulations) {
         try {
+          final id = safeIdString(ff.id);
           final payload = {
-            'farmId': ff.farmId,
+            'id': id,
+            'farmId': _remoteFarmIdForPush(ff.farmId, webFarmId),
             'name': ff.name,
             'description': ff.description,
             'isActive': ff.isActive,
             'updatedAt': DateTime.now().toUtc().toIso8601String(),
           };
-          final existing = await _supabase.from('feed_formulations').select('id').eq('id', ff.id).maybeSingle();
+          assertSyncPayloadUsesStringIds(payload);
+          final existing = await _supabase
+              .from('feed_formulations')
+              .select('id')
+              .eq('id', id)
+              .maybeSingle();
           if (existing != null) {
-            await _supabase.from('feed_formulations').update(payload).eq('id', ff.id);
-            await (db.update(db.feedFormulations)..where((t) => t.id.equals(ff.id))).write(const FeedFormulationsCompanion(synced: Value(true)));
+            await _supabase
+                .from('feed_formulations')
+                .update(payload)
+                .eq('id', id);
           } else {
-            final resp = await _supabase.from('feed_formulations').insert(payload).select().single();
-            await (db.update(db.feedFormulations)..where((t) => t.id.equals(ff.id))).write(FeedFormulationsCompanion(id: Value(resp['id']), synced: const Value(true)));
+            await _supabase.from('feed_formulations').insert(payload);
           }
-        } catch (e) { debugPrint("FeedFormulation push error: $e"); }
-      }
-
-
-      // 11. Push Expenses
-      final pendingExpenses = await (db.select(db.expenses)..where((t) => t.synced.equals(false))).get();
-      for (var e in pendingExpenses) {
-        try {
-          final existing = await _supabase.from('expenses').select('id').eq('id', e.id).maybeSingle();
-          final now = DateTime.now().toUtc().toIso8601String();
-          final payload = {
-            'farmId': e.farmId,
-            'category': e.category,
-            'amount': e.amount,
-            'date': e.date.toIso8601String(),
-            'description': e.description,
-            'updatedAt': now,
-          };
-
-          if (existing != null) {
-            await _supabase.from('expenses').update(payload).eq('id', e.id);
-            await (db.update(db.expenses)..where((t) => t.id.equals(e.id))).write(const ExpensesCompanion(synced: Value(true)));
-          } else {
-            payload['createdAt'] = now;
-            final response = await _supabase.from('expenses').insert(payload).select().single();
-            await (db.update(db.expenses)..where((t) => t.id.equals(e.id))).write(ExpensesCompanion(id: Value(response['id'] as int), synced: const Value(true)));
-          }
-        } catch (e) { debugPrint("Expense push error: $e"); }
-      }
-
-      // 12. Push Settlements
-      final pendingSettlements = await (db.select(db.settlements)..where((t) => t.synced.equals(false))).get();
-      for (var s in pendingSettlements) {
-        try {
-          final existing = await _supabase.from('settlements').select('id').eq('id', s.id).maybeSingle();
-          final now = DateTime.now().toUtc().toIso8601String();
-          final payload = {
-            'farmId': s.farmId,
-            'customerId': s.customerId,
-            'amount': s.amount,
-            'settlementDate': s.settlementDate.toIso8601String(),
-            'settlementType': s.settlementType,
-            'updatedAt': now,
-          };
-
-          if (existing != null) {
-            await _supabase.from('settlements').update(payload).eq('id', s.id);
-            await (db.update(db.settlements)..where((t) => t.id.equals(s.id))).write(const SettlementsCompanion(synced: Value(true)));
-          } else {
-            payload['createdAt'] = now;
-            final response = await _supabase.from('settlements').insert(payload).select().single();
-            await (db.update(db.settlements)..where((t) => t.id.equals(s.id))).write(SettlementsCompanion(id: Value(response['id'] as int), synced: const Value(true)));
-          }
-        } catch (e) { debugPrint("Settlement push error: $e"); }
-      }
-
-      // 13. Push Stock Logs
-      final pendingStockLogs = await (db.select(db.stockLogs)..where((t) => t.synced.equals(false))).get();
-      for (var sl in pendingStockLogs) {
-        try {
-          final existing = await _supabase.from('stock_logs').select('id').eq('id', sl.id).maybeSingle();
-          final payload = {
-            'farm_id': sl.farmId,
-            'item_id': sl.itemId,
-            'quantity': sl.quantity,
-            'log_type': sl.logType,
-            'batch_id': sl.batchId,
-            'supplier_id': sl.supplierId,
-            'note': sl.note,
-            'log_date': sl.logDate.toIso8601String(),
-          };
-
-          if (existing != null) {
-            await _supabase.from('stock_logs').update(payload).eq('id', sl.id);
-            await (db.update(db.stockLogs)..where((t) => t.id.equals(sl.id))).write(const StockLogsCompanion(synced: Value(true)));
-          } else {
-            final response = await _supabase.from('stock_logs').insert(payload).select().single();
-            final newId = response['id'] as int;
-            await (db.update(db.stockLogs)..where((t) => t.id.equals(sl.id))).write(StockLogsCompanion(id: Value(newId), synced: const Value(true)));
-          }
+          await (db.update(db.feedFormulations)
+                ..where((t) => t.id.equals(ff.id)))
+              .write(const FeedFormulationsCompanion(synced: Value(true)));
         } catch (e) {
-          debugPrint("StockLog push error: $e");
+          debugPrint("FeedFormulation push error: $e");
         }
       }
 
+      // 11. Push Expenses
+      final pendingExpenses = await (db.select(
+        db.expenses,
+      )..where((t) => t.synced.equals(false))).get();
+      for (var e in pendingExpenses) {
+        try {
+          final id = safeIdString(e.id);
+          final existing = await _supabase
+              .from('expenses')
+              .select('id')
+              .eq('id', id)
+              .maybeSingle();
+          final now = DateTime.now().toUtc().toIso8601String();
+          final payload = {
+            'id': id,
+            'farmId': _remoteFarmIdForPush(e.farmId, webFarmId),
+            'batch_id': optionalIdString(e.batchId),
+            'supplierId': optionalIdString(e.supplierId),
+            'user_id': pushUserIdForPayload(e.userId),
+            'category': e.category,
+            'amount': e.amount,
+            'expense_date': e.date.toIso8601String(),
+            'description': e.description,
+            'updated_at': now,
+          };
+          assertSyncPayloadUsesStringIds(payload);
+
+          if (existing != null) {
+            await _supabase.from('expenses').update(payload).eq('id', id);
+          } else {
+            payload['created_at'] = now;
+            await _supabase.from('expenses').insert(payload);
+          }
+          await (db.update(db.expenses)..where((t) => t.id.equals(e.id))).write(
+            const ExpensesCompanion(synced: Value(true)),
+          );
+        } catch (e) {
+          debugPrint("Expense push error: $e");
+        }
+      }
+
+      // 12. Push settlements → cloud `expenses` + `customers.balanceOwed`
+      final pendingSettlements = await (db.select(
+        db.settlements,
+      )..where((t) => t.synced.equals(false))).get();
+      for (var s in pendingSettlements) {
+        try {
+          await _pushSettlementToCloud(
+            s,
+            webFarmId,
+            pushUserIdForPayload: pushUserIdForPayload,
+          );
+          await (db.update(db.settlements)..where((t) => t.id.equals(s.id)))
+              .write(const SettlementsCompanion(synced: Value(true)));
+        } catch (e) {
+          debugPrint("Settlement push error: $e");
+        }
+      }
+
+      // 13. Stock logs are local-only; mark synced once linked inventory is on cloud
+      final pendingStockLogs = await (db.select(
+        db.stockLogs,
+      )..where((t) => t.synced.equals(false))).get();
+      for (var sl in pendingStockLogs) {
+        final item = await (db.select(
+          db.inventory,
+        )..where((t) => t.id.equals(sl.itemId))).getSingleOrNull();
+        if (item != null && item.synced) {
+          await (db.update(db.stockLogs)..where((t) => t.id.equals(sl.id)))
+              .write(const StockLogsCompanion(synced: Value(true)));
+        }
+      }
+
+      await _pushHealthSchedules(
+        webFarmId,
+        pushUserIdForPayload: pushUserIdForPayload,
+      );
     } catch (e) {
       debugPrint("Push Changes overall error: $e");
     }
@@ -723,119 +1023,177 @@ class SyncEngine extends ChangeNotifier {
         if (remoteTable == 'feeding_logs') remoteTable = 'daily_feeding_logs';
         if (remoteTable == 'egg_productions') remoteTable = 'egg_production';
 
-        await _supabase.from(remoteTable).delete().eq('id', d.recordId);
-        await (db.delete(db.pendingDeletions)..where((t) => t.id.equals(d.id))).go();
+        await _supabase
+            .from(remoteTable)
+            .delete()
+            .eq('id', safeIdString(d.recordId));
+        await (db.delete(
+          db.pendingDeletions,
+        )..where((t) => t.id.equals(d.id))).go();
         debugPrint("Deleted remote record: $remoteTable ID ${d.recordId}");
       } catch (e) {
-        debugPrint("Deletion sync error for ${d.targetTableName} ID ${d.recordId}: $e");
+        debugPrint(
+          "Deletion sync error for ${d.targetTableName} ID ${d.recordId}: $e",
+        );
       }
     }
   }
 
   Future<void> _pullChanges() async {
-    final prefs = await SharedPreferences.getInstance();
-    final farmId = prefs.getInt('bound_farm_id');
+    final farmId = await FarmUtils.getBoundFarmId();
     if (farmId == null) return;
+    final farmIdFilter = safeIdString(farmId);
 
     try {
-      final syncData = await _supabase.rpc('get_farm_sync_data', params: {'p_farm_id': farmId});
+      final syncData = await _supabase.rpc(
+        'get_farm_sync_data',
+        params: {'p_farm_id': farmIdFilter},
+      );
       if (syncData == null) return;
 
       // 1. Pull Houses
       final remoteHouses = (syncData['houses'] as List<dynamic>?) ?? [];
       for (var h in remoteHouses) {
-        await db.into(db.houses).insertOnConflictUpdate(HousesCompanion.insert(
-          id: Value(h['id'] as int),
-          farmId: farmId,
-          userId: Value(h['userId'] as String?),
-          name: h['name'] as String,
-          capacity: h['capacity'] as int,
-          currentTemperature: Value(h['currentTemperature'] != null ? double.parse(h['currentTemperature'].toString()) : null),
-          currentHumidity: Value(h['currentHumidity'] != null ? double.parse(h['currentHumidity'].toString()) : null),
-          isIsolation: Value(h['isIsolation'] as bool? ?? false),
-          synced: const Value(true),
-        ));
+        await db
+            .into(db.houses)
+            .insertOnConflictUpdate(
+              HousesCompanion.insert(
+                id: safeIdString(h['id']),
+                farmId: farmIdFilter,
+                userId: Value(h['userId'] as String?),
+                name: h['name'] as String,
+                capacity: _safeInt(h['capacity']) ?? 0,
+                currentTemperature: Value(_safeDouble(h['currentTemperature'])),
+                currentHumidity: Value(_safeDouble(h['currentHumidity'])),
+                isIsolation: Value(h['isIsolation'] as bool? ?? false),
+                synced: const Value(true),
+              ),
+            );
       }
       debugPrint('Pull: synced ${remoteHouses.length} houses');
 
       // 2. Pull Batches
       final remoteBatches = (syncData['batches'] as List<dynamic>?) ?? [];
       for (var rb in remoteBatches) {
-        await db.into(db.batches).insertOnConflictUpdate(BatchesCompanion.insert(
-          id: Value(rb['id'] as int),
-          farmId: farmId,
-          houseId: Value(rb['houseId'] as int?),
-          userId: Value(rb['userId'] as String?),
-          batchName: Value(rb['batchName'] as String? ?? ''),
-          type: Value(rb['type'] as String? ?? ''),
-          breedType: Value(rb['breedType'] as String?),
-          status: Value(rb['status'] as String? ?? ''),
-          arrivalDate: DateTime.parse(rb['arrivalDate'] as String),
-          currentCount: rb['currentCount'] as int? ?? 0,
-          initialCount: rb['initialCount'] as int? ?? 0,
-          isolationCount: Value(rb['isolationCount'] as int? ?? 0),
-          initialActualCost: Value(rb['initial_actual_cost'] != null ? double.parse(rb['initial_actual_cost'].toString()) : null),
-          growthTarget: Value(rb['growth_target']?.toString()),
-          synced: const Value(true),
-        ));
+        await db
+            .into(db.batches)
+            .insertOnConflictUpdate(
+              BatchesCompanion.insert(
+                id: safeIdString(rb['id']),
+                farmId: farmIdFilter,
+                houseId: Value(_safeStr(rb['houseId'] ?? rb['house_id'])),
+                userId: Value(rb['userId'] as String?),
+                batchName: Value(rb['batchName'] as String? ?? ''),
+                type: Value(rb['type'] as String? ?? ''),
+                breedType: Value(rb['breedType'] as String?),
+                status: Value(rb['status'] as String? ?? ''),
+                arrivalDate:
+                    _safeDateTime(rb['arrivalDate']) ?? DateTime.now().toUtc(),
+                currentCount: _safeInt(rb['currentCount']) ?? 0,
+                initialCount: _safeInt(rb['initialCount']) ?? 0,
+                isolationCount: Value(_safeInt(rb['isolationCount']) ?? 0),
+                initialActualCost: Value(
+                  _safeDouble(rb['initial_actual_cost']),
+                ),
+                growthTarget: Value(rb['growth_target']?.toString()),
+                synced: const Value(true),
+              ),
+            );
       }
       debugPrint('Pull: synced ${remoteBatches.length} batches');
 
       // 3. Pull Inventory
       final remoteInventory = (syncData['inventory'] as List<dynamic>?) ?? [];
       for (var i in remoteInventory) {
-        await db.into(db.inventory).insertOnConflictUpdate(InventoryCompanion.insert(
-          id: Value(i['id'] as int),
-          farmId: farmId,
-          userId: Value(i['userId'] as String?),
-          itemName: i['itemName'] as String,
-          stockLevel: double.parse(i['stockLevel'].toString()),
-          reorderLevel: Value(i['reorderLevel'] != null ? double.parse(i['reorderLevel'].toString()) : null),
-          unit: i['unit'] as String,
-          category: Value(i['category'] as String?),
-          costPerUnit: Value(i['costPerUnit'] != null ? double.parse(i['costPerUnit'].toString()) : null),
-          synced: const Value(true),
-        ));
+        await db
+            .into(db.inventory)
+            .insertOnConflictUpdate(
+              InventoryCompanion.insert(
+                id: safeIdString(i['id']),
+                farmId: farmIdFilter,
+                userId: Value(i['userId'] as String?),
+                itemName: i['itemName'] as String,
+                stockLevel: _safeDouble(i['stockLevel']) ?? 0.0,
+                reorderLevel: Value(_safeDouble(i['reorderLevel'])),
+                unit: i['unit'] as String,
+                category: Value(i['category'] as String?),
+                costPerUnit: Value(_safeDouble(i['costPerUnit'])),
+                synced: const Value(true),
+              ),
+            );
       }
       debugPrint('Pull: synced ${remoteInventory.length} inventory items');
 
       // 4. Pull Customers
       final remoteCustomers = (syncData['customers'] as List<dynamic>?) ?? [];
       for (var c in remoteCustomers) {
-        await db.into(db.customers).insertOnConflictUpdate(CustomersCompanion.insert(
-          id: Value(c['id'] as int),
-          farmId: farmId,
-          name: c['name'] as String,
-          phone: Value(c['phone'] as String?),
-          email: Value(c['email'] as String?),
-          address: Value(c['address'] as String?),
-          customerType: Value(c['customerType'] as String? ?? 'CUSTOMER'),
-          balanceOwed: Value(c['balanceOwed'] != null ? double.parse(c['balanceOwed'].toString()) : 0.0),
-          supplyItems: Value(c['supplyItems'] as String?),
-          contactPerson: Value(c['contactPerson'] as String?),
-          synced: const Value(true),
-        ));
+        await db
+            .into(db.customers)
+            .insertOnConflictUpdate(
+              CustomersCompanion.insert(
+                id: safeIdString(c['id']),
+                farmId: farmIdFilter,
+                name: c['name'] as String,
+                phone: Value(c['phone'] as String?),
+                email: Value(c['email'] as String?),
+                address: Value(c['address'] as String?),
+                customerType: Value(c['customerType'] as String? ?? 'CUSTOMER'),
+                balanceOwed: Value(_safeDouble(c['balanceOwed']) ?? 0.0),
+                supplyItems: Value(c['supplyItems'] as String?),
+                contactPerson: Value(c['contactPerson'] as String?),
+                synced: const Value(true),
+              ),
+            );
       }
       debugPrint('Pull: synced ${remoteCustomers.length} customers');
+
+      // 4.1 Pull User Permissions (if provided by RPC)
+      final remotePermissions =
+          (syncData['user_permissions'] as List<dynamic>?) ?? [];
+      for (var p in remotePermissions) {
+        final perm = p as Map<String, dynamic>;
+        await db
+            .into(db.userPermissions)
+            .insertOnConflictUpdate(
+              UserPermissionsCompanion.insert(
+                id: safeIdString(perm['id']),
+                farmId: farmIdFilter,
+                userId: safeIdString(
+                  perm['userId'] ?? perm['user_id'] ?? perm['user'],
+                ),
+                permissionKey:
+                    perm['permissionKey'] as String? ??
+                    perm['key'] as String? ??
+                    'UNKNOWN',
+                allowed: Value((perm['allowed'] as bool?) ?? true),
+                synced: const Value(true),
+              ),
+            );
+      }
+      debugPrint('Pull: synced ${remotePermissions.length} user permissions');
 
       // 5. Pull Mortality (direct table query)
       final remoteMortality = await _supabase
           .from('mortality')
           .select()
-          .eq('farmId', farmId);
+          .eq('farmId', farmIdFilter);
       for (var m in remoteMortality) {
-        await db.into(db.mortalities).insertOnConflictUpdate(MortalitiesCompanion.insert(
-          id: Value(m['id'] as int),
-          farmId: farmId,
-          batchId: m['batch_id'] as int,
-          count: m['count'] as int,
-          reason: Value(m['reason'] as String?),
-          category: Value(m['category'] as String?),
-          subCategory: Value(m['sub_category'] as String?),
-          logDate: DateTime.parse(m['logDate'] as String),
-          userId: Value(m['user_id'] as String?),
-          synced: const Value(true),
-        ));
+        await db
+            .into(db.mortalities)
+            .insertOnConflictUpdate(
+              MortalitiesCompanion.insert(
+                id: safeIdString(m['id']),
+                farmId: farmIdFilter,
+                batchId: safeIdString(m['batch_id'] ?? m['batchId']),
+                count: m['count'] as int,
+                reason: Value(m['reason'] as String?),
+                category: Value(m['category'] as String?),
+                subCategory: Value(m['sub_category'] as String?),
+                logDate: _safeDateTime(m['logDate']) ?? DateTime.now().toUtc(),
+                userId: Value(m['user_id'] as String?),
+                synced: const Value(true),
+              ),
+            );
       }
       debugPrint('Pull: synced ${remoteMortality.length} mortality records');
 
@@ -843,22 +1201,28 @@ class SyncEngine extends ChangeNotifier {
       final remoteEggs = await _supabase
           .from('egg_production')
           .select()
-          .eq('farmId', farmId);
+          .eq('farmId', farmIdFilter);
       for (var e in remoteEggs) {
-        await db.into(db.eggProductions).insertOnConflictUpdate(EggProductionsCompanion.insert(
-          id: Value(e['id'] as int),
-          farmId: farmId,
-          batchId: e['batchId'] as int,
-          categoryId: Value(e['categoryId'] as int?),
-          eggsCollected: e['eggsCollected'] as int,
-          unusableCount: Value(e['unusableCount'] as int? ?? 0),
-          eggsRemaining: Value(e['eggsRemaining'] as int? ?? 0),
-          cratesCollected: Value(e['cratesCollected'] != null ? double.parse(e['cratesCollected'].toString()) : null),
-          qualityGrade: Value(e['qualityGrade'] as String?),
-          logDate: DateTime.parse(e['logDate'] as String),
-          userId: Value(e['userId'] as String?),
-          synced: const Value(true),
-        ));
+        await db
+            .into(db.eggProductions)
+            .insertOnConflictUpdate(
+              EggProductionsCompanion.insert(
+                id: safeIdString(e['id']),
+                farmId: farmIdFilter,
+                batchId: safeIdString(e['batchId'] ?? e['batch_id']),
+                categoryId: Value(
+                  _safeStr(e['categoryId'] ?? e['category_id']),
+                ),
+                eggsCollected: e['eggsCollected'] as int,
+                unusableCount: Value(e['unusableCount'] as int? ?? 0),
+                eggsRemaining: Value(e['eggsRemaining'] as int? ?? 0),
+                cratesCollected: Value(_safeDouble(e['cratesCollected'])),
+                qualityGrade: Value(e['qualityGrade'] as String?),
+                logDate: _safeDateTime(e['logDate']) ?? DateTime.now().toUtc(),
+                userId: Value(e['userId'] as String?),
+                synced: const Value(true),
+              ),
+            );
       }
       debugPrint('Pull: synced ${remoteEggs.length} egg production records');
 
@@ -866,110 +1230,110 @@ class SyncEngine extends ChangeNotifier {
       final remoteFeeds = await _supabase
           .from('daily_feeding_logs')
           .select()
-          .eq('farmId', farmId);
+          .eq('farmId', farmIdFilter);
       for (var f in remoteFeeds) {
-        await db.into(db.feedingLogs).insertOnConflictUpdate(FeedingLogsCompanion.insert(
-          id: Value(f['id'] as int),
-          farmId: farmId,
-          batchId: Value(f['batch_id'] as int?),
-          feedTypeId: Value(f['feed_type_id'] as int?),
-          formulationId: Value(f['formulation_id'] as int?),
-          amountConsumed: double.parse(f['amount_consumed'].toString()),
-          logDate: DateTime.parse(f['log_date'] as String),
-          userId: Value(f['user_id'] as String?),
-          synced: const Value(true),
-        ));
+        await db
+            .into(db.feedingLogs)
+            .insertOnConflictUpdate(
+              FeedingLogsCompanion.insert(
+                id: safeIdString(f['id']),
+                farmId: farmIdFilter,
+                batchId: Value(_safeStr(f['batch_id'] ?? f['batchId'])),
+                feedTypeId: Value(
+                  _safeStr(f['feed_type_id'] ?? f['feedTypeId']),
+                ),
+                formulationId: Value(
+                  _safeStr(f['formulation_id'] ?? f['formulationId']),
+                ),
+                amountConsumed: _safeDouble(f['amount_consumed']) ?? 0.0,
+                logDate: _safeDateTime(f['log_date']) ?? DateTime.now().toUtc(),
+                userId: Value(f['user_id'] as String?),
+                synced: const Value(true),
+              ),
+            );
       }
       debugPrint('Pull: synced ${remoteFeeds.length} feeding logs');
 
-      // 8. Pull Feed Types
-      final remoteFT = await _supabase.from('feed_types').select().eq('farmId', farmId);
-      for (var ft in remoteFT) {
-        await db.into(db.feedTypes).insertOnConflictUpdate(FeedTypesCompanion.insert(
-          id: Value(ft['id']),
-          farmId: farmId,
-          name: ft['name'],
-          currentStock: Value(double.parse(ft['currentStock'].toString())),
-          costPerKg: Value(double.parse(ft['costPerKg'].toString())),
-          synced: const Value(true),
-        ));
-      }
+      // 8. Pull Users and Farm Members
+      await _syncFarmMembersFromCloud(farmIdFilter);
 
-      // 10. Pull Users and Farm Members
-      final teamData = await _supabase.from('users').select('*, farm_members(*)').eq('farm_members.farmId', farmId);
-      for (var u in teamData) {
-        final userId = u['id'] as String;
-        await db.into(db.users).insertOnConflictUpdate(UsersCompanion.insert(
-          id: userId,
-          firstname: Value(u['firstname'] as String?),
-          surname: Value(u['surname'] as String?),
-          middleName: Value(u['middle_name'] as String?),
-          name: Value(u['name'] as String?),
-          email: Value(u['email'] as String?),
-          phoneNumber: Value(u['phone_number'] as String?),
-          role: Value(u['role'] as String? ?? 'worker'),
-          mustChangePassword: Value(u['must_change_password'] as bool? ?? false),
-          synced: const Value(true),
-        ));
+      // 9. Pull Expenses
+      final remoteExpenses = await _supabase
+          .from('expenses')
+          .select()
+          .eq('farmId', farmIdFilter);
+      for (var e in remoteExpenses) {
+        final description = _safeStr(e['description']);
+        await db
+            .into(db.expenses)
+            .insertOnConflictUpdate(
+              ExpensesCompanion.insert(
+                id: safeIdString(e['id']),
+                farmId: farmIdFilter,
+                batchId: Value(_safeStr(e['batch_id'] ?? e['batchId'])),
+                supplierId: Value(
+                  _safeStr(e['supplierId'] ?? e['supplier_id']),
+                ),
+                category: e['category'] as String,
+                amount: _safeDouble(e['amount']) ?? 0.0,
+                date: Value(
+                  _safeDateTime(e['expense_date'] ?? e['date']) ??
+                      DateTime.now().toUtc(),
+                ),
+                description: Value(description),
+                allocationGroupId: Value(
+                  _allocationGroupFromDescription(description),
+                ),
+                allocationPercent: Value(
+                  _allocationPercentFromDescription(description),
+                ),
+                isSharedAllocation: Value(
+                  _isSharedAllocationDescription(description),
+                ),
+                userId: Value(_safeStr(e['user_id'] ?? e['userId'])),
+                synced: const Value(true),
+              ),
+            );
+      }
+      debugPrint("Pull: synced ${remoteExpenses.length} expenses");
 
-        final members = u['farm_members'] as List;
-        for (var m in members) {
-          await db.into(db.farmMembers).insertOnConflictUpdate(FarmMembersCompanion.insert(
-            farmId: farmId,
-            userId: userId,
-            role: m['role'] ?? 'worker',
-            joinedAt: Value(DateTime.parse(m['joinedAt'])),
-            synced: const Value(true),
-          ));
-        }
+      // 9. Pull Profiles (worker provisioning records)
+      final remoteProfiles = await _supabase
+          .from('profiles')
+          .select()
+          .eq('farmId', farmIdFilter);
+      for (var prof in remoteProfiles) {
+        await db
+            .into(db.profiles)
+            .insertOnConflictUpdate(
+              ProfilesCompanion.insert(
+                id: safeIdString(prof['id']),
+                farmId: farmIdFilter,
+                phoneNumber:
+                    prof['phoneNumber'] as String? ??
+                    prof['phone_number'] as String? ??
+                    '',
+                role: Value(prof['role'] as String? ?? 'WORKER'),
+                firstName: Value(
+                  prof['firstName'] as String? ?? prof['first_name'] as String?,
+                ),
+                lastName: Value(
+                  prof['lastName'] as String? ?? prof['last_name'] as String?,
+                ),
+                status: Value(prof['status'] as String? ?? 'PENDING'),
+                customPermissionsJson: Value(
+                  _safeJsonText(
+                    prof['customPermissionsJson'] ??
+                        prof['custom_permissions_json'],
+                  ),
+                ),
+                synced: const Value(true),
+              ),
+            );
       }
-      debugPrint("Pull: synced ${teamData.length} team members");
+      debugPrint('Pull: synced ${remoteProfiles.length} profiles');
 
-      // 11. Pull Expenses (direct)
-      final rExp = await _supabase.from('expenses').select().eq('farmId', farmId);
-      for (var e in rExp) {
-        await db.into(db.expenses).insertOnConflictUpdate(ExpensesCompanion.insert(
-          id: Value(e['id'] as int),
-          farmId: farmId,
-          category: e['category'] as String,
-          amount: double.parse(e['amount'].toString()),
-          date: Value(DateTime.parse(e['date'] as String)),
-          description: Value(e['description'] as String?),
-          synced: const Value(true),
-        ));
-      }
-      debugPrint("Pull: synced ${rExp.length} expenses");
-
-      // 12. Pull Settlements (direct)
-      final rSet = await _supabase.from('settlements').select().eq('farmId', farmId);
-      for (var s in rSet) {
-        await db.into(db.settlements).insertOnConflictUpdate(SettlementsCompanion.insert(
-          id: Value(s['id'] as int),
-          farmId: farmId,
-          customerId: s['customerId'] as int,
-          amount: double.parse(s['amount'].toString()),
-          settlementDate: Value(DateTime.parse(s['settlementDate'] as String)),
-          settlementType: s['settlementType'] as String,
-          synced: const Value(true),
-        ));
-      }
-      // 13. Pull Stock Logs
-      final rStock = await _supabase.from('stock_logs').select().eq('farm_id', farmId);
-      for (var sl in rStock) {
-        await db.into(db.stockLogs).insertOnConflictUpdate(StockLogsCompanion.insert(
-          id: Value(sl['id'] as int),
-          farmId: farmId,
-          itemId: sl['item_id'] as int,
-          quantity: double.parse(sl['quantity'].toString()),
-          logType: sl['log_type'] as String,
-          batchId: Value(sl['batch_id'] as int?),
-          supplierId: Value(sl['supplier_id'] as int?),
-          note: Value(sl['note'] as String?),
-          logDate: Value(DateTime.parse(sl['log_date'] as String)),
-          synced: const Value(true),
-        ));
-      }
-      debugPrint("Pull: synced ${rStock.length} stock logs");
+      await _pullHealthSchedules(farmIdFilter);
 
       notifyListeners();
     } catch (e) {
@@ -977,9 +1341,493 @@ class SyncEngine extends ChangeNotifier {
     }
   }
 
+  Map<String, dynamic>? _safeMap(dynamic value) {
+    if (value is Map<String, dynamic>) return value;
+    if (value is Map) return Map<String, dynamic>.from(value);
+    return null;
+  }
+
+  String? _safeJsonText(dynamic value) {
+    if (value == null) return null;
+    if (value is String) return value;
+    if (value is List || value is Map) return jsonEncode(value);
+    return value.toString();
+  }
+
+  String _syncedRole(dynamic role) {
+    final cleaned = (_safeStr(role) ?? '').toUpperCase();
+    switch (cleaned) {
+      case 'OWNER':
+      case 'MANAGER':
+      case 'WORKER':
+      case 'ACCOUNTANT':
+        return cleaned;
+      case 'ACCOUNTEN':
+      case 'FINANCIAL':
+        return 'ACCOUNTANT';
+      case 'OPERATIONAL':
+      case 'VETERINARIAN':
+      default:
+        return 'WORKER';
+    }
+  }
+
+  String? _syncedCredentialHash(Map<String, dynamic> user) {
+    return _safeStr(
+      user['password'] ??
+          user['password_hash'] ??
+          user['credential_hash'] ??
+          user['encrypted_password'],
+    );
+  }
+
+  Future<String?> _protectedOwnerId() async {
+    final prefs = await SharedPreferences.getInstance();
+    final ownerId = prefs.getString(_localProfileOwnerIdKey);
+    return ownerId == null || ownerId.trim().isEmpty ? null : ownerId.trim();
+  }
+
+  Future<bool> _isProtectedOwnerRecord(String userId, {String? ownerId}) async {
+    if (ownerId == null || ownerId != userId) return false;
+    final localOwner = await (db.select(
+      db.users,
+    )..where((u) => u.id.equals(userId))).getSingleOrNull();
+    return localOwner == null ||
+        UserRoleUtils.normalize(localOwner.role) == UserRoleUtils.owner;
+  }
+
+  Future<void> _upsertSyncedUser(
+    Map<String, dynamic> user, {
+    required String role,
+    required String? ownerId,
+  }) async {
+    final userId = _safeStr(user['id']);
+    if (userId == null) return;
+    if (await _isProtectedOwnerRecord(userId, ownerId: ownerId)) return;
+
+    final displayName =
+        _safeStr(user['username']) ??
+        _safeStr(user['name']) ??
+        _safeStr(user['email']);
+
+    await db
+        .into(db.users)
+        .insertOnConflictUpdate(
+          UsersCompanion.insert(
+            id: userId,
+            firstname: Value(_safeStr(user['firstname'])),
+            surname: Value(_safeStr(user['surname'])),
+            middleName: Value(
+              _safeStr(user['middle_name'] ?? user['middleName']),
+            ),
+            name: Value(displayName),
+            email: Value(_safeStr(user['email'] ?? user['username'])),
+            image: Value(_safeStr(user['image'])),
+            password: Value(_syncedCredentialHash(user)),
+            phoneNumber: Value(
+              _safeStr(user['phone_number'] ?? user['phoneNumber']),
+            ),
+            mustChangePassword: Value(
+              _safeBool(
+                user['must_change_password'] ?? user['mustChangePassword'],
+              ),
+            ),
+            role: Value(role),
+            createdAt: Value(
+              _safeDateTime(user['created_at'] ?? user['createdAt']) ??
+                  DateTime.now().toUtc(),
+            ),
+            updatedAt: Value(
+              _safeDateTime(user['updated_at'] ?? user['updatedAt']) ??
+                  DateTime.now().toUtc(),
+            ),
+            synced: const Value(true),
+          ),
+        );
+  }
+
+  Future<void> _syncFarmMembersFromCloud(
+    String farmIdFilter, {
+    List<dynamic> rpcUsers = const [],
+  }) async {
+    final ownerId = await _protectedOwnerId();
+    final rpcUsersById = <String, Map<String, dynamic>>{};
+    for (final item in rpcUsers) {
+      final user = _safeMap(item);
+      final id = _safeStr(user?['id']);
+      if (user != null && id != null) {
+        rpcUsersById[id] = user;
+      }
+    }
+
+    final remoteUserIds = <String>{};
+    final remoteMemberIds = <String>{};
+    var authoritativeMemberships = false;
+    var syncedCount = 0;
+
+    try {
+      final members = await _supabase
+          .from('farm_members')
+          .select('*, users(*)')
+          .eq('farmId', farmIdFilter);
+      authoritativeMemberships = true;
+
+      for (final item in members) {
+        final member = _safeMap(item);
+        if (member == null) continue;
+
+        final userId = _safeStr(member['userId'] ?? member['user_id']);
+        if (userId == null) continue;
+        final memberId = safeIdString(
+          member['id'] ?? '${farmIdFilter}_$userId',
+        );
+        remoteUserIds.add(userId);
+        remoteMemberIds.add(memberId);
+
+        Map<String, dynamic>? user = _safeMap(member['users']);
+        user ??= rpcUsersById[userId];
+        if (user == null) {
+          final fetched = await _supabase
+              .from('users')
+              .select()
+              .eq('id', userId)
+              .maybeSingle();
+          user = _safeMap(fetched);
+        }
+
+        final memberRole = _syncedRole(member['role'] ?? user?['role']);
+        if (user != null) {
+          await _upsertSyncedUser(user, role: memberRole, ownerId: ownerId);
+        }
+
+        if (!await _isProtectedOwnerRecord(userId, ownerId: ownerId)) {
+          await db
+              .into(db.farmMembers)
+              .insertOnConflictUpdate(
+                FarmMembersCompanion.insert(
+                  id: memberId,
+                  farmId: farmIdFilter,
+                  userId: userId,
+                  role: Value(memberRole),
+                  joinedAt: Value(
+                    _safeDateTime(
+                          member['joinedAt'] ??
+                              member['joined_at'] ??
+                              member['createdAt'] ??
+                              member['created_at'],
+                        ) ??
+                        DateTime.now().toUtc(),
+                  ),
+                  synced: const Value(true),
+                ),
+              );
+        }
+        syncedCount++;
+      }
+    } catch (e) {
+      debugPrint(
+        'Farm member table pull failed, falling back to RPC users: $e',
+      );
+      for (final entry in rpcUsersById.entries) {
+        final user = entry.value;
+        final userId = entry.key;
+        final role = _syncedRole(user['role']);
+        remoteUserIds.add(userId);
+        await _upsertSyncedUser(user, role: role, ownerId: ownerId);
+        syncedCount++;
+      }
+    }
+
+    if (authoritativeMemberships) {
+      final localMembers = await (db.select(
+        db.farmMembers,
+      )..where((m) => m.farmId.equals(farmIdFilter))).get();
+
+      for (final localMember in localMembers) {
+        if (await _isProtectedOwnerRecord(
+          localMember.userId,
+          ownerId: ownerId,
+        )) {
+          continue;
+        }
+        final stillPresent =
+            remoteMemberIds.contains(localMember.id) ||
+            remoteUserIds.contains(localMember.userId);
+        if (stillPresent) continue;
+
+        await (db.delete(
+          db.farmMembers,
+        )..where((m) => m.id.equals(localMember.id))).go();
+
+        final remainingMemberships = await (db.select(
+          db.farmMembers,
+        )..where((m) => m.userId.equals(localMember.userId))).get();
+        if (remainingMemberships.isEmpty) {
+          await (db.delete(
+            db.users,
+          )..where((u) => u.id.equals(localMember.userId))).go();
+        }
+      }
+    }
+
+    debugPrint('Pull: synced $syncedCount team members');
+    await CloudUserIdMapService(db).rebuildForFarm(farmIdFilter);
+  }
+
+  Future<void> _pushSettlementToCloud(
+    Settlement s,
+    String? webFarmId, {
+    required String? Function(String? localUserId) pushUserIdForPayload,
+  }) async {
+    final customer = await (db.select(
+      db.customers,
+    )..where((t) => t.id.equals(s.customerId))).getSingleOrNull();
+    if (customer != null && !customer.synced) {
+      final id = safeIdString(customer.id);
+      final now = DateTime.now().toUtc().toIso8601String();
+      final payload = {
+        'id': id,
+        'farmId': _remoteFarmIdForPush(customer.farmId, webFarmId),
+        'name': customer.name,
+        'phone': customer.phone,
+        'email': customer.email,
+        'address': customer.address,
+        'balanceOwed': customer.balanceOwed,
+        'customerType': customer.customerType,
+        'supplyItems': customer.supplyItems,
+        'contactPerson': customer.contactPerson,
+        'updatedAt': now,
+      };
+      assertSyncPayloadUsesStringIds(payload);
+      await _supabase.from('customers').update(payload).eq('id', id);
+      await (db.update(db.customers)..where((t) => t.id.equals(customer.id)))
+          .write(const CustomersCompanion(synced: Value(true)));
+    }
+
+    final expenseId = 'stl_${safeIdString(s.id)}';
+    final now = DateTime.now().toUtc().toIso8601String();
+    final expensePayload = {
+      'id': expenseId,
+      'farmId': _remoteFarmIdForPush(s.farmId, webFarmId),
+      'user_id': pushUserIdForPayload(s.userId),
+      'category': _settlementExpenseCategory(s.settlementType),
+      'amount': s.amount,
+      'expense_date': s.settlementDate.toIso8601String(),
+      'description':
+          'Settlement ${s.settlementType} (customer ${s.customerId})',
+      'created_at': now,
+      'updated_at': now,
+    };
+    assertSyncPayloadUsesStringIds(expensePayload);
+    final existing = await _supabase
+        .from('expenses')
+        .select('id')
+        .eq('id', expenseId)
+        .maybeSingle();
+    if (existing != null) {
+      await _supabase
+          .from('expenses')
+          .update(expensePayload)
+          .eq('id', expenseId);
+    } else {
+      await _supabase.from('expenses').insert(expensePayload);
+    }
+  }
+
+  String _settlementExpenseCategory(String settlementType) {
+    switch (settlementType) {
+      case 'COLLECTION':
+        return 'COLLECTION';
+      case 'PAYMENT':
+        return 'PAYMENT';
+      case 'DEBT_INCURRED':
+        return 'OTHER';
+      default:
+        return 'OTHER';
+    }
+  }
+
+  Future<void> _pushHealthSchedules(
+    String? webFarmId, {
+    required String? Function(String? localUserId) pushUserIdForPayload,
+  }) async {
+    final pendingVax = await (db.select(
+      db.vaccinationSchedules,
+    )..where((t) => t.synced.equals(false))).get();
+    for (var v in pendingVax) {
+      try {
+        final id = safeIdString(v.id);
+        final existing = await _supabase
+            .from('vaccination_schedules')
+            .select('id')
+            .eq('id', id)
+            .maybeSingle();
+        final payload = {
+          'id': id,
+          'farmId': _remoteFarmIdForPush(v.farmId, webFarmId),
+          'batchId': safeIdString(v.batchId),
+          'vaccineName': v.vaccineName,
+          'scheduledDate': v.scheduledDate.toIso8601String(),
+          'status': v.status,
+          'notes': v.notes,
+        };
+        assertSyncPayloadUsesStringIds(payload);
+        if (existing != null) {
+          await _supabase
+              .from('vaccination_schedules')
+              .update(payload)
+              .eq('id', id);
+        } else {
+          await _supabase.from('vaccination_schedules').insert(payload);
+        }
+        await (db.update(db.vaccinationSchedules)
+              ..where((t) => t.id.equals(v.id)))
+            .write(const VaccinationSchedulesCompanion(synced: Value(true)));
+      } catch (e) {
+        debugPrint('Vaccination push error: $e');
+      }
+    }
+
+    final pendingMed = await (db.select(
+      db.medicationSchedules,
+    )..where((t) => t.synced.equals(false))).get();
+    for (var m in pendingMed) {
+      try {
+        final id = safeIdString(m.id);
+        final existing = await _supabase
+            .from('medication_schedules')
+            .select('id')
+            .eq('id', id)
+            .maybeSingle();
+        final payload = {
+          'id': id,
+          'farmId': _remoteFarmIdForPush(m.farmId, webFarmId),
+          'batchId': safeIdString(m.batchId),
+          'medicationName': m.medicationName,
+          'scheduledDate': m.scheduledDate.toIso8601String(),
+          'status': m.status,
+          'notes': m.notes,
+        };
+        assertSyncPayloadUsesStringIds(payload);
+        if (existing != null) {
+          await _supabase
+              .from('medication_schedules')
+              .update(payload)
+              .eq('id', id);
+        } else {
+          await _supabase.from('medication_schedules').insert(payload);
+        }
+        await (db.update(db.medicationSchedules)
+              ..where((t) => t.id.equals(m.id)))
+            .write(const MedicationSchedulesCompanion(synced: Value(true)));
+      } catch (e) {
+        debugPrint('Medication push error: $e');
+      }
+    }
+
+    final pendingWeight = await (db.select(
+      db.weightRecords,
+    )..where((t) => t.synced.equals(false))).get();
+    for (var w in pendingWeight) {
+      try {
+        final id = safeIdString(w.id);
+        final existing = await _supabase
+            .from('weight_records')
+            .select('id')
+            .eq('id', id)
+            .maybeSingle();
+        final payload = {
+          'id': id,
+          'farmId': _remoteFarmIdForPush(w.farmId, webFarmId),
+          'batchId': safeIdString(w.batchId),
+          'averageWeight': w.averageWeight,
+          'logDate': w.logDate.toIso8601String(),
+          'userId': pushUserIdForPayload(w.userId),
+        };
+        assertSyncPayloadUsesStringIds(payload);
+        if (existing != null) {
+          await _supabase.from('weight_records').update(payload).eq('id', id);
+        } else {
+          await _supabase.from('weight_records').insert(payload);
+        }
+        await (db.update(db.weightRecords)..where((t) => t.id.equals(w.id)))
+            .write(const WeightRecordsCompanion(synced: Value(true)));
+      } catch (e) {
+        debugPrint('Weight record push error: $e');
+      }
+    }
+  }
+
+  Future<void> _pullHealthSchedules(String farmIdFilter) async {
+    final remoteVax = await _supabase
+        .from('vaccination_schedules')
+        .select()
+        .eq('farmId', farmIdFilter);
+    for (var v in remoteVax) {
+      await db
+          .into(db.vaccinationSchedules)
+          .insertOnConflictUpdate(
+            VaccinationSchedulesCompanion.insert(
+              id: safeIdString(v['id']),
+              farmId: farmIdFilter,
+              batchId: safeIdString(v['batchId']),
+              vaccineName: v['vaccineName'] as String,
+              scheduledDate:
+                  _safeDateTime(v['scheduledDate']) ?? DateTime.now().toUtc(),
+              status: Value(v['status'] as String? ?? 'PENDING'),
+              notes: Value(v['notes'] as String?),
+              synced: const Value(true),
+            ),
+          );
+    }
+
+    final remoteMed = await _supabase
+        .from('medication_schedules')
+        .select()
+        .eq('farmId', farmIdFilter);
+    for (var m in remoteMed) {
+      await db
+          .into(db.medicationSchedules)
+          .insertOnConflictUpdate(
+            MedicationSchedulesCompanion.insert(
+              id: safeIdString(m['id']),
+              farmId: farmIdFilter,
+              batchId: safeIdString(m['batchId']),
+              medicationName: m['medicationName'] as String,
+              scheduledDate:
+                  _safeDateTime(m['scheduledDate']) ?? DateTime.now().toUtc(),
+              status: Value(m['status'] as String? ?? 'PENDING'),
+              notes: Value(m['notes'] as String?),
+              synced: const Value(true),
+            ),
+          );
+    }
+
+    final remoteWeight = await _supabase
+        .from('weight_records')
+        .select()
+        .eq('farmId', farmIdFilter);
+    for (var w in remoteWeight) {
+      await db
+          .into(db.weightRecords)
+          .insertOnConflictUpdate(
+            WeightRecordsCompanion.insert(
+              id: safeIdString(w['id']),
+              farmId: farmIdFilter,
+              batchId: safeIdString(w['batchId']),
+              averageWeight: _safeDouble(w['averageWeight']) ?? 0.0,
+              logDate: _safeDateTime(w['logDate']) ?? DateTime.now().toUtc(),
+              userId: Value(w['userId'] as String?),
+              synced: const Value(true),
+            ),
+          );
+    }
+  }
+
   @override
   void dispose() {
     _syncTimer?.cancel();
+    _reachabilityTimer?.cancel();
     _syncStatusController.close();
     super.dispose();
   }

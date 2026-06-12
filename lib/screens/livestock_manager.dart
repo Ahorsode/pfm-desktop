@@ -6,6 +6,9 @@ import '../data/sync_engine.dart';
 import '../widgets/register_unit_dialog.dart';
 import '../widgets/batch_actions_dialogs.dart';
 import 'batch_details_screen.dart';
+import '../utils/id_utils.dart';
+import '../utils/livestock_breed_options.dart';
+import '../widgets/worker_stamp.dart';
 
 class LivestockManager extends StatefulWidget {
   const LivestockManager({super.key});
@@ -52,9 +55,7 @@ class _LivestockManagerState extends State<LivestockManager> {
                       const SizedBox(height: 20),
 
                       // Table
-                      Expanded(
-                        child: _buildTableCard(db, cs, isCompact),
-                      ),
+                      Expanded(child: _buildTableCard(db, cs, isCompact)),
                     ],
                   ),
                 ),
@@ -69,7 +70,12 @@ class _LivestockManagerState extends State<LivestockManager> {
   // ────────────────────────────────────────────
   //  HEADER
   // ────────────────────────────────────────────
-  Widget _buildHeader(BuildContext context, AppDatabase db, ColorScheme cs, bool isCompact) {
+  Widget _buildHeader(
+    BuildContext context,
+    AppDatabase db,
+    ColorScheme cs,
+    bool isCompact,
+  ) {
     return Container(
       width: double.infinity,
       padding: EdgeInsets.fromLTRB(
@@ -80,7 +86,9 @@ class _LivestockManagerState extends State<LivestockManager> {
       ),
       decoration: BoxDecoration(
         color: cs.surfaceContainerLowest,
-        border: Border(bottom: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.3))),
+        border: Border(
+          bottom: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.3)),
+        ),
       ),
       child: Wrap(
         alignment: WrapAlignment.spaceBetween,
@@ -92,32 +100,40 @@ class _LivestockManagerState extends State<LivestockManager> {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text.rich(TextSpan(children: [
+              Text.rich(
                 TextSpan(
-                  text: 'Livestock ',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w900,
-                    fontSize: isCompact ? 22 : 30,
-                    color: cs.onSurface,
-                    letterSpacing: -0.5,
-                  ),
+                  children: [
+                    TextSpan(
+                      text: 'Livestock ',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w900,
+                        fontSize: isCompact ? 22 : 30,
+                        color: cs.onSurface,
+                        letterSpacing: -0.5,
+                      ),
+                    ),
+                    TextSpan(
+                      text: 'Management',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w900,
+                        fontSize: isCompact ? 22 : 30,
+                        color: const Color(0xFF10B981),
+                        fontStyle: FontStyle.italic,
+                        letterSpacing: -0.5,
+                      ),
+                    ),
+                  ],
                 ),
-                TextSpan(
-                  text: 'Management',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w900,
-                    fontSize: isCompact ? 22 : 30,
-                    color: const Color(0xFF10B981),
-                    fontStyle: FontStyle.italic,
-                    letterSpacing: -0.5,
-                  ),
-                ),
-              ])),
+              ),
               const SizedBox(height: 4),
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(Icons.auto_awesome_rounded, size: 14, color: Color(0xFF10B981)),
+                  const Icon(
+                    Icons.auto_awesome_rounded,
+                    size: 14,
+                    color: Color(0xFF10B981),
+                  ),
                   const SizedBox(width: 6),
                   Text(
                     'LIFECYCLE & PERFORMANCE TRACKING',
@@ -142,13 +158,21 @@ class _LivestockManagerState extends State<LivestockManager> {
                 icon: const Icon(Icons.add_rounded, size: 18),
                 label: Text(
                   isCompact ? 'ADD' : 'ADD UNIT',
-                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 13,
+                  ),
                 ),
                 style: FilledButton.styleFrom(
                   backgroundColor: const Color(0xFF10B981),
                   foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 16,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
                 ),
               ),
             ],
@@ -172,16 +196,25 @@ class _LivestockManagerState extends State<LivestockManager> {
             padding: const EdgeInsets.only(right: 8),
             child: FilterChip(
               selected: selected,
-              label: Text(f, style: TextStyle(
-                fontWeight: FontWeight.w700,
-                fontSize: 13,
-                color: selected ? Colors.white : cs.onSurfaceVariant,
-              )),
-              avatar: selected ? null : Icon(_filterIcon(f), size: 16, color: cs.onSurfaceVariant),
+              label: Text(
+                f,
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13,
+                  color: selected ? Colors.white : cs.onSurfaceVariant,
+                ),
+              ),
+              avatar: selected
+                  ? null
+                  : Icon(_filterIcon(f), size: 16, color: cs.onSurfaceVariant),
               selectedColor: const Color(0xFF10B981),
               backgroundColor: cs.surfaceContainerLowest,
-              side: BorderSide(color: selected ? Colors.transparent : cs.outlineVariant),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              side: BorderSide(
+                color: selected ? Colors.transparent : cs.outlineVariant,
+              ),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
               showCheckmark: false,
               onSelected: (_) => setState(() => _selectedFilter = f),
             ),
@@ -217,7 +250,9 @@ class _LivestockManagerState extends State<LivestockManager> {
         stream: db.select(db.batches).watch(),
         builder: (context, snapshot) {
           if (!snapshot.hasData) {
-            return const Center(child: CircularProgressIndicator(color: Color(0xFF10B981)));
+            return const Center(
+              child: CircularProgressIndicator(color: Color(0xFF10B981)),
+            );
           }
           final allBatches = snapshot.data!;
           if (allBatches.isEmpty) return _buildEmptyState(context, db, cs);
@@ -226,20 +261,24 @@ class _LivestockManagerState extends State<LivestockManager> {
             stream: db.select(db.mortalities).watch(),
             builder: (context, mortSnapshot) {
               final mortalities = mortSnapshot.data ?? [];
-              final mortalityMap = <int, int>{};
+              final mortalityMap = <String, int>{};
               for (var m in mortalities) {
-                mortalityMap[m.batchId] = (mortalityMap[m.batchId] ?? 0) + m.count;
+                mortalityMap[m.batchId] =
+                    (mortalityMap[m.batchId] ?? 0) + m.count;
               }
 
               final batches = _applyFilter(allBatches);
 
               return LayoutBuilder(
                 builder: (context, tableConstraints) {
-                  final isDark = Theme.of(context).brightness == Brightness.dark;
+                  final isDark =
+                      Theme.of(context).brightness == Brightness.dark;
                   return Theme(
                     data: Theme.of(context).copyWith(
                       scrollbarTheme: ScrollbarThemeData(
-                        thumbColor: WidgetStateProperty.all(cs.primary.withValues(alpha: 0.5)),
+                        thumbColor: WidgetStateProperty.all(
+                          cs.primary.withValues(alpha: 0.5),
+                        ),
                         thickness: WidgetStateProperty.all(8),
                         radius: const Radius.circular(4),
                       ),
@@ -262,39 +301,51 @@ class _LivestockManagerState extends State<LivestockManager> {
                               scrollDirection: Axis.vertical,
                               child: ConstrainedBox(
                                 constraints: BoxConstraints(
-                                  minWidth: tableConstraints.maxWidth > 1200 ? tableConstraints.maxWidth : 1200,
+                                  minWidth: tableConstraints.maxWidth > 1200
+                                      ? tableConstraints.maxWidth
+                                      : 1200,
                                   minHeight: tableConstraints.maxHeight,
                                 ),
-                              child: DataTable(
-                                headingRowColor: WidgetStateProperty.all(isDark ? const Color(0xFF121417) : const Color(0xFF1E293B)),
-                                headingRowHeight: 52,
-                                dataRowMinHeight: 72,
-                                dataRowMaxHeight: 72,
-                                horizontalMargin: 20,
-                                columnSpacing: 24,
-                                columns: [
-                                  _col('#'),
-                                  _col('UNIT NAME / IDENTITY'),
-                                  _col('TYPE & SPECIES'),
-                                  _col('WORKER STAMPS'),
-                                  _col('NO. COUNT'),
-                                  _col('ARRIVAL DATE'),
-                                  _col('STATUS'),
-                                  _col('ACTIONS'),
-                                ],
-                                rows: batches.asMap().entries.map((entry) {
-                                  final index = entry.key;
-                                  final batch = entry.value;
-                                  return _row(batch, index, db, cs, mortalityMap[batch.id] ?? 0);
-                                }).toList(),
+                                child: DataTable(
+                                  headingRowColor: WidgetStateProperty.all(
+                                    isDark
+                                        ? const Color(0xFF121417)
+                                        : const Color(0xFF1E293B),
+                                  ),
+                                  headingRowHeight: 52,
+                                  dataRowMinHeight: 72,
+                                  dataRowMaxHeight: 72,
+                                  horizontalMargin: 20,
+                                  columnSpacing: 24,
+                                  columns: [
+                                    _col('#'),
+                                    _col('UNIT NAME / IDENTITY'),
+                                    _col('TYPE & SPECIES'),
+                                    _col('WORKER STAMPS'),
+                                    _col('NO. COUNT'),
+                                    _col('ARRIVAL DATE'),
+                                    _col('STATUS'),
+                                    _col('ACTIONS'),
+                                  ],
+                                  rows: batches.asMap().entries.map((entry) {
+                                    final index = entry.key;
+                                    final batch = entry.value;
+                                    return _row(
+                                      batch,
+                                      index,
+                                      db,
+                                      cs,
+                                      mortalityMap[batch.id] ?? 0,
+                                    );
+                                  }).toList(),
+                                ),
                               ),
                             ),
                           ),
                         ),
                       ),
                     ),
-                  ),
-                );
+                  );
                 },
               );
             },
@@ -313,7 +364,11 @@ class _LivestockManagerState extends State<LivestockManager> {
         'Layer' => type.contains('LAYER'),
         'Turkey' => type.contains('TURKEY'),
         'Duck' => type.contains('DUCK'),
-        _ => !type.contains('BROILER') && !type.contains('LAYER') && !type.contains('TURKEY') && !type.contains('DUCK'),
+        _ =>
+          !type.contains('BROILER') &&
+              !type.contains('LAYER') &&
+              !type.contains('TURKEY') &&
+              !type.contains('DUCK'),
       };
     }).toList();
   }
@@ -353,17 +408,30 @@ class _LivestockManagerState extends State<LivestockManager> {
     };
   }
 
-  DataRow _row(Batch batch, int index, AppDatabase db, ColorScheme cs, int totalMortality) {
+  DataRow _row(
+    Batch batch,
+    int index,
+    AppDatabase db,
+    ColorScheme cs,
+    int totalMortality,
+  ) {
     final arrivalDate = DateFormat('dd MMM yyyy').format(batch.arrivalDate);
     final typeLabel = _getBatchTypeLabel(batch.type);
     final isLayer = batch.type.toUpperCase().contains('LAYER');
-    final breed = batch.breedType ?? 'Other';
+    final breed = LivestockBreedCatalog.labelForKey(batch.breedType);
 
     return DataRow(
       cells: [
         // Index
         DataCell(
-          Text('${index + 1}', style: TextStyle(color: cs.onSurfaceVariant.withValues(alpha: 0.5), fontWeight: FontWeight.bold, fontSize: 12)),
+          Text(
+            '${index + 1}',
+            style: TextStyle(
+              color: cs.onSurfaceVariant.withValues(alpha: 0.5),
+              fontWeight: FontWeight.bold,
+              fontSize: 12,
+            ),
+          ),
         ),
         // Unit name / Identity
         DataCell(
@@ -371,8 +439,13 @@ class _LivestockManagerState extends State<LivestockManager> {
             mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(batch.batchName,
-                style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 13, color: Color(0xFF10B981)),
+              Text(
+                batch.batchName,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w900,
+                  fontSize: 13,
+                  color: Color(0xFF10B981),
+                ),
                 overflow: TextOverflow.ellipsis,
               ),
             ],
@@ -384,8 +457,24 @@ class _LivestockManagerState extends State<LivestockManager> {
             mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(typeLabel, style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12, color: Theme.of(context).brightness == Brightness.dark ? Colors.white : const Color(0xFF1E293B))),
-              Text(breed, style: TextStyle(color: cs.onSurfaceVariant.withValues(alpha: 0.6), fontSize: 10, fontWeight: FontWeight.bold)),
+              Text(
+                typeLabel,
+                style: TextStyle(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 12,
+                  color: Theme.of(context).brightness == Brightness.dark
+                      ? Colors.white
+                      : const Color(0xFF1E293B),
+                ),
+              ),
+              Text(
+                breed,
+                style: TextStyle(
+                  color: cs.onSurfaceVariant.withValues(alpha: 0.6),
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
             ],
           ),
         ),
@@ -394,12 +483,24 @@ class _LivestockManagerState extends State<LivestockManager> {
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              _workerStamp('SYS', Colors.blue),
+              const WorkerStamp(
+                color: Colors.blue,
+                fullName: 'System Supervisor',
+                position: 'System Officer',
+              ),
               const SizedBox(width: 4),
-              _workerStamp('VET', Colors.orange),
+              const WorkerStamp(
+                color: Colors.orange,
+                fullName: 'Veterinary Specialist',
+                position: 'Veterinarian',
+              ),
               if (batch.currentCount < 100) ...[
                 const SizedBox(width: 4),
-                _workerStamp('MGR', Colors.red),
+                const WorkerStamp(
+                  color: Colors.red,
+                  fullName: 'Farm Operations Manager',
+                  position: 'Manager',
+                ),
               ],
             ],
           ),
@@ -414,20 +515,38 @@ class _LivestockManagerState extends State<LivestockManager> {
                 children: [
                   Text(
                     NumberFormat('#,###').format(batch.initialCount),
-                    style: TextStyle(fontWeight: FontWeight.w900, fontSize: 13, color: Theme.of(context).brightness == Brightness.dark ? Colors.white : const Color(0xFF1E293B)),
+                    style: TextStyle(
+                      fontWeight: FontWeight.w900,
+                      fontSize: 13,
+                      color: Theme.of(context).brightness == Brightness.dark
+                          ? Colors.white
+                          : const Color(0xFF1E293B),
+                    ),
                   ),
                   if (totalMortality > 0)
                     Container(
                       margin: const EdgeInsets.only(top: 2),
-                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 4,
+                        vertical: 1,
+                      ),
                       decoration: BoxDecoration(
-                        color: Theme.of(context).brightness == Brightness.dark ? Colors.red.withValues(alpha: 0.2) : const Color(0xFFFEF2F2),
+                        color: Theme.of(context).brightness == Brightness.dark
+                            ? Colors.red.withValues(alpha: 0.2)
+                            : const Color(0xFFFEF2F2),
                         borderRadius: BorderRadius.circular(4),
-                        border: Border.all(color: Colors.red.withValues(alpha: 0.3), width: 0.5),
+                        border: Border.all(
+                          color: Colors.red.withValues(alpha: 0.3),
+                          width: 0.5,
+                        ),
                       ),
                       child: Text(
                         '- ${NumberFormat('#,###').format(totalMortality)}',
-                        style: const TextStyle(color: Color(0xFFB91C1C), fontSize: 9, fontWeight: FontWeight.w900),
+                        style: const TextStyle(
+                          color: Color(0xFFB91C1C),
+                          fontSize: 9,
+                          fontWeight: FontWeight.w900,
+                        ),
                       ),
                     ),
                 ],
@@ -435,7 +554,11 @@ class _LivestockManagerState extends State<LivestockManager> {
               const SizedBox(width: 8),
               Text(
                 _getAnimalLabel(batch.type),
-                style: TextStyle(color: cs.onSurfaceVariant.withValues(alpha: 0.6), fontSize: 10, fontWeight: FontWeight.w600),
+                style: TextStyle(
+                  color: cs.onSurfaceVariant.withValues(alpha: 0.6),
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ],
           ),
@@ -444,7 +567,11 @@ class _LivestockManagerState extends State<LivestockManager> {
         DataCell(
           Text(
             arrivalDate,
-            style: const TextStyle(color: Color(0xFF475569), fontWeight: FontWeight.w700, fontSize: 12),
+            style: const TextStyle(
+              color: Color(0xFF475569),
+              fontWeight: FontWeight.w700,
+              fontSize: 12,
+            ),
           ),
         ),
         // Status
@@ -457,42 +584,58 @@ class _LivestockManagerState extends State<LivestockManager> {
               _manageBtn(() {
                 Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (context) => BatchDetailsScreen(batch: batch)),
+                  MaterialPageRoute(
+                    builder: (context) => BatchDetailsScreen(batch: batch),
+                  ),
                 );
               }),
               const SizedBox(width: 8),
-              _iconAction(Icons.coronavirus_outlined, const Color(0xFFEF4444), 'Mortality', onTap: () {
-                showDialog(context: context, builder: (c) => MortalityDialog(batch: batch));
-              }),
+              _iconAction(
+                Icons.coronavirus_outlined,
+                const Color(0xFFEF4444),
+                'Mortality',
+                onTap: () {
+                  showDialog(
+                    context: context,
+                    builder: (c) => MortalityDialog(batch: batch),
+                  );
+                },
+              ),
               const SizedBox(width: 8),
-              _iconAction(Icons.shopping_cart_outlined, const Color(0xFF10B981), 'Sales', onTap: () {
-                showDialog(context: context, builder: (c) => QuickSaleDialog(batch: batch));
-              }),
+              _iconAction(
+                Icons.shopping_cart_outlined,
+                const Color(0xFF10B981),
+                'Sales',
+                onTap: () {
+                  showDialog(
+                    context: context,
+                    builder: (c) => QuickSaleDialog(batch: batch),
+                  );
+                },
+              ),
               const SizedBox(width: 8),
-              _iconAction(Icons.edit_outlined, const Color(0xFF3B82F6), 'Edit', onTap: () {
-                showDialog(context: context, builder: (c) => EditBatchDialog(batch: batch));
-              }),
+              _iconAction(
+                Icons.edit_outlined,
+                const Color(0xFF3B82F6),
+                'Edit',
+                onTap: () {
+                  showDialog(
+                    context: context,
+                    builder: (c) => EditBatchDialog(batch: batch),
+                  );
+                },
+              ),
               const SizedBox(width: 8),
-              _iconAction(Icons.delete_outline_rounded, const Color(0xFF94A3B8), 'Delete', onTap: () => _confirmDelete(batch, db)),
+              _iconAction(
+                Icons.delete_outline_rounded,
+                const Color(0xFF94A3B8),
+                'Delete',
+                onTap: () => _confirmDelete(batch, db),
+              ),
             ],
           ),
         ),
       ],
-    );
-  }
-
-  Widget _workerStamp(String label, Color color) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(4),
-        border: Border.all(color: color.withValues(alpha: 0.3)),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 9),
-      ),
     );
   }
 
@@ -504,16 +647,27 @@ class _LivestockManagerState extends State<LivestockManager> {
         decoration: BoxDecoration(
           color: const Color(0xFFECFDF5),
           borderRadius: BorderRadius.circular(6),
-          border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.3)),
+          border: Border.all(
+            color: const Color(0xFF10B981).withValues(alpha: 0.3),
+          ),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.visibility_outlined, size: 14, color: Color(0xFF10B981)),
+            const Icon(
+              Icons.visibility_outlined,
+              size: 14,
+              color: Color(0xFF10B981),
+            ),
             const SizedBox(width: 6),
             const Text(
               'MANAGE',
-              style: TextStyle(color: Color(0xFF10B981), fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 0.5),
+              style: TextStyle(
+                color: Color(0xFF10B981),
+                fontSize: 10,
+                fontWeight: FontWeight.w900,
+                letterSpacing: 0.5,
+              ),
             ),
           ],
         ),
@@ -521,7 +675,12 @@ class _LivestockManagerState extends State<LivestockManager> {
     );
   }
 
-  Widget _iconAction(IconData icon, Color color, String tooltip, {VoidCallback? onTap}) {
+  Widget _iconAction(
+    IconData icon,
+    Color color,
+    String tooltip, {
+    VoidCallback? onTap,
+  }) {
     return Tooltip(
       message: tooltip,
       child: InkWell(
@@ -545,7 +704,12 @@ class _LivestockManagerState extends State<LivestockManager> {
       ),
       child: Text(
         status.toUpperCase(),
-        style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 0.5),
+        style: TextStyle(
+          color: color,
+          fontSize: 10,
+          fontWeight: FontWeight.w900,
+          letterSpacing: 0.5,
+        ),
       ),
     );
   }
@@ -558,22 +722,54 @@ class _LivestockManagerState extends State<LivestockManager> {
       context: context,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Row(children: [
-          Icon(Icons.warning_amber_rounded, color: Color(0xFFEF4444), size: 24),
-          SizedBox(width: 12),
-          Text('Delete Batch', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
-        ]),
-        content: Text.rich(TextSpan(children: [
-          const TextSpan(text: 'Are you sure you want to permanently delete '),
-          TextSpan(text: batch.batchName, style: const TextStyle(fontWeight: FontWeight.w800, color: Color(0xFFEF4444))),
-          const TextSpan(text: '?\n\nThis will also remove all associated feeding, mortality, and production records.'),
-        ])),
+        title: const Row(
+          children: [
+            Icon(
+              Icons.warning_amber_rounded,
+              color: Color(0xFFEF4444),
+              size: 24,
+            ),
+            SizedBox(width: 12),
+            Text(
+              'Delete Batch',
+              style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18),
+            ),
+          ],
+        ),
+        content: Text.rich(
+          TextSpan(
+            children: [
+              const TextSpan(
+                text: 'Are you sure you want to permanently delete ',
+              ),
+              TextSpan(
+                text: batch.batchName,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w800,
+                  color: Color(0xFFEF4444),
+                ),
+              ),
+              const TextSpan(
+                text:
+                    '?\n\nThis will also remove all associated feeding, mortality, and production records.',
+              ),
+            ],
+          ),
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('CANCEL')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('CANCEL'),
+          ),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, true),
-            style: FilledButton.styleFrom(backgroundColor: const Color(0xFFEF4444)),
-            child: const Text('DELETE', style: TextStyle(fontWeight: FontWeight.w800)),
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFFEF4444),
+            ),
+            child: const Text(
+              'DELETE',
+              style: TextStyle(fontWeight: FontWeight.w800),
+            ),
           ),
         ],
       ),
@@ -581,30 +777,37 @@ class _LivestockManagerState extends State<LivestockManager> {
 
     if (confirmed == true) {
       if (batch.synced) {
-        await db.into(db.pendingDeletions).insert(
-          PendingDeletionsCompanion.insert(
-            targetTableName: 'batches',
-            recordId: batch.id.toString(),
-            farmId: batch.farmId,
-          ),
-        );
+        await db
+            .into(db.pendingDeletions)
+            .insert(
+              PendingDeletionsCompanion.insert(
+                id: newLocalId(),
+                targetTableName: 'batches',
+                recordId: batch.id,
+                farmId: batch.farmId,
+              ),
+            );
       }
-      
+
       await (db.delete(db.batches)..where((t) => t.id.equals(batch.id))).go();
-      
+
       // Trigger sync in background
       if (mounted) {
         context.read<SyncEngine>().performSync();
       }
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('${batch.batchName} deleted'),
-          backgroundColor: const Color(0xFFEF4444),
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-          margin: const EdgeInsets.all(16),
-        ));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('${batch.batchName} deleted'),
+            backgroundColor: const Color(0xFFEF4444),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+            margin: const EdgeInsets.all(16),
+          ),
+        );
       }
     }
   }
@@ -612,7 +815,11 @@ class _LivestockManagerState extends State<LivestockManager> {
   // ────────────────────────────────────────────
   //  EMPTY STATE
   // ────────────────────────────────────────────
-  Widget _buildEmptyState(BuildContext context, AppDatabase db, ColorScheme cs) {
+  Widget _buildEmptyState(
+    BuildContext context,
+    AppDatabase db,
+    ColorScheme cs,
+  ) {
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -623,24 +830,41 @@ class _LivestockManagerState extends State<LivestockManager> {
               color: const Color(0xFF10B981).withValues(alpha: 0.08),
               shape: BoxShape.circle,
             ),
-            child: const Icon(Icons.inventory_2_outlined, size: 56, color: Color(0xFF10B981)),
+            child: const Icon(
+              Icons.inventory_2_outlined,
+              size: 56,
+              color: Color(0xFF10B981),
+            ),
           ),
           const SizedBox(height: 24),
-          Text('No Livestock Units Yet',
-            style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: cs.onSurface)),
+          Text(
+            'No Livestock Units Yet',
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w800,
+              color: cs.onSurface,
+            ),
+          ),
           const SizedBox(height: 8),
-          Text('Register your first batch to start tracking.',
-            style: TextStyle(color: cs.onSurfaceVariant, fontSize: 14)),
+          Text(
+            'Register your first batch to start tracking.',
+            style: TextStyle(color: cs.onSurfaceVariant, fontSize: 14),
+          ),
           const SizedBox(height: 32),
           FilledButton.icon(
             onPressed: () => _showAddBatchDialog(context, db),
             icon: const Icon(Icons.add_rounded, size: 18),
-            label: const Text('Register First Unit', style: TextStyle(fontWeight: FontWeight.w800)),
+            label: const Text(
+              'Register First Unit',
+              style: TextStyle(fontWeight: FontWeight.w800),
+            ),
             style: FilledButton.styleFrom(
               backgroundColor: const Color(0xFF10B981),
               foregroundColor: Colors.white,
               padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 18),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
             ),
           ),
         ],

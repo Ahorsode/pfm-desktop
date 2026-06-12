@@ -5,7 +5,11 @@ import 'package:drift/drift.dart' hide Column, Batch;
 import 'package:provider/provider.dart';
 import '../data/local_db.dart';
 import '../utils/farm_utils.dart';
+import '../utils/id_utils.dart';
+import '../utils/livestock_breed_options.dart';
 import '../data/sync_engine.dart';
+
+const _addHouseSentinel = '__add_new_house__';
 
 class MortalityDialog extends StatefulWidget {
   final Batch batch;
@@ -35,13 +39,17 @@ class _MortalityDialogState extends State<MortalityDialog> {
     final isDark = theme.brightness == Brightness.dark;
     final db = context.watch<AppDatabase>();
     final isIsolation = _selectedTab == 'isolation';
-    final activeColor = isIsolation ? const Color(0xFFF59E0B) : const Color(0xFFEF4444);
+    final activeColor = isIsolation
+        ? const Color(0xFFF59E0B)
+        : const Color(0xFFEF4444);
 
     return AlertDialog(
       backgroundColor: isDark ? const Color(0xFF121417) : Colors.white,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(20),
-        side: BorderSide(color: isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.05)),
+        side: BorderSide(
+          color: isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.05),
+        ),
       ),
       title: Row(
         children: [
@@ -53,20 +61,22 @@ class _MortalityDialogState extends State<MortalityDialog> {
               shape: BoxShape.circle,
             ),
             child: Icon(
-              isIsolation ? Icons.health_and_safety_outlined : Icons.coronavirus_outlined, 
-              color: activeColor, 
+              isIsolation
+                  ? Icons.health_and_safety_outlined
+                  : Icons.coronavirus_outlined,
+              color: activeColor,
               size: 26,
             ),
           ),
           const SizedBox(width: 16),
           Text(
-            isIsolation ? 'Isolate & Quarantine' : 'Record Mortality', 
+            isIsolation ? 'Isolate & Quarantine' : 'Record Mortality',
             style: TextStyle(
-              color: isDark ? Colors.white : const Color(0xFF1E293B), 
+              color: isDark ? Colors.white : const Color(0xFF1E293B),
               fontWeight: FontWeight.w900,
               fontSize: 20,
               letterSpacing: -0.5,
-            )
+            ),
           ),
         ],
       ),
@@ -82,7 +92,9 @@ class _MortalityDialogState extends State<MortalityDialog> {
               Container(
                 padding: const EdgeInsets.all(4),
                 decoration: BoxDecoration(
-                  color: isDark ? const Color(0xFF23262B) : const Color(0xFFF1F5F9),
+                  color: isDark
+                      ? const Color(0xFF23262B)
+                      : const Color(0xFFF1F5F9),
                   borderRadius: BorderRadius.circular(14),
                 ),
                 child: Row(
@@ -103,16 +115,30 @@ class _MortalityDialogState extends State<MortalityDialog> {
                           padding: const EdgeInsets.symmetric(vertical: 10),
                           decoration: BoxDecoration(
                             color: _selectedTab == 'mortality'
-                                ? (isDark ? const Color(0xFFEF4444).withValues(alpha: 0.15) : Colors.white)
+                                ? (isDark
+                                      ? const Color(
+                                          0xFFEF4444,
+                                        ).withValues(alpha: 0.15)
+                                      : Colors.white)
                                 : Colors.transparent,
                             borderRadius: BorderRadius.circular(10),
                             border: Border.all(
                               color: _selectedTab == 'mortality'
-                                  ? const Color(0xFFEF4444).withValues(alpha: 0.3)
+                                  ? const Color(
+                                      0xFFEF4444,
+                                    ).withValues(alpha: 0.3)
                                   : Colors.transparent,
                             ),
                             boxShadow: _selectedTab == 'mortality' && !isDark
-                                ? [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 4, offset: const Offset(0, 2))]
+                                ? [
+                                    BoxShadow(
+                                      color: Colors.black.withValues(
+                                        alpha: 0.05,
+                                      ),
+                                      blurRadius: 4,
+                                      offset: const Offset(0, 2),
+                                    ),
+                                  ]
                                 : null,
                           ),
                           child: Row(
@@ -121,7 +147,11 @@ class _MortalityDialogState extends State<MortalityDialog> {
                               Icon(
                                 Icons.coronavirus_outlined,
                                 size: 16,
-                                color: _selectedTab == 'mortality' ? const Color(0xFFEF4444) : (isDark ? Colors.white38 : Colors.black38),
+                                color: _selectedTab == 'mortality'
+                                    ? const Color(0xFFEF4444)
+                                    : (isDark
+                                          ? Colors.white38
+                                          : Colors.black38),
                               ),
                               const SizedBox(width: 8),
                               Text(
@@ -130,7 +160,11 @@ class _MortalityDialogState extends State<MortalityDialog> {
                                   fontSize: 11,
                                   fontWeight: FontWeight.w900,
                                   letterSpacing: 0.5,
-                                  color: _selectedTab == 'mortality' ? const Color(0xFFEF4444) : (isDark ? Colors.white60 : Colors.black54),
+                                  color: _selectedTab == 'mortality'
+                                      ? const Color(0xFFEF4444)
+                                      : (isDark
+                                            ? Colors.white60
+                                            : Colors.black54),
                                 ),
                               ),
                             ],
@@ -156,16 +190,30 @@ class _MortalityDialogState extends State<MortalityDialog> {
                           padding: const EdgeInsets.symmetric(vertical: 10),
                           decoration: BoxDecoration(
                             color: _selectedTab == 'isolation'
-                                ? (isDark ? const Color(0xFFF59E0B).withValues(alpha: 0.15) : Colors.white)
+                                ? (isDark
+                                      ? const Color(
+                                          0xFFF59E0B,
+                                        ).withValues(alpha: 0.15)
+                                      : Colors.white)
                                 : Colors.transparent,
                             borderRadius: BorderRadius.circular(10),
                             border: Border.all(
                               color: _selectedTab == 'isolation'
-                                  ? const Color(0xFFF59E0B).withValues(alpha: 0.3)
+                                  ? const Color(
+                                      0xFFF59E0B,
+                                    ).withValues(alpha: 0.3)
                                   : Colors.transparent,
                             ),
                             boxShadow: _selectedTab == 'isolation' && !isDark
-                                ? [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 4, offset: const Offset(0, 2))]
+                                ? [
+                                    BoxShadow(
+                                      color: Colors.black.withValues(
+                                        alpha: 0.05,
+                                      ),
+                                      blurRadius: 4,
+                                      offset: const Offset(0, 2),
+                                    ),
+                                  ]
                                 : null,
                           ),
                           child: Row(
@@ -174,7 +222,11 @@ class _MortalityDialogState extends State<MortalityDialog> {
                               Icon(
                                 Icons.health_and_safety_outlined,
                                 size: 16,
-                                color: _selectedTab == 'isolation' ? const Color(0xFFF59E0B) : (isDark ? Colors.white38 : Colors.black38),
+                                color: _selectedTab == 'isolation'
+                                    ? const Color(0xFFF59E0B)
+                                    : (isDark
+                                          ? Colors.white38
+                                          : Colors.black38),
                               ),
                               const SizedBox(width: 8),
                               Text(
@@ -183,7 +235,11 @@ class _MortalityDialogState extends State<MortalityDialog> {
                                   fontSize: 11,
                                   fontWeight: FontWeight.w900,
                                   letterSpacing: 0.5,
-                                  color: _selectedTab == 'isolation' ? const Color(0xFFF59E0B) : (isDark ? Colors.white60 : Colors.black54),
+                                  color: _selectedTab == 'isolation'
+                                      ? const Color(0xFFF59E0B)
+                                      : (isDark
+                                            ? Colors.white60
+                                            : Colors.black54),
                                 ),
                               ),
                             ],
@@ -207,20 +263,22 @@ class _MortalityDialogState extends State<MortalityDialog> {
                 child: Row(
                   children: [
                     Icon(
-                      isIsolation ? Icons.health_and_safety_outlined : Icons.info_outline_rounded,
+                      isIsolation
+                          ? Icons.health_and_safety_outlined
+                          : Icons.info_outline_rounded,
                       size: 16,
                       color: activeColor,
                     ),
                     const SizedBox(width: 10),
                     Expanded(
                       child: Text(
-                        isIsolation 
+                        isIsolation
                             ? 'Isolating birds from ${widget.batch.batchName}. ${widget.batch.currentCount} active birds remaining.'
                             : 'Recording mortality for ${widget.batch.batchName}. ${widget.batch.currentCount} active birds remaining.',
                         style: TextStyle(
-                          color: activeColor, 
-                          fontSize: 12, 
-                          fontWeight: FontWeight.w600
+                          color: activeColor,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
                     ),
@@ -234,18 +292,27 @@ class _MortalityDialogState extends State<MortalityDialog> {
                 controller: _countController,
                 keyboardType: TextInputType.number,
                 inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                style: TextStyle(color: isDark ? Colors.white : const Color(0xFF1E293B), fontWeight: FontWeight.bold),
+                style: TextStyle(
+                  color: isDark ? Colors.white : const Color(0xFF1E293B),
+                  fontWeight: FontWeight.bold,
+                ),
                 decoration: _inputDecoration(
-                  context, 
-                  isIsolation ? 'Number of Birds to Isolate' : 'Number of Birds Lost', 
-                  isIsolation ? Icons.health_and_safety_outlined : Icons.remove_circle_outline,
+                  context,
+                  isIsolation
+                      ? 'Number of Birds to Isolate'
+                      : 'Number of Birds Lost',
+                  isIsolation
+                      ? Icons.health_and_safety_outlined
+                      : Icons.remove_circle_outline,
                   isIsolation: isIsolation,
                 ),
                 validator: (v) {
                   if (v == null || v.isEmpty) return 'Required';
                   final count = int.tryParse(v) ?? 0;
                   if (count <= 0) return 'Must be > 0';
-                  if (count > widget.batch.currentCount) return 'Cannot exceed current count';
+                  if (count > widget.batch.currentCount) {
+                    return 'Cannot exceed current count';
+                  }
                   return null;
                 },
               ),
@@ -254,19 +321,28 @@ class _MortalityDialogState extends State<MortalityDialog> {
               // 4. Dynamic Isolation House Selector (Only for Isolation mode)
               if (isIsolation) ...[
                 StreamBuilder<List<House>>(
-                  stream: (db.select(db.houses)
-                        ..where((t) => t.isIsolation.equals(true) & t.farmId.equals(widget.batch.farmId)))
-                      .watch(),
+                  stream:
+                      (db.select(db.houses)..where(
+                            (t) =>
+                                t.isIsolation.equals(true) &
+                                t.farmId.equals(widget.batch.farmId),
+                          ))
+                          .watch(),
                   builder: (context, snapshot) {
                     final houses = snapshot.data ?? [];
                     return DropdownButtonFormField<House?>(
                       // ignore: deprecated_member_use
                       value: _selectedHouse,
-                      dropdownColor: isDark ? const Color(0xFF1E293B) : Colors.white,
-                      style: TextStyle(color: isDark ? Colors.white : const Color(0xFF1E293B), fontSize: 14),
+                      dropdownColor: isDark
+                          ? const Color(0xFF1E293B)
+                          : Colors.white,
+                      style: TextStyle(
+                        color: isDark ? Colors.white : const Color(0xFF1E293B),
+                        fontSize: 14,
+                      ),
                       decoration: _inputDecoration(
-                        context, 
-                        'Select Quarantine Bay / Room', 
+                        context,
+                        'Select Quarantine Bay / Room',
                         Icons.home_work_outlined,
                         isIsolation: true,
                       ),
@@ -275,16 +351,27 @@ class _MortalityDialogState extends State<MortalityDialog> {
                           value: null,
                           child: Row(
                             children: [
-                              Icon(Icons.shield_outlined, size: 16, color: Colors.amber),
+                              Icon(
+                                Icons.shield_outlined,
+                                size: 16,
+                                color: Colors.amber,
+                              ),
                               SizedBox(width: 8),
-                              Text('General Quarantine Zone', style: TextStyle(fontWeight: FontWeight.bold)),
+                              Text(
+                                'General Quarantine Zone',
+                                style: TextStyle(fontWeight: FontWeight.bold),
+                              ),
                             ],
                           ),
                         ),
-                        ...houses.map((h) => DropdownMenuItem<House?>(
-                              value: h,
-                              child: Text('${h.name} (Capacity: ${h.capacity} birds)'),
-                            )),
+                        ...houses.map(
+                          (h) => DropdownMenuItem<House?>(
+                            value: h,
+                            child: Text(
+                              '${h.name} (Capacity: ${h.capacity} birds)',
+                            ),
+                          ),
+                        ),
                       ],
                       onChanged: (val) {
                         setState(() {
@@ -301,10 +388,14 @@ class _MortalityDialogState extends State<MortalityDialog> {
               TextFormField(
                 controller: _reasonController,
                 maxLines: 2,
-                style: TextStyle(color: isDark ? Colors.white : const Color(0xFF1E293B)),
+                style: TextStyle(
+                  color: isDark ? Colors.white : const Color(0xFF1E293B),
+                ),
                 decoration: _inputDecoration(
-                  context, 
-                  isIsolation ? 'Symptoms / Illness Notes' : 'Reason (Optional)', 
+                  context,
+                  isIsolation
+                      ? 'Symptoms / Illness Notes'
+                      : 'Reason (Optional)',
                   Icons.notes,
                   isIsolation: isIsolation,
                 ),
@@ -321,13 +412,13 @@ class _MortalityDialogState extends State<MortalityDialog> {
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
           ),
           child: Text(
-            'CANCEL', 
+            'CANCEL',
             style: TextStyle(
-              color: isDark ? Colors.white38 : Colors.black45, 
+              color: isDark ? Colors.white38 : Colors.black45,
               fontWeight: FontWeight.w800,
               fontSize: 12,
               letterSpacing: 1,
-            )
+            ),
           ),
         ),
         const SizedBox(width: 8),
@@ -336,39 +427,65 @@ class _MortalityDialogState extends State<MortalityDialog> {
           style: FilledButton.styleFrom(
             backgroundColor: activeColor,
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
             elevation: 0,
           ),
           child: Text(
-            isIsolation ? 'ISOLATE BIRDS' : 'RECORD LOSS', 
-            style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 13, letterSpacing: 0.5)
+            isIsolation ? 'ISOLATE BIRDS' : 'RECORD LOSS',
+            style: const TextStyle(
+              fontWeight: FontWeight.w900,
+              fontSize: 13,
+              letterSpacing: 0.5,
+            ),
           ),
         ),
       ],
     );
   }
 
-  InputDecoration _inputDecoration(BuildContext context, String label, IconData icon, {bool isIsolation = false}) {
+  InputDecoration _inputDecoration(
+    BuildContext context,
+    String label,
+    IconData icon, {
+    bool isIsolation = false,
+  }) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    final primaryColor = isIsolation ? const Color(0xFFF59E0B) : const Color(0xFFEF4444);
-    
+    final primaryColor = isIsolation
+        ? const Color(0xFFF59E0B)
+        : const Color(0xFFEF4444);
+
     return InputDecoration(
       labelText: label.toUpperCase(),
-      labelStyle: TextStyle(color: primaryColor, fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 1),
-      prefixIcon: Icon(icon, color: isDark ? Colors.white24 : Colors.black26, size: 20),
+      labelStyle: TextStyle(
+        color: primaryColor,
+        fontSize: 10,
+        fontWeight: FontWeight.w900,
+        letterSpacing: 1,
+      ),
+      prefixIcon: Icon(
+        icon,
+        color: isDark ? Colors.white24 : Colors.black26,
+        size: 20,
+      ),
       fillColor: isDark ? const Color(0xFF23262B) : const Color(0xFFF8FAFC),
       filled: true,
       border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12), 
-        borderSide: BorderSide(color: isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.05)),
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide(
+          color: isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.05),
+        ),
       ),
       enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12), 
-        borderSide: BorderSide(color: isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.05)),
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide(
+          color: isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.05),
+        ),
       ),
       focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12), 
+        borderRadius: BorderRadius.circular(12),
         borderSide: BorderSide(color: primaryColor, width: 2),
       ),
     );
@@ -376,10 +493,11 @@ class _MortalityDialogState extends State<MortalityDialog> {
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
-    
+
     final count = int.parse(_countController.text);
     final db = context.read<AppDatabase>();
     final farmId = widget.batch.farmId;
+    final workerId = await FarmUtils.getRequiredUserId();
     final isIsolation = _selectedTab == 'isolation';
 
     if (isIsolation && _selectedHouse != null) {
@@ -387,22 +505,35 @@ class _MortalityDialogState extends State<MortalityDialog> {
       final targetCapacity = _selectedHouse!.capacity;
 
       // Fetch active isolated batches and their isolation logs to calculate current occupancy
-      final activeBatches = await (db.select(db.batches)
-            ..where((t) => t.status.equals('active') & t.isolationCount.isBiggerThanValue(0)))
-          .get();
-      
+      final activeBatches =
+          await (db.select(db.batches)..where(
+                (t) =>
+                    t.status.equals('active') &
+                    t.isolationCount.isBiggerThanValue(0),
+              ))
+              .get();
+
       int currentOccupancy = 0;
       for (final b in activeBatches) {
-        final logs = await (db.select(db.mortalities)
-              ..where((t) => t.batchId.equals(b.id) & t.category.equals('ISOLATION'))
-              ..orderBy([(t) => OrderingTerm(expression: t.logDate, mode: OrderingMode.desc)])
-              ..limit(1))
-            .get();
-        
-        final room = logs.isNotEmpty 
+        final logs =
+            await (db.select(db.mortalities)
+                  ..where(
+                    (t) =>
+                        t.batchId.equals(b.id) & t.category.equals('ISOLATION'),
+                  )
+                  ..orderBy([
+                    (t) => OrderingTerm(
+                      expression: t.logDate,
+                      mode: OrderingMode.desc,
+                    ),
+                  ])
+                  ..limit(1))
+                .get();
+
+        final room = logs.isNotEmpty
             ? (logs.first.subCategory ?? 'General Quarantine Zone')
             : 'General Quarantine Zone';
-        
+
         if (room == targetRoomName) {
           currentOccupancy += b.isolationCount;
         }
@@ -415,12 +546,21 @@ class _MortalityDialogState extends State<MortalityDialog> {
             context: context,
             builder: (ctx) => AlertDialog(
               backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
               title: const Row(
                 children: [
-                  Icon(Icons.warning_amber_rounded, color: Colors.amber, size: 24),
+                  Icon(
+                    Icons.warning_amber_rounded,
+                    color: Colors.amber,
+                    size: 24,
+                  ),
                   SizedBox(width: 8),
-                  Text('Capacity Exceeded', style: TextStyle(fontWeight: FontWeight.bold)),
+                  Text(
+                    'Capacity Exceeded',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
                 ],
               ),
               content: Text(
@@ -428,16 +568,23 @@ class _MortalityDialogState extends State<MortalityDialog> {
                 'Current Occupancy: $currentOccupancy / $targetCapacity birds.\n'
                 'Requested Isolation: $count birds.\n\n'
                 'This would exceed the maximum room capacity by ${(currentOccupancy + count) - targetCapacity} birds. Please select another bay or reduce the count.',
-                style: TextStyle(color: isDark ? Colors.white70 : Colors.black87),
+                style: TextStyle(
+                  color: isDark ? Colors.white70 : Colors.black87,
+                ),
               ),
               actions: [
                 FilledButton(
                   onPressed: () => Navigator.pop(ctx),
                   style: FilledButton.styleFrom(
                     backgroundColor: const Color(0xFFF59E0B),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
                   ),
-                  child: const Text('OK', style: TextStyle(fontWeight: FontWeight.bold)),
+                  child: const Text(
+                    'OK',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
                 ),
               ],
             ),
@@ -451,21 +598,33 @@ class _MortalityDialogState extends State<MortalityDialog> {
       await db.transaction(() async {
         if (isIsolation) {
           // 1. Insert isolation record under mortality table
-          await db.into(db.mortalities).insert(
-            MortalitiesCompanion.insert(
-              farmId: farmId,
-              batchId: widget.batch.id,
-              count: count,
-              logDate: DateTime.now(),
-              reason: Value(_reasonController.text.trim().isEmpty ? 'Quarantined for health monitoring' : _reasonController.text.trim()),
-              category: const Value('ISOLATION'),
-              subCategory: Value(_selectedHouse?.name ?? 'General Quarantine Zone'),
-              synced: const Value(false),
-            ),
-          );
+          await db
+              .into(db.mortalities)
+              .insert(
+                MortalitiesCompanion.insert(
+                  id: newLocalId(),
+                  farmId: farmId,
+                  batchId: widget.batch.id,
+                  count: count,
+                  logDate: DateTime.now(),
+                  reason: Value(
+                    _reasonController.text.trim().isEmpty
+                        ? 'Quarantined for health monitoring'
+                        : _reasonController.text.trim(),
+                  ),
+                  category: const Value('ISOLATION'),
+                  subCategory: Value(
+                    _selectedHouse?.name ?? 'General Quarantine Zone',
+                  ),
+                  userId: Value(workerId),
+                  synced: const Value(false),
+                ),
+              );
 
           // 2. Update batch count (reduces current flock count, increments isolation flock count)
-          await (db.update(db.batches)..where((t) => t.id.equals(widget.batch.id))).write(
+          await (db.update(
+            db.batches,
+          )..where((t) => t.id.equals(widget.batch.id))).write(
             BatchesCompanion(
               currentCount: Value(widget.batch.currentCount - count),
               isolationCount: Value(widget.batch.isolationCount + count),
@@ -474,20 +633,30 @@ class _MortalityDialogState extends State<MortalityDialog> {
           );
         } else {
           // 1. Insert mortality record
-          await db.into(db.mortalities).insert(
-            MortalitiesCompanion.insert(
-              farmId: farmId,
-              batchId: widget.batch.id,
-              count: count,
-              logDate: DateTime.now(),
-              reason: Value(_reasonController.text.trim().isEmpty ? null : _reasonController.text.trim()),
-              category: const Value('MORTALITY'),
-              synced: const Value(false),
-            ),
-          );
+          await db
+              .into(db.mortalities)
+              .insert(
+                MortalitiesCompanion.insert(
+                  id: newLocalId(),
+                  farmId: farmId,
+                  batchId: widget.batch.id,
+                  count: count,
+                  logDate: DateTime.now(),
+                  reason: Value(
+                    _reasonController.text.trim().isEmpty
+                        ? null
+                        : _reasonController.text.trim(),
+                  ),
+                  category: const Value('MORTALITY'),
+                  userId: Value(workerId),
+                  synced: const Value(false),
+                ),
+              );
 
           // 2. Update batch count
-          await (db.update(db.batches)..where((t) => t.id.equals(widget.batch.id))).write(
+          await (db.update(
+            db.batches,
+          )..where((t) => t.id.equals(widget.batch.id))).write(
             BatchesCompanion(
               currentCount: Value(widget.batch.currentCount - count),
               synced: const Value(false),
@@ -495,26 +664,35 @@ class _MortalityDialogState extends State<MortalityDialog> {
           );
         }
       });
-      
+
       if (mounted) {
         Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            backgroundColor: isIsolation ? const Color(0xFFF59E0B) : const Color(0xFFEF4444),
+            backgroundColor: isIsolation
+                ? const Color(0xFFF59E0B)
+                : const Color(0xFFEF4444),
             behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
             content: Text(
-              isIsolation 
+              isIsolation
                   ? 'Successfully quarantined $count birds to ${_selectedHouse?.name ?? "General Quarantine Zone"}'
                   : 'Successfully recorded mortality log of $count birds.',
-              style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+              style: const TextStyle(
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
             ),
           ),
         );
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error: $e')));
       }
     }
   }
@@ -534,19 +712,27 @@ class _QuickSaleDialogState extends State<QuickSaleDialog> {
   final _formKey = GlobalKey<FormState>();
   Customer? _selectedCustomer;
   bool _isWalkIn = true;
+  DateTime _saleDate = DateTime.now();
 
   @override
   Widget build(BuildContext context) {
     final db = context.watch<AppDatabase>();
-    
+
     return AlertDialog(
       backgroundColor: const Color(0xFF121417),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       title: const Row(
         children: [
-          Icon(Icons.shopping_cart_outlined, color: Color(0xFF10B981), size: 24),
+          Icon(
+            Icons.shopping_cart_outlined,
+            color: Color(0xFF10B981),
+            size: 24,
+          ),
           SizedBox(width: 12),
-          Text('Walk-in Sale', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          Text(
+            'Walk-in Sale',
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+          ),
         ],
       ),
       content: SizedBox(
@@ -580,7 +766,9 @@ class _QuickSaleDialogState extends State<QuickSaleDialog> {
                         if (v == null || v.isEmpty) return 'Required';
                         final q = int.tryParse(v) ?? 0;
                         if (q <= 0) return 'Must be > 0';
-                        if (q > widget.batch.currentCount) return 'Exceeds stock';
+                        if (q > widget.batch.currentCount) {
+                          return 'Exceeds stock';
+                        }
                         return null;
                       },
                     ),
@@ -589,14 +777,39 @@ class _QuickSaleDialogState extends State<QuickSaleDialog> {
                   Expanded(
                     child: TextFormField(
                       controller: _priceController,
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                      inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*'))],
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      inputFormatters: [
+                        FilteringTextInputFormatter.allow(
+                          RegExp(r'^\d*\.?\d*'),
+                        ),
+                      ],
                       style: const TextStyle(color: Colors.white),
-                      decoration: _inputDecoration('Price (GH₵)', Icons.payments),
-                      validator: (v) => (v == null || v.isEmpty) ? 'Required' : null,
+                      decoration: _inputDecoration(
+                        'Price (GH₵)',
+                        Icons.payments,
+                      ),
+                      validator: (v) =>
+                          (v == null || v.isEmpty) ? 'Required' : null,
                     ),
                   ),
                 ],
+              ),
+              const SizedBox(height: 16),
+              InkWell(
+                onTap: _pickSaleDate,
+                borderRadius: BorderRadius.circular(8),
+                child: InputDecorator(
+                  decoration: _inputDecoration('Sale date', Icons.event),
+                  child: Text(
+                    DateFormat('dd MMM yyyy, HH:mm').format(_saleDate),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
               ),
               const SizedBox(height: 20),
               _buildTotalDisplay(),
@@ -611,7 +824,9 @@ class _QuickSaleDialogState extends State<QuickSaleDialog> {
         ),
         FilledButton(
           onPressed: _submit,
-          style: FilledButton.styleFrom(backgroundColor: const Color(0xFF10B981)),
+          style: FilledButton.styleFrom(
+            backgroundColor: const Color(0xFF10B981),
+          ),
           child: const Text('COMPLETE SALE'),
         ),
       ],
@@ -627,10 +842,18 @@ class _QuickSaleDialogState extends State<QuickSaleDialog> {
       child: Row(
         children: [
           Expanded(
-            child: _toggleBtn('Walk-In', _isWalkIn, () => setState(() => _isWalkIn = true)),
+            child: _toggleBtn(
+              'Walk-In',
+              _isWalkIn,
+              () => setState(() => _isWalkIn = true),
+            ),
           ),
           Expanded(
-            child: _toggleBtn('Existing Customer', !_isWalkIn, () => setState(() => _isWalkIn = false)),
+            child: _toggleBtn(
+              'Existing Customer',
+              !_isWalkIn,
+              () => setState(() => _isWalkIn = false),
+            ),
           ),
         ],
       ),
@@ -669,7 +892,9 @@ class _QuickSaleDialogState extends State<QuickSaleDialog> {
           dropdownColor: const Color(0xFF23262B),
           style: const TextStyle(color: Colors.white),
           decoration: _inputDecoration('Select Customer', Icons.person),
-          items: customers.map((c) => DropdownMenuItem(value: c, child: Text(c.name))).toList(),
+          items: customers
+              .map((c) => DropdownMenuItem(value: c, child: Text(c.name)))
+              .toList(),
           onChanged: (v) => setState(() => _selectedCustomer = v),
           validator: (v) => (!_isWalkIn && v == null) ? 'Required' : null,
         );
@@ -692,15 +917,28 @@ class _QuickSaleDialogState extends State<QuickSaleDialog> {
               decoration: BoxDecoration(
                 color: const Color(0xFF10B981).withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.3)),
+                border: Border.all(
+                  color: const Color(0xFF10B981).withValues(alpha: 0.3),
+                ),
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text('TOTAL REVENUE', style: TextStyle(color: Color(0xFF10B981), fontWeight: FontWeight.w900, fontSize: 11)),
+                  const Text(
+                    'TOTAL REVENUE',
+                    style: TextStyle(
+                      color: Color(0xFF10B981),
+                      fontWeight: FontWeight.w900,
+                      fontSize: 11,
+                    ),
+                  ),
                   Text(
                     'GH₵ ${NumberFormat('#,###.00').format(total)}',
-                    style: const TextStyle(color: Color(0xFF10B981), fontWeight: FontWeight.w900, fontSize: 18),
+                    style: const TextStyle(
+                      color: Color(0xFF10B981),
+                      fontWeight: FontWeight.w900,
+                      fontSize: 18,
+                    ),
                   ),
                 ],
               ),
@@ -718,39 +956,75 @@ class _QuickSaleDialogState extends State<QuickSaleDialog> {
       prefixIcon: Icon(icon, color: Colors.grey, size: 20),
       fillColor: const Color(0xFF23262B),
       filled: true,
-      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(8),
+        borderSide: BorderSide.none,
+      ),
     );
+  }
+
+  Future<void> _pickSaleDate() async {
+    final date = await showDatePicker(
+      context: context,
+      initialDate: _saleDate,
+      firstDate: DateTime(2000),
+      lastDate: DateTime.now().add(const Duration(days: 1)),
+    );
+    if (date == null || !mounted) return;
+
+    final time = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(_saleDate),
+    );
+    if (time == null || !mounted) return;
+
+    setState(() {
+      _saleDate = DateTime(
+        date.year,
+        date.month,
+        date.day,
+        time.hour,
+        time.minute,
+      );
+    });
   }
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
-    
+
     final qty = int.parse(_qtyController.text);
     final price = double.parse(_priceController.text);
     final total = qty * price;
-    
+
     final db = context.read<AppDatabase>();
     final farmId = await FarmUtils.getBoundFarmId();
+    final workerId = await FarmUtils.getRequiredUserId();
     if (farmId == null) return;
 
     try {
       await db.transaction(() async {
         // 1. Record Sale
-        await db.into(db.sales).insert(
-          SalesCompanion.insert(
-            farmId: farmId,
-            batchId: Value(widget.batch.id),
-            customerId: Value(_selectedCustomer?.id),
-            quantity: qty,
-            unitPrice: price,
-            totalAmount: total,
-            saleDate: Value(DateTime.now()),
-            synced: const Value(false),
-          ),
-        );
+        await db
+            .into(db.sales)
+            .insert(
+              SalesCompanion.insert(
+                id: newLocalId(),
+                farmId: farmId,
+                batchId: Value(widget.batch.id),
+                customerId: Value(_selectedCustomer?.id),
+                quantity: qty,
+                unitPrice: price,
+                totalAmount: total,
+                saleDate: Value(_saleDate),
+                userId: Value(workerId),
+                synced: const Value(false),
+              ),
+            );
 
         // 2. Update Batch Count
-        await (db.update(db.batches)..where((t) => t.id.equals(widget.batch.id))).write(
+        await (db.update(
+          db.batches,
+        )..where((t) => t.id.equals(widget.batch.id))).write(
           BatchesCompanion(
             currentCount: Value(widget.batch.currentCount - qty),
             synced: const Value(false),
@@ -759,7 +1033,9 @@ class _QuickSaleDialogState extends State<QuickSaleDialog> {
 
         // 3. Update Customer Balance if credit
         if (!_isWalkIn && _selectedCustomer != null) {
-          await (db.update(db.customers)..where((t) => t.id.equals(_selectedCustomer!.id))).write(
+          await (db.update(
+            db.customers,
+          )..where((t) => t.id.equals(_selectedCustomer!.id))).write(
             CustomersCompanion(
               balanceOwed: Value((_selectedCustomer!.balanceOwed) + total),
               synced: const Value(false),
@@ -767,11 +1043,13 @@ class _QuickSaleDialogState extends State<QuickSaleDialog> {
           );
         }
       });
-      
+
       if (mounted) Navigator.pop(context);
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error: $e')));
       }
     }
   }
@@ -789,24 +1067,38 @@ class _EditBatchDialogState extends State<EditBatchDialog> {
   late TextEditingController _nameController;
   late TextEditingController _initialCountController;
   late TextEditingController _currentCountController;
-  late TextEditingController _breedController;
   late String _status;
   late String _type;
+  late String _selectedBreedKey;
   late String _selectedBenchmark;
   late DateTime _arrivalDate;
-  int? _selectedHouseId;
+  String? _selectedHouseId;
   final _formKey = GlobalKey<FormState>();
 
   @override
   void initState() {
     super.initState();
     _nameController = TextEditingController(text: widget.batch.batchName);
-    _initialCountController = TextEditingController(text: widget.batch.initialCount.toString());
-    _currentCountController = TextEditingController(text: widget.batch.currentCount.toString());
-    _breedController = TextEditingController(text: widget.batch.breedType ?? '');
-    _selectedBenchmark = widget.batch.growthTarget ?? 'Default (From Breed)';
+    _initialCountController = TextEditingController(
+      text: widget.batch.initialCount.toString(),
+    );
+    _currentCountController = TextEditingController(
+      text: widget.batch.currentCount.toString(),
+    );
+    _selectedBreedKey = LivestockBreedCatalog.normalizeBreedKey(
+      widget.batch.breedType,
+    );
     _status = widget.batch.status;
-    _type = widget.batch.type;
+    _type = LivestockBreedCatalog.categoryToType(
+      LivestockBreedCatalog.typeToCategory(widget.batch.type),
+    );
+    final typeOptions = LivestockBreedCatalog.optionsForCategory(
+      LivestockBreedCatalog.typeToCategory(_type),
+    );
+    if (!typeOptions.any((option) => option.key == _selectedBreedKey)) {
+      _selectedBreedKey = typeOptions.first.key;
+    }
+    _selectedBenchmark = widget.batch.growthTarget ?? 'Default (From Breed)';
     _arrivalDate = widget.batch.arrivalDate;
     _selectedHouseId = widget.batch.houseId;
   }
@@ -816,7 +1108,10 @@ class _EditBatchDialogState extends State<EditBatchDialog> {
     return AlertDialog(
       backgroundColor: const Color(0xFF121417),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      title: const Text('Edit Unit Details', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+      title: const Text(
+        'Edit Unit Details',
+        style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+      ),
       content: SizedBox(
         width: 450,
         child: SingleChildScrollView(
@@ -828,8 +1123,12 @@ class _EditBatchDialogState extends State<EditBatchDialog> {
                 TextFormField(
                   controller: _nameController,
                   style: const TextStyle(color: Colors.white),
-                  decoration: _inputDecoration('Unit Name / Identity', Icons.edit),
-                  validator: (v) => (v == null || v.isEmpty) ? 'Required' : null,
+                  decoration: _inputDecoration(
+                    'Unit Name / Identity',
+                    Icons.edit,
+                  ),
+                  validator: (v) =>
+                      (v == null || v.isEmpty) ? 'Required' : null,
                 ),
                 const SizedBox(height: 16),
                 Row(
@@ -838,15 +1137,22 @@ class _EditBatchDialogState extends State<EditBatchDialog> {
                       child: TextFormField(
                         controller: _initialCountController,
                         keyboardType: TextInputType.number,
-                        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                        inputFormatters: [
+                          FilteringTextInputFormatter.digitsOnly,
+                        ],
                         style: const TextStyle(color: Colors.white),
-                        decoration: _inputDecoration('Arrival Quantity', Icons.add_circle_outline),
-                        validator: (v) => (v == null || v.isEmpty) ? 'Required' : null,
+                        decoration: _inputDecoration(
+                          'Arrival Quantity',
+                          Icons.add_circle_outline,
+                        ),
+                        validator: (v) =>
+                            (v == null || v.isEmpty) ? 'Required' : null,
                         onChanged: (v) {
                           // Automatically update current count based on the difference
                           final newInitial = int.tryParse(v) ?? 0;
                           final diff = newInitial - widget.batch.initialCount;
-                          _currentCountController.text = (widget.batch.currentCount + diff).toString();
+                          _currentCountController.text =
+                              (widget.batch.currentCount + diff).toString();
                         },
                       ),
                     ),
@@ -855,10 +1161,16 @@ class _EditBatchDialogState extends State<EditBatchDialog> {
                       child: TextFormField(
                         controller: _currentCountController,
                         keyboardType: TextInputType.number,
-                        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                        inputFormatters: [
+                          FilteringTextInputFormatter.digitsOnly,
+                        ],
                         style: const TextStyle(color: Colors.white),
-                        decoration: _inputDecoration('Current Stock', Icons.inventory_2_outlined),
-                        validator: (v) => (v == null || v.isEmpty) ? 'Required' : null,
+                        decoration: _inputDecoration(
+                          'Current Stock',
+                          Icons.inventory_2_outlined,
+                        ),
+                        validator: (v) =>
+                            (v == null || v.isEmpty) ? 'Required' : null,
                       ),
                     ),
                   ],
@@ -872,35 +1184,73 @@ class _EditBatchDialogState extends State<EditBatchDialog> {
                   initialValue: _type,
                   dropdownColor: const Color(0xFF23262B),
                   style: const TextStyle(color: Colors.white),
-                  decoration: _inputDecoration('Batch Type', Icons.category_outlined),
+                  decoration: _inputDecoration(
+                    'Batch Type',
+                    Icons.category_outlined,
+                  ),
                   items: const [
-                    DropdownMenuItem(value: 'POULTRY_BROILER', child: Text('BROILER')),
-                    DropdownMenuItem(value: 'POULTRY_LAYER', child: Text('LAYER')),
-                    DropdownMenuItem(value: 'POULTRY_TURKEY', child: Text('TURKEY')),
-                    DropdownMenuItem(value: 'POULTRY_DUCK', child: Text('DUCK')),
-                    DropdownMenuItem(value: 'POULTRY_OTHER', child: Text('OTHER')),
+                    DropdownMenuItem(
+                      value: 'POULTRY_BROILER',
+                      child: Text('BROILER'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'POULTRY_LAYER',
+                      child: Text('LAYER'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'CATTLE',
+                      child: Text('CATTLE / LIVESTOCK'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'SHEEP_GOAT',
+                      child: Text('SHEEP / GOAT'),
+                    ),
+                    DropdownMenuItem(value: 'PIG', child: Text('PIG / SWINE')),
                   ],
-                  onChanged: (v) => setState(() => _type = v!),
+                  onChanged: (v) => setState(() {
+                    _type = v!;
+                    _selectedBreedKey =
+                        LivestockBreedCatalog.optionsForCategory(
+                          LivestockBreedCatalog.typeToCategory(_type),
+                        ).first.key;
+                  }),
                 ),
                 const SizedBox(height: 16),
-                TextFormField(
-                  controller: _breedController,
-                  style: const TextStyle(color: Colors.white),
-                  decoration: _inputDecoration('Breed (e.g. Cobb 500)', Icons.pets),
-                ),
+                _buildBreedDropdown(),
                 const SizedBox(height: 16),
                 DropdownButtonFormField<String>(
                   initialValue: _selectedBenchmark,
                   dropdownColor: const Color(0xFF23262B),
                   style: const TextStyle(color: Colors.white),
-                  decoration: _inputDecoration('Benchmark Override', Icons.speed),
+                  decoration: _inputDecoration(
+                    'Benchmark Override',
+                    Icons.speed,
+                  ),
                   items: const [
-                    DropdownMenuItem(value: 'Default (From Breed)', child: Text('Default (From Breed)')),
-                    DropdownMenuItem(value: 'Ross 308 (Meat)', child: Text('Ross 308 (Meat)')),
-                    DropdownMenuItem(value: 'Cobb 500 (Meat)', child: Text('Cobb 500 (Meat)')),
-                    DropdownMenuItem(value: 'ISA Brown (Eggs)', child: Text('ISA Brown (Eggs)')),
-                    DropdownMenuItem(value: 'Lohmann (Eggs)', child: Text('Lohmann (Eggs)')),
-                    DropdownMenuItem(value: 'Ankole (Cattle)', child: Text('Ankole (Cattle)')),
+                    DropdownMenuItem(
+                      value: 'Default (From Breed)',
+                      child: Text('Default (From Breed)'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'Ross 308 (Meat)',
+                      child: Text('Ross 308 (Meat)'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'Cobb 500 (Meat)',
+                      child: Text('Cobb 500 (Meat)'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'ISA Brown (Eggs)',
+                      child: Text('ISA Brown (Eggs)'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'Lohmann (Eggs)',
+                      child: Text('Lohmann (Eggs)'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'Ankole (Cattle)',
+                      child: Text('Ankole (Cattle)'),
+                    ),
                   ],
                   onChanged: (v) => setState(() => _selectedBenchmark = v!),
                 ),
@@ -912,8 +1262,14 @@ class _EditBatchDialogState extends State<EditBatchDialog> {
                   decoration: _inputDecoration('Status', Icons.info_outline),
                   items: const [
                     DropdownMenuItem(value: 'active', child: Text('ACTIVE')),
-                    DropdownMenuItem(value: 'completed', child: Text('COMPLETED')),
-                    DropdownMenuItem(value: 'archived', child: Text('ARCHIVED')),
+                    DropdownMenuItem(
+                      value: 'completed',
+                      child: Text('COMPLETED'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'archived',
+                      child: Text('ARCHIVED'),
+                    ),
                   ],
                   onChanged: (v) => setState(() => _status = v!),
                 ),
@@ -929,7 +1285,9 @@ class _EditBatchDialogState extends State<EditBatchDialog> {
         ),
         FilledButton(
           onPressed: _submit,
-          style: FilledButton.styleFrom(backgroundColor: const Color(0xFF3B82F6)),
+          style: FilledButton.styleFrom(
+            backgroundColor: const Color(0xFF3B82F6),
+          ),
           child: const Text('UPDATE UNIT'),
         ),
       ],
@@ -943,7 +1301,38 @@ class _EditBatchDialogState extends State<EditBatchDialog> {
       prefixIcon: Icon(icon, color: Colors.grey, size: 20),
       fillColor: const Color(0xFF23262B),
       filled: true,
-      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(8),
+        borderSide: BorderSide.none,
+      ),
+    );
+  }
+
+  Widget _buildBreedDropdown() {
+    final options = LivestockBreedCatalog.optionsForCategory(
+      LivestockBreedCatalog.typeToCategory(_type),
+    );
+    final selectedValue =
+        options.any((option) => option.key == _selectedBreedKey)
+        ? _selectedBreedKey
+        : null;
+
+    return DropdownButtonFormField<String>(
+      key: ValueKey('edit-breed-$_type-${selectedValue ?? 'none'}'),
+      initialValue: selectedValue,
+      dropdownColor: const Color(0xFF23262B),
+      style: const TextStyle(color: Colors.white),
+      decoration: _inputDecoration('Primary Breed / Specie', Icons.pets),
+      validator: (v) => v == null || v.isEmpty ? 'Required' : null,
+      items: options
+          .map(
+            (option) => DropdownMenuItem<String>(
+              value: option.key,
+              child: LivestockBreedOptionRow(option: option),
+            ),
+          )
+          .toList(),
+      onChanged: (v) => setState(() => _selectedBreedKey = v!),
     );
   }
 
@@ -980,36 +1369,57 @@ class _EditBatchDialogState extends State<EditBatchDialog> {
 
   Widget _buildHouseDropdown(BuildContext context) {
     final db = context.watch<AppDatabase>();
-    return FutureBuilder<int?>(
+    return FutureBuilder<String?>(
       future: FarmUtils.getBoundFarmId(),
       builder: (context, farm) {
-        if (!farm.hasData) return const SizedBox.shrink();
+        final farmId = farm.data;
+        if (farmId == null || farmId.isEmpty) return const SizedBox.shrink();
         return StreamBuilder<List<House>>(
-          stream: (db.select(db.houses)..where((t) => t.farmId.equals(farm.data!))).watch(),
+          stream: (db.select(
+            db.houses,
+          )..where((t) => t.farmId.equals(farmId))).watch(),
           builder: (context, snapshot) {
             final houses = snapshot.data ?? [];
-            return DropdownButtonFormField<int?>(
+            return DropdownButtonFormField<String?>(
               initialValue: _selectedHouseId,
               dropdownColor: const Color(0xFF23262B),
               style: const TextStyle(color: Colors.white),
-              decoration: _inputDecoration('Assign House', Icons.house_outlined),
+              decoration: _inputDecoration(
+                'Assign House',
+                Icons.house_outlined,
+              ),
               onChanged: (v) {
-                if (v == -1) {
-                  _showQuickAddHouseDialog(context, db, farm.data!);
+                if (v == _addHouseSentinel) {
+                  _showQuickAddHouseDialog(context, db, farmId);
                 } else {
                   setState(() => _selectedHouseId = v);
                 }
               },
               items: [
-                const DropdownMenuItem(value: null, child: Text('No House Assigned')),
-                ...houses.map((h) => DropdownMenuItem(value: h.id, child: Text(h.name))),
-                const DropdownMenuItem<int>(
-                  value: -1,
+                const DropdownMenuItem(
+                  value: null,
+                  child: Text('No House Assigned'),
+                ),
+                ...houses.map(
+                  (h) => DropdownMenuItem(value: h.id, child: Text(h.name)),
+                ),
+                const DropdownMenuItem<String>(
+                  value: _addHouseSentinel,
                   child: Row(
                     children: [
-                      Icon(Icons.add_circle_outline_rounded, size: 18, color: Color(0xFF3B82F6)),
+                      Icon(
+                        Icons.add_circle_outline_rounded,
+                        size: 18,
+                        color: Color(0xFF3B82F6),
+                      ),
                       SizedBox(width: 8),
-                      Text('Add New House', style: TextStyle(color: Color(0xFF3B82F6), fontWeight: FontWeight.bold)),
+                      Text(
+                        'Add New House',
+                        style: TextStyle(
+                          color: Color(0xFF3B82F6),
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -1023,10 +1433,12 @@ class _EditBatchDialogState extends State<EditBatchDialog> {
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
-    
+
     final db = context.read<AppDatabase>();
     try {
-      await (db.update(db.batches)..where((t) => t.id.equals(widget.batch.id))).write(
+      await (db.update(
+        db.batches,
+      )..where((t) => t.id.equals(widget.batch.id))).write(
         BatchesCompanion(
           batchName: Value(_nameController.text),
           initialCount: Value(int.parse(_initialCountController.text)),
@@ -1035,7 +1447,7 @@ class _EditBatchDialogState extends State<EditBatchDialog> {
           type: Value(_type),
           arrivalDate: Value(_arrivalDate),
           houseId: Value(_selectedHouseId),
-          breedType: Value(_breedController.text),
+          breedType: Value(_selectedBreedKey),
           growthTarget: Value(_selectedBenchmark),
           synced: const Value(false),
         ),
@@ -1043,12 +1455,18 @@ class _EditBatchDialogState extends State<EditBatchDialog> {
       if (mounted) Navigator.pop(context);
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error: $e')));
       }
     }
   }
 
-  void _showQuickAddHouseDialog(BuildContext context, AppDatabase db, int farmId) {
+  void _showQuickAddHouseDialog(
+    BuildContext context,
+    AppDatabase db,
+    String farmId,
+  ) {
     final houseNameCtrl = TextEditingController();
     final capacityCtrl = TextEditingController();
 
@@ -1056,59 +1474,99 @@ class _EditBatchDialogState extends State<EditBatchDialog> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFF121417),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: BorderSide(color: Colors.white.withValues(alpha: 0.1))),
-        title: const Text('Add House', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
+        ),
+        title: const Text(
+          'Add House',
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+        ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('HOUSE NAME', style: TextStyle(color: Color(0xFF3B82F6), fontSize: 12, fontWeight: FontWeight.bold)),
+            const Text(
+              'HOUSE NAME',
+              style: TextStyle(
+                color: Color(0xFF3B82F6),
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
             const SizedBox(height: 12),
             TextField(
               controller: houseNameCtrl,
               style: const TextStyle(color: Colors.white),
-              decoration: _inputDecoration('Enter house name', Icons.home_work_outlined),
+              decoration: _inputDecoration(
+                'Enter house name',
+                Icons.home_work_outlined,
+              ),
             ),
             const SizedBox(height: 24),
-            const Text('CAPACITY (OPTIONAL)', style: TextStyle(color: Color(0xFF3B82F6), fontSize: 12, fontWeight: FontWeight.bold)),
+            const Text(
+              'CAPACITY (OPTIONAL)',
+              style: TextStyle(
+                color: Color(0xFF3B82F6),
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
             const SizedBox(height: 12),
             TextField(
               controller: capacityCtrl,
               style: const TextStyle(color: Colors.white),
               keyboardType: TextInputType.number,
               inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-              decoration: _inputDecoration('Enter capacity', Icons.people_outline),
+              decoration: _inputDecoration(
+                'Enter capacity',
+                Icons.people_outline,
+              ),
             ),
           ],
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: Text('Cancel', style: TextStyle(color: Colors.white.withValues(alpha: 0.6))),
+            child: Text(
+              'Cancel',
+              style: TextStyle(color: Colors.white.withValues(alpha: 0.6)),
+            ),
           ),
           FilledButton(
             onPressed: () async {
               if (houseNameCtrl.text.trim().isEmpty) return;
               final cap = int.tryParse(capacityCtrl.text) ?? 1000;
-              final userId = await FarmUtils.getUserId() ?? 'local_user';
-              
-              final houseId = await db.into(db.houses).insert(HousesCompanion.insert(
-                farmId: farmId,
-                name: houseNameCtrl.text.trim(),
-                capacity: cap,
-                userId: Value(userId),
-                isIsolation: const Value(false),
-                synced: const Value(false),
-              ));
-              
+              final userId = await FarmUtils.getRequiredUserId();
+
+              final houseId = newLocalId();
+              await db
+                  .into(db.houses)
+                  .insert(
+                    HousesCompanion.insert(
+                      id: houseId,
+                      farmId: farmId,
+                      name: houseNameCtrl.text.trim(),
+                      capacity: cap,
+                      userId: Value(userId),
+                      isIsolation: const Value(false),
+                      synced: const Value(false),
+                    ),
+                  );
+
               if (ctx.mounted) {
                 ctx.read<SyncEngine>().performSync();
                 Navigator.pop(ctx);
                 setState(() => _selectedHouseId = houseId);
               }
             },
-            style: FilledButton.styleFrom(backgroundColor: const Color(0xFF3B82F6)),
-            child: const Text('Add', style: TextStyle(fontWeight: FontWeight.w700)),
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFF3B82F6),
+            ),
+            child: const Text(
+              'Add',
+              style: TextStyle(fontWeight: FontWeight.w700),
+            ),
           ),
         ],
       ),

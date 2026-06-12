@@ -3,7 +3,9 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:drift/drift.dart' hide Column, Batch;
 import '../data/local_db.dart';
+import '../data/sync_engine.dart';
 import '../utils/farm_utils.dart';
+import '../utils/id_utils.dart';
 
 class HousesScreen extends StatelessWidget {
   const HousesScreen({super.key});
@@ -29,11 +31,13 @@ class HousesScreen extends StatelessWidget {
       body: LayoutBuilder(
         builder: (context, constraints) {
           final isNarrow = constraints.maxWidth < 850;
-          return FutureBuilder<int?>(
+          return FutureBuilder<String?>(
             future: FarmUtils.getBoundFarmId(),
             builder: (context, farmSnapshot) {
-              if (!farmSnapshot.hasData) return const Center(child: CircularProgressIndicator());
-              final farmId = farmSnapshot.data!;
+              final farmId = farmSnapshot.data;
+              if (farmId == null || farmId.isEmpty) {
+                return const Center(child: Text('No farm bound. Complete device setup first.'));
+              }
               final housesStream = (db.select(db.houses)..where((t) => t.farmId.equals(farmId))).watch();
               final activeBatchesStream = (db.select(db.batches)..where((t) => t.farmId.equals(farmId) & t.status.equals('active'))).watch();
     
@@ -369,11 +373,14 @@ class HousesScreen extends StatelessWidget {
                                   child: FilledButton(
                                     onPressed: () async {
                                       final farmId = await FarmUtils.getBoundFarmId();
+                                      final workerId = await FarmUtils.getRequiredUserId();
                                       if (farmId == null) return;
                                       await db.into(db.houses).insert(HousesCompanion.insert(
+                                        id: newLocalId(),
                                         farmId: farmId,
                                         name: nameController.text,
                                         capacity: int.tryParse(capacityController.text) ?? 0,
+                                        userId: Value(workerId),
                                         isIsolation: Value(isIsolation),
                                         synced: const Value(false),
                                       ));
@@ -530,7 +537,20 @@ class HousesScreen extends StatelessWidget {
     );
 
     if (confirmed == true) {
+      if (house.synced) {
+        await db.into(db.pendingDeletions).insert(
+              PendingDeletionsCompanion.insert(
+                id: newLocalId(),
+                targetTableName: 'houses',
+                recordId: house.id,
+                farmId: house.farmId,
+              ),
+            );
+      }
       await (db.delete(db.houses)..where((t) => t.id.equals(house.id))).go();
+      if (context.mounted) {
+        context.read<SyncEngine>().performSync();
+      }
     }
   }
 

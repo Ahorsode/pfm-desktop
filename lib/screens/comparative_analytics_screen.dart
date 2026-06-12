@@ -1,83 +1,89 @@
-import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 import 'package:fl_chart/fl_chart.dart';
+import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
+
 import '../data/local_db.dart';
+import '../services/batch_analytics_processor.dart';
 import 'main_scaffold.dart';
 
 class ComparativeAnalyticsScreen extends StatefulWidget {
   const ComparativeAnalyticsScreen({super.key});
 
   @override
-  State<ComparativeAnalyticsScreen> createState() => _ComparativeAnalyticsScreenState();
+  State<ComparativeAnalyticsScreen> createState() =>
+      _ComparativeAnalyticsScreenState();
 }
 
-class _ComparativeAnalyticsScreenState extends State<ComparativeAnalyticsScreen> {
+class _ComparativeAnalyticsScreenState
+    extends State<ComparativeAnalyticsScreen> {
   late AppDatabase db;
-  String _activeTab = 'FCR'; // FCR, MORTALITY, EPEF
-  bool _showBenchmark = true;
-  final Set<int> _selectedBatchIds = {};
-  bool _initializedSelection = false;
+  Future<List<BatchPerformanceSnapshot>>? _analyticsFuture;
+  String? _selectedBatchId;
 
-  // Colors assigned dynamically to active batch lines
-  final List<Color> _lineColors = [
-    const Color(0xFF10B981), // Emerald
-    const Color(0xFF3B82F6), // Blue
-    const Color(0xFF6366F1), // Indigo
-    const Color(0xFFF59E0B), // Amber
-    const Color(0xFFEF4444), // Red
-    const Color(0xFFEC4899), // Pink
-  ];
+  final _currency = NumberFormat.currency(symbol: 'GH₵ ', decimalDigits: 2);
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     db = Provider.of<AppDatabase>(context);
+    _analyticsFuture ??= BatchAnalyticsProcessor.load(db);
+  }
+
+  void _refreshAnalytics() {
+    setState(() {
+      _analyticsFuture = BatchAnalyticsProcessor.load(db);
+    });
+  }
+
+  BatchPerformanceSnapshot? _selectedSnapshot(
+    List<BatchPerformanceSnapshot> snapshots,
+  ) {
+    if (snapshots.isEmpty) return null;
+    final active = snapshots.where((s) => s.status == 'active').toList();
+    final candidates = active.isEmpty ? snapshots : active;
+    final selectedId = _selectedBatchId;
+    final selected = selectedId == null
+        ? null
+        : candidates.where((s) => s.batchId == selectedId).firstOrNull;
+    final resolved = selected ?? candidates.first;
+    _selectedBatchId = resolved.batchId;
+    return resolved;
   }
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bg = isDark ? const Color(0xFF0B1220) : const Color(0xFFF6F8FB);
 
     return Scaffold(
-      backgroundColor: isDark ? const Color(0xFF0F1113) : const Color(0xFFF8FAFC),
-      body: StreamBuilder<List<Batch>>(
-        stream: (db.select(db.batches)..where((t) => t.status.equals('active'))).watch(),
+      backgroundColor: bg,
+      body: FutureBuilder<List<BatchPerformanceSnapshot>>(
+        future: _analyticsFuture,
         builder: (context, snapshot) {
-          final activeBatches = snapshot.data ?? [];
-
-          // Auto-select all active batches on first load
-          if (!_initializedSelection && activeBatches.isNotEmpty) {
-            for (var b in activeBatches) {
-              _selectedBatchIds.add(b.id);
-            }
-            _initializedSelection = true;
+          if (snapshot.connectionState != ConnectionState.done) {
+            return const Center(child: CircularProgressIndicator());
           }
 
+          final snapshots = snapshot.data ?? const <BatchPerformanceSnapshot>[];
+          final selected = _selectedSnapshot(snapshots);
+
           return Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Left Column: Intelligence Hub Controls
-              _buildIntelligenceHub(activeBatches, isDark),
-
-              // Right Column: Main Analytics Visualizer
+              _BatchAnalyticsRail(
+                snapshots: snapshots,
+                selectedBatchId: selected?.batchId,
+                onSelect: (id) => setState(() => _selectedBatchId = id),
+              ),
               Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.all(24.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Elegant Subheader Row
-                      _buildHeaderRow(activeBatches.length, isDark),
-                      const SizedBox(height: 24),
-
-                      // Main Graph Card Container
-                      Expanded(
-                        child: _buildGraphCard(activeBatches, isDark),
+                child: selected == null
+                    ? _EmptyAnalyticsState(onRefresh: _refreshAnalytics)
+                    : _AnalyticsWorkspace(
+                        selected: selected,
+                        snapshots: snapshots,
+                        currency: _currency,
+                        onRefresh: _refreshAnalytics,
                       ),
-                    ],
-                  ),
-                ),
               ),
             ],
           );
@@ -85,219 +91,174 @@ class _ComparativeAnalyticsScreenState extends State<ComparativeAnalyticsScreen>
       ),
     );
   }
+}
 
-  Widget _buildIntelligenceHub(List<Batch> batches, bool isDark) {
-    final textColor = isDark ? Colors.white : const Color(0xFF1E293B);
-    final subColor = isDark ? Colors.white54 : const Color(0xFF64748B);
-    final cardBg = isDark ? const Color(0xFF161A1D) : Colors.white;
-    final borderColor = isDark ? Colors.white12 : Colors.grey.shade200;
+class _BatchAnalyticsRail extends StatelessWidget {
+  final List<BatchPerformanceSnapshot> snapshots;
+  final String? selectedBatchId;
+  final ValueChanged<String> onSelect;
+
+  const _BatchAnalyticsRail({
+    required this.snapshots,
+    required this.selectedBatchId,
+    required this.onSelect,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final railBg = isDark ? const Color(0xFF101827) : Colors.white;
+    final border = isDark ? const Color(0xFF253044) : const Color(0xFFE2E8F0);
+    final active = snapshots.where((s) => s.status == 'active').toList();
+    final display = active.isEmpty ? snapshots : active;
 
     return Container(
-      width: 320,
+      width: 326,
       decoration: BoxDecoration(
-        color: cardBg,
-        border: Border(
-          right: BorderSide(color: borderColor),
-        ),
+        color: railBg,
+        border: Border(right: BorderSide(color: border)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header of Intelligence Hub
           Padding(
-            padding: const EdgeInsets.fromLTRB(24, 32, 24, 16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            padding: const EdgeInsets.fromLTRB(22, 26, 22, 18),
+            child: Row(
               children: [
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF10B981).withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: const Icon(
-                        Icons.analytics_rounded,
-                        color: Color(0xFF10B981),
-                        size: 20,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Text(
-                      'INTELLIGENCE HUB',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 1.2,
-                        color: textColor,
-                      ),
-                    ),
-                  ],
+                IconButton(
+                  tooltip: 'Back to Livestock',
+                  onPressed: () =>
+                      MainScaffold.of(context)?.setSelectedIndex(1),
+                  icon: const Icon(Icons.arrow_back_rounded),
                 ),
-                const SizedBox(height: 8),
-                Text(
-                  'MULTIVARIATE BATCH ANALYSIS',
-                  style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w800,
-                    color: subColor,
-                    letterSpacing: 0.5,
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Batch Reports',
+                        style: TextStyle(
+                          color: theme.colorScheme.onSurface,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      Text(
+                        '${display.length} active data streams',
+                        style: TextStyle(
+                          color: theme.colorScheme.onSurfaceVariant,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
             ),
           ),
-          const Divider(height: 1),
-
-          // Control Switch: Industry Benchmark
+          Divider(height: 1, color: border),
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 20.0),
-            child: Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: isDark ? Colors.white.withValues(alpha: 0.02) : const Color(0xFFF1F5F9),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: borderColor),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'GLOBAL SETTINGS',
-                    style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w900,
-                      color: subColor,
-                      letterSpacing: 0.8,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Row(
-                        children: [
-                          Icon(
-                            Icons.tune_rounded,
-                            size: 16,
-                            color: subColor,
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            'Industry Benchmark',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                              color: textColor,
-                            ),
-                          ),
-                        ],
-                      ),
-                      Switch(
-                        value: _showBenchmark,
-                        activeThumbColor: const Color(0xFF10B981),
-                        activeTrackColor: const Color(0xFF10B981).withValues(alpha: 0.5),
-                        onChanged: (val) {
-                          setState(() {
-                            _showBenchmark = val;
-                          });
-                        },
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-
-          // Active Batches List (Checking/filtering lines)
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24.0),
+            padding: const EdgeInsets.fromLTRB(22, 18, 22, 8),
             child: Text(
-              'ACTIVE BATCH STREAMS',
+              'ACTIVE BATCHES',
               style: TextStyle(
-                fontSize: 10,
+                color: theme.colorScheme.onSurfaceVariant,
+                fontSize: 11,
                 fontWeight: FontWeight.w900,
-                color: subColor,
-                letterSpacing: 0.8,
+                letterSpacing: 0.7,
               ),
             ),
           ),
-          const SizedBox(height: 12),
-
           Expanded(
-            child: batches.isEmpty
+            child: display.isEmpty
                 ? Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(24.0),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            Icons.layers_clear_outlined,
-                            size: 32,
-                            color: subColor.withValues(alpha: 0.5),
-                          ),
-                          const SizedBox(height: 12),
-                          Text(
-                            'No active batches found.',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              color: subColor,
-                            ),
-                          ),
-                        ],
+                    child: Text(
+                      'No batches found',
+                      style: TextStyle(
+                        color: theme.colorScheme.onSurfaceVariant,
+                        fontWeight: FontWeight.w700,
                       ),
                     ),
                   )
-                : ListView.builder(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    itemCount: batches.length,
+                : ListView.separated(
+                    padding: const EdgeInsets.fromLTRB(14, 4, 14, 20),
+                    itemCount: display.length,
+                    separatorBuilder: (_, index) => const SizedBox(height: 6),
                     itemBuilder: (context, index) {
-                      final batch = batches[index];
-                      final isSelected = _selectedBatchIds.contains(batch.id);
-                      final lineColor = _lineColors[index % _lineColors.length];
-
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 4.0),
+                      final batch = display[index];
+                      final selected = batch.batchId == selectedBatchId;
+                      final danger = batch.mortalityRate > 5.0;
+                      return InkWell(
+                        borderRadius: BorderRadius.circular(8),
+                        onTap: () => onSelect(batch.batchId),
                         child: Container(
+                          padding: const EdgeInsets.all(12),
                           decoration: BoxDecoration(
-                            color: isSelected
-                                ? lineColor.withValues(alpha: 0.05)
+                            color: selected
+                                ? const Color(
+                                    0xFF16A34A,
+                                  ).withValues(alpha: 0.12)
                                 : Colors.transparent,
-                            borderRadius: BorderRadius.circular(12),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: selected
+                                  ? const Color(
+                                      0xFF16A34A,
+                                    ).withValues(alpha: 0.35)
+                                  : border,
+                            ),
                           ),
-                          child: CheckboxListTile(
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 12),
-                            activeColor: lineColor,
-                            title: Text(
-                              batch.batchName,
-                              style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.bold,
-                                color: textColor,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      batch.batchName,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        color: theme.colorScheme.onSurface,
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w900,
+                                      ),
+                                    ),
+                                  ),
+                                  Icon(
+                                    danger
+                                        ? Icons.warning_amber_rounded
+                                        : Icons.check_circle_rounded,
+                                    size: 16,
+                                    color: danger
+                                        ? const Color(0xFFE8833A)
+                                        : const Color(0xFF16A34A),
+                                  ),
+                                ],
                               ),
-                            ),
-                            subtitle: Text(
-                              '${batch.type.replaceAll('POULTRY_', '')} • ${batch.currentCount} birds',
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: subColor,
+                              const SizedBox(height: 8),
+                              Row(
+                                children: [
+                                  _RailMetric(
+                                    label: 'FCR',
+                                    value: batch.currentFcr > 0
+                                        ? batch.currentFcr.toStringAsFixed(2)
+                                        : 'N/A',
+                                  ),
+                                  _RailMetric(
+                                    label: 'Loss',
+                                    value:
+                                        '${batch.mortalityRate.toStringAsFixed(1)}%',
+                                  ),
+                                  _RailMetric(
+                                    label: 'Birds',
+                                    value: '${batch.currentCount}',
+                                  ),
+                                ],
                               ),
-                            ),
-                            value: isSelected,
-                            onChanged: (bool? val) {
-                              setState(() {
-                                if (val == true) {
-                                  _selectedBatchIds.add(batch.id);
-                                } else {
-                                  _selectedBatchIds.remove(batch.id);
-                                }
-                              });
-                            },
+                            ],
                           ),
                         ),
                       );
@@ -308,511 +269,939 @@ class _ComparativeAnalyticsScreenState extends State<ComparativeAnalyticsScreen>
       ),
     );
   }
+}
 
-  Widget _buildHeaderRow(int activeCount, bool isDark) {
-    final titleColor = isDark ? Colors.white : const Color(0xFF1E293B);
-    final subColor = isDark ? Colors.white54 : const Color(0xFF64748B);
+class _RailMetric extends StatelessWidget {
+  final String label;
+  final String value;
 
-    return Wrap(
-      alignment: WrapAlignment.spaceBetween,
-      crossAxisAlignment: WrapCrossAlignment.center,
-      spacing: 16,
-      runSpacing: 16,
-      children: [
-        Wrap(
-          crossAxisAlignment: WrapCrossAlignment.center,
-          spacing: 24,
-          runSpacing: 16,
-          children: [
-            // Back Button
-            InkWell(
-              onTap: () {
-                // Smoothly navigate back to Livestock (Index 1) in main scaffold
-                MainScaffold.of(context)?.setSelectedIndex(1);
-              },
-              borderRadius: BorderRadius.circular(12),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                decoration: BoxDecoration(
-                  color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: isDark ? Colors.white.withValues(alpha: 0.1) : Colors.grey.shade200,
-                  ),
-                  boxShadow: isDark
-                      ? []
-                      : [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.03),
-                            blurRadius: 10,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      Icons.arrow_back_ios_new_rounded,
-                      size: 14,
-                      color: isDark ? Colors.white70 : const Color(0xFF1E293B),
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      'BACK TO LIVESTOCK',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w900,
-                        color: isDark ? Colors.white70 : const Color(0xFF1E293B),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            
-            // Title Info
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                RichText(
-                  text: TextSpan(
-                    children: [
-                      TextSpan(
-                        text: 'Comparative ',
-                        style: TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.w900,
-                          color: titleColor,
-                        ),
-                      ),
-                      const TextSpan(
-                        text: 'Analytics',
-                        style: TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.w900,
-                          color: Color(0xFF10B981),
-                          fontStyle: FontStyle.italic,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(
-                      Icons.trending_up_rounded,
-                      color: Color(0xFF10B981),
-                      size: 14,
-                    ),
-                    const SizedBox(width: 6),
-                    Flexible(
-                      child: Text(
-                        'BATCH PERFORMANCE & INDUSTRY BENCHMARK INSIGHTS',
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w800,
-                          color: subColor,
-                          letterSpacing: 0.5,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ],
-        ),
+  const _RailMetric({required this.label, required this.value});
 
-        // Available Streams Badge
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-          decoration: BoxDecoration(
-            color: const Color(0xFF10B981).withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: const Color(0xFF10B981).withValues(alpha: 0.2),
-            ),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(
-                Icons.analytics_rounded,
-                size: 16,
-                color: Color(0xFF10B981),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                '$activeCount Batches Available',
-                style: const TextStyle(
-                  color: Color(0xFF10B981),
-                  fontSize: 12,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildGraphCard(List<Batch> activeBatches, bool isDark) {
-    final cardBg = isDark ? const Color(0xFF161A1D) : Colors.white;
-    final borderColor = isDark ? Colors.white12 : Colors.grey.shade200;
-    final textColor = isDark ? Colors.white : const Color(0xFF1E293B);
-    final subColor = isDark ? Colors.white54 : const Color(0xFF64748B);
-
-    final selectedActiveBatches = activeBatches
-        .where((b) => _selectedBatchIds.contains(b.id))
-        .toList();
-
-    return Container(
-      decoration: BoxDecoration(
-        color: cardBg,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: borderColor),
-        boxShadow: isDark
-            ? []
-            : [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.02),
-                  blurRadius: 20,
-                  offset: const Offset(0, 10),
-                ),
-              ],
-      ),
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Expanded(
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Tabs selector & Inner headers
-          Padding(
-            padding: const EdgeInsets.all(24.0),
-            child: Wrap(
-              alignment: WrapAlignment.spaceBetween,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              spacing: 16,
-              runSpacing: 16,
-              children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      _activeTab == 'FCR'
-                          ? 'FEED CONVERSION RATIO (FCR)'
-                          : _activeTab == 'MORTALITY'
-                              ? 'MORTALITY RATE (%)'
-                              : 'EUROPEAN POULTRY EFFICIENCY FACTOR (EPEF)',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w900,
-                        color: textColor,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Comparative performance across ${selectedActiveBatches.length} active data streams.',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: subColor,
-                      ),
-                    ),
-                  ],
-                ),
-
-                // Pill selectors
-                Container(
-                  padding: const EdgeInsets.all(4),
-                  decoration: BoxDecoration(
-                    color: isDark ? Colors.white.withValues(alpha: 0.05) : const Color(0xFFF1F5F9),
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      _buildTabButton('FCR'),
-                      _buildTabButton('MORTALITY'),
-                      _buildTabButton('EPEF'),
-                    ],
-                  ),
-                ),
-              ],
+          Text(
+            label,
+            style: TextStyle(
+              color: theme.colorScheme.onSurfaceVariant,
+              fontSize: 9,
+              fontWeight: FontWeight.w900,
             ),
           ),
-
-          const Divider(height: 1),
-
-          // Graph Area
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(32, 32, 48, 32),
-              child: selectedActiveBatches.isEmpty
-                  ? _buildEmptyState(isDark)
-                  : _buildLineChart(selectedActiveBatches, isDark),
+          const SizedBox(height: 2),
+          Text(
+            value,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: theme.colorScheme.onSurface,
+              fontSize: 12,
+              fontWeight: FontWeight.w900,
             ),
           ),
         ],
       ),
     );
   }
+}
 
-  Widget _buildTabButton(String tab) {
-    final isActive = _activeTab == tab;
-    return InkWell(
-      onTap: () {
-        setState(() {
-          _activeTab = tab;
-        });
-      },
-      borderRadius: BorderRadius.circular(10),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        decoration: BoxDecoration(
-          color: isActive ? Colors.white : Colors.transparent,
-          borderRadius: BorderRadius.circular(10),
-          boxShadow: isActive
-              ? [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.05),
-                    blurRadius: 4,
-                    offset: const Offset(0, 2),
-                  ),
-                ]
-              : [],
-        ),
-        child: Text(
-          tab,
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w900,
-            color: isActive ? const Color(0xFF10B981) : Colors.grey,
+class _AnalyticsWorkspace extends StatelessWidget {
+  final BatchPerformanceSnapshot selected;
+  final List<BatchPerformanceSnapshot> snapshots;
+  final NumberFormat currency;
+  final VoidCallback onRefresh;
+
+  const _AnalyticsWorkspace({
+    required this.selected,
+    required this.snapshots,
+    required this.currency,
+    required this.onRefresh,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final border = isDark ? const Color(0xFF253044) : const Color(0xFFE2E8F0);
+
+    return Padding(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _WorkspaceHeader(selected: selected, onRefresh: onRefresh),
+          const SizedBox(height: 16),
+          _KpiStrip(selected: selected, currency: currency),
+          const SizedBox(height: 16),
+          Expanded(
+            flex: 7,
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final useColumns = constraints.maxWidth >= 980;
+                if (!useColumns) {
+                  return ListView(
+                    children: [
+                      SizedBox(
+                        height: 300,
+                        child: _FcrTrendPanel(snapshot: selected),
+                      ),
+                      const SizedBox(height: 12),
+                      SizedBox(
+                        height: 300,
+                        child: _MortalityGaugePanel(snapshot: selected),
+                      ),
+                      const SizedBox(height: 12),
+                      SizedBox(
+                        height: 300,
+                        child: _FinancialBarsPanel(
+                          snapshot: selected,
+                          currency: currency,
+                        ),
+                      ),
+                    ],
+                  );
+                }
+
+                return Row(
+                  children: [
+                    Expanded(child: _FcrTrendPanel(snapshot: selected)),
+                    const SizedBox(width: 14),
+                    Expanded(child: _MortalityGaugePanel(snapshot: selected)),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: _FinancialBarsPanel(
+                        snapshot: selected,
+                        currency: currency,
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
           ),
-        ),
+          const SizedBox(height: 16),
+          Expanded(
+            flex: 3,
+            child: _BatchComparisonTable(
+              snapshots: snapshots,
+              selectedBatchId: selected.batchId,
+              currency: currency,
+              border: border,
+            ),
+          ),
+        ],
       ),
     );
   }
+}
 
-  Widget _buildEmptyState(bool isDark) {
-    return Center(
-      child: Container(
-        constraints: const BoxConstraints(maxWidth: 420),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            // Dotted circle wrapper for warning icon
-            Container(
-              width: 80,
-              height: 80,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: Colors.transparent,
-                border: Border.all(
-                  color: Colors.grey.withValues(alpha: 0.3),
-                  width: 2,
-                  style: BorderStyle.solid,
+class _WorkspaceHeader extends StatelessWidget {
+  final BatchPerformanceSnapshot selected;
+  final VoidCallback onRefresh;
+
+  const _WorkspaceHeader({required this.selected, required this.onRefresh});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Row(
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                selected.batchName,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: theme.colorScheme.onSurface,
+                  fontSize: 24,
+                  fontWeight: FontWeight.w900,
                 ),
               ),
+              const SizedBox(height: 4),
+              Text(
+                '${selected.type.replaceAll('POULTRY_', '')} • ${selected.currentCount} current birds • ${selected.totalFeedKg.toStringAsFixed(1)} kg feed logged',
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: theme.colorScheme.onSurfaceVariant,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+        ),
+        OutlinedButton.icon(
+          onPressed: onRefresh,
+          icon: const Icon(Icons.refresh_rounded, size: 18),
+          label: const Text('REFRESH'),
+        ),
+      ],
+    );
+  }
+}
+
+class _KpiStrip extends StatelessWidget {
+  final BatchPerformanceSnapshot selected;
+  final NumberFormat currency;
+
+  const _KpiStrip({required this.selected, required this.currency});
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 86,
+      child: Row(
+        children: [
+          Expanded(
+            child: _KpiTile(
+              label: 'Current FCR',
+              value: selected.currentFcr > 0
+                  ? selected.currentFcr.toStringAsFixed(2)
+                  : 'N/A',
+              icon: Icons.restaurant_rounded,
+              color: const Color(0xFF16A34A),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: _KpiTile(
+              label: 'Mortality',
+              value: '${selected.mortalityRate.toStringAsFixed(2)}%',
+              icon: Icons.monitor_heart_outlined,
+              color: selected.mortalityRate <= 5
+                  ? const Color(0xFF16A34A)
+                  : const Color(0xFFE8833A),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: _KpiTile(
+              label: 'Net Profit',
+              value: currency.format(selected.netProfitability),
+              icon: Icons.account_balance_wallet_rounded,
+              color: selected.netProfitability >= 0
+                  ? const Color(0xFF16A34A)
+                  : const Color(0xFFDC2626),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: _KpiTile(
+              label: 'Gross Revenue',
+              value: currency.format(selected.grossRevenue),
+              icon: Icons.point_of_sale_rounded,
+              color: const Color(0xFF2563EB),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _KpiTile extends StatelessWidget {
+  final String label;
+  final String value;
+  final IconData icon;
+  final Color color;
+
+  const _KpiTile({
+    required this.label,
+    required this.value,
+    required this.icon,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final border = isDark ? const Color(0xFF253044) : const Color(0xFFE2E8F0);
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: theme.cardColor,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: border),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(icon, color: color, size: 20),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  label,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: theme.colorScheme.onSurfaceVariant,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  value,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: theme.colorScheme.onSurface,
+                    fontSize: 17,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FcrTrendPanel extends StatelessWidget {
+  final BatchPerformanceSnapshot snapshot;
+
+  const _FcrTrendPanel({required this.snapshot});
+
+  @override
+  Widget build(BuildContext context) {
+    final points = snapshot.weeklyFcr;
+    final maxY = points.isEmpty
+        ? 3.0
+        : points.map((p) => p.fcr).reduce((a, b) => a > b ? a : b) * 1.2;
+
+    return _AnalyticsPanel(
+      title: 'FCR Trend Analysis',
+      icon: Icons.show_chart_rounded,
+      child: points.isEmpty
+          ? const _PanelEmptyState('Log feed plus egg or weight records')
+          : LineChart(
+              LineChartData(
+                minY: 0,
+                maxY: maxY <= 0 ? 3.0 : maxY,
+                gridData: FlGridData(
+                  show: true,
+                  drawVerticalLine: false,
+                  getDrawingHorizontalLine: (value) => FlLine(
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.outline.withValues(alpha: 0.35),
+                    strokeWidth: 1,
+                  ),
+                ),
+                borderData: FlBorderData(show: false),
+                lineTouchData: LineTouchData(
+                  enabled: true,
+                  touchTooltipData: LineTouchTooltipData(
+                    getTooltipItems: (spots) {
+                      return spots.map((spot) {
+                        final index = spot.x.toInt() - 1;
+                        final safeIndex = index
+                            .clamp(0, points.length - 1)
+                            .toInt();
+                        final point = points[safeIndex];
+                        return LineTooltipItem(
+                          'Week ${point.week}\nFCR ${point.fcr.toStringAsFixed(3)}\nFeed ${point.feedKg.toStringAsFixed(1)} kg',
+                          const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 11,
+                          ),
+                        );
+                      }).toList();
+                    },
+                  ),
+                ),
+                titlesData: FlTitlesData(
+                  topTitles: const AxisTitles(
+                    sideTitles: SideTitles(showTitles: false),
+                  ),
+                  rightTitles: const AxisTitles(
+                    sideTitles: SideTitles(showTitles: false),
+                  ),
+                  bottomTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      interval: 1,
+                      reservedSize: 30,
+                      getTitlesWidget: (value, meta) {
+                        return SideTitleWidget(
+                          meta: meta,
+                          child: Text(
+                            'W${value.toInt()}',
+                            style: const TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                  leftTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      reservedSize: 42,
+                      getTitlesWidget: (value, meta) {
+                        return SideTitleWidget(
+                          meta: meta,
+                          child: Text(
+                            value.toStringAsFixed(1),
+                            style: const TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ),
+                lineBarsData: [
+                  LineChartBarData(
+                    spots: points
+                        .map(
+                          (point) => FlSpot(point.week.toDouble(), point.fcr),
+                        )
+                        .toList(),
+                    isCurved: true,
+                    color: const Color(0xFF16A34A),
+                    barWidth: 3,
+                    isStrokeCapRound: true,
+                    dotData: const FlDotData(show: true),
+                    belowBarData: BarAreaData(
+                      show: true,
+                      color: const Color(0xFF16A34A).withValues(alpha: 0.08),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+    );
+  }
+}
+
+class _MortalityGaugePanel extends StatelessWidget {
+  final BatchPerformanceSnapshot snapshot;
+
+  const _MortalityGaugePanel({required this.snapshot});
+
+  @override
+  Widget build(BuildContext context) {
+    final rate = snapshot.mortalityRate.clamp(0, 100).toDouble();
+    final healthy = rate <= 5.0;
+    final color = healthy ? const Color(0xFF16A34A) : const Color(0xFFE8833A);
+
+    return _AnalyticsPanel(
+      title: 'Mortality Monitoring',
+      icon: Icons.monitor_heart_outlined,
+      child: Column(
+        children: [
+          Expanded(
+            child: Stack(
               alignment: Alignment.center,
-              child: Container(
-                width: 64,
-                height: 64,
-                decoration: const BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Colors.white10,
+              children: [
+                PieChart(
+                  PieChartData(
+                    startDegreeOffset: 270,
+                    centerSpaceRadius: 58,
+                    sectionsSpace: 2,
+                    sections: [
+                      PieChartSectionData(
+                        value: rate <= 0 ? 0.01 : rate,
+                        color: color,
+                        showTitle: false,
+                        radius: 28,
+                      ),
+                      PieChartSectionData(
+                        value: (100 - rate).clamp(0.01, 100).toDouble(),
+                        color: Theme.of(
+                          context,
+                        ).colorScheme.outline.withValues(alpha: 0.22),
+                        showTitle: false,
+                        radius: 28,
+                      ),
+                    ],
+                  ),
                 ),
-                child: const Icon(
-                  Icons.warning_amber_rounded,
-                  color: Colors.orange,
-                  size: 32,
+                Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      '${snapshot.mortalityRate.toStringAsFixed(2)}%',
+                      style: TextStyle(
+                        color: color,
+                        fontSize: 30,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    Text(
+                      healthy ? 'WITHIN LIMIT' : 'REVIEW NOW',
+                      style: TextStyle(
+                        color: color,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          _MetricLine(
+            label: 'Dead birds logged',
+            value: '${snapshot.totalDeadBirds} of ${snapshot.initialCount}',
+          ),
+          _MetricLine(
+            label: 'Threshold',
+            value: healthy ? '<= 5% success band' : '> 5% warning band',
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FinancialBarsPanel extends StatelessWidget {
+  final BatchPerformanceSnapshot snapshot;
+  final NumberFormat currency;
+
+  const _FinancialBarsPanel({required this.snapshot, required this.currency});
+
+  @override
+  Widget build(BuildContext context) {
+    final maxY =
+        [
+          snapshot.totalCosts,
+          snapshot.grossRevenue,
+        ].reduce((a, b) => a > b ? a : b) *
+        1.25;
+
+    return _AnalyticsPanel(
+      title: 'Financial Comparison',
+      icon: Icons.bar_chart_rounded,
+      child: Column(
+        children: [
+          Expanded(
+            child: BarChart(
+              BarChartData(
+                maxY: maxY <= 0 ? 100 : maxY,
+                borderData: FlBorderData(show: false),
+                gridData: FlGridData(
+                  show: true,
+                  drawVerticalLine: false,
+                  getDrawingHorizontalLine: (value) => FlLine(
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.outline.withValues(alpha: 0.35),
+                    strokeWidth: 1,
+                  ),
+                ),
+                barTouchData: BarTouchData(
+                  enabled: true,
+                  touchTooltipData: BarTouchTooltipData(
+                    getTooltipItem: (group, groupIndex, rod, rodIndex) {
+                      final label = group.x == 0 ? 'Total Costs' : 'Revenue';
+                      return BarTooltipItem(
+                        '$label\n${currency.format(rod.toY)}',
+                        const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w900,
+                          fontSize: 11,
+                        ),
+                      );
+                    },
+                  ),
+                ),
+                titlesData: FlTitlesData(
+                  topTitles: const AxisTitles(
+                    sideTitles: SideTitles(showTitles: false),
+                  ),
+                  rightTitles: const AxisTitles(
+                    sideTitles: SideTitles(showTitles: false),
+                  ),
+                  leftTitles: const AxisTitles(
+                    sideTitles: SideTitles(showTitles: false),
+                  ),
+                  bottomTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      reservedSize: 30,
+                      getTitlesWidget: (value, meta) {
+                        return SideTitleWidget(
+                          meta: meta,
+                          child: Text(
+                            value.toInt() == 0 ? 'Costs' : 'Revenue',
+                            style: const TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ),
+                barGroups: [
+                  BarChartGroupData(
+                    x: 0,
+                    barRods: [
+                      BarChartRodData(
+                        toY: snapshot.totalCosts,
+                        color: const Color(0xFFDC2626),
+                        width: 38,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                    ],
+                  ),
+                  BarChartGroupData(
+                    x: 1,
+                    barRods: [
+                      BarChartRodData(
+                        toY: snapshot.grossRevenue,
+                        color: const Color(0xFF2563EB),
+                        width: 38,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+          _MetricLine(
+            label: 'Direct expenses',
+            value: currency.format(snapshot.directExpenses),
+          ),
+          _MetricLine(
+            label: 'Allocated shared expenses',
+            value: currency.format(snapshot.allocatedSharedExpenses),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AnalyticsPanel extends StatelessWidget {
+  final String title;
+  final IconData icon;
+  final Widget child;
+
+  const _AnalyticsPanel({
+    required this.title,
+    required this.icon,
+    required this.child,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final border = isDark ? const Color(0xFF253044) : const Color(0xFFE2E8F0);
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: theme.cardColor,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 18, color: const Color(0xFF16A34A)),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  title,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: theme.colorScheme.onSurface,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w900,
+                  ),
                 ),
               ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Expanded(child: child),
+        ],
+      ),
+    );
+  }
+}
+
+class _MetricLine extends StatelessWidget {
+  final String label;
+  final String value;
+
+  const _MetricLine({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              color: theme.colorScheme.onSurfaceVariant,
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
             ),
-            const SizedBox(height: 24),
-            const Text(
-              'Intelligence Feed Empty',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w900,
+          ),
+          Text(
+            value,
+            style: TextStyle(
+              color: theme.colorScheme.onSurface,
+              fontSize: 12,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _BatchComparisonTable extends StatelessWidget {
+  final List<BatchPerformanceSnapshot> snapshots;
+  final String selectedBatchId;
+  final NumberFormat currency;
+  final Color border;
+
+  const _BatchComparisonTable({
+    required this.snapshots,
+    required this.selectedBatchId,
+    required this.currency,
+    required this.border,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final active = snapshots.where((s) => s.status == 'active').toList();
+    final rows = active.isEmpty ? snapshots : active;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: theme.cardColor,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: border),
+      ),
+      child: Column(
+        children: [
+          Container(
+            height: 36,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            decoration: BoxDecoration(
+              color: const Color(0xFF1E3A5F),
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(8),
               ),
+              border: Border(bottom: BorderSide(color: border)),
             ),
-            const SizedBox(height: 8),
-            Text(
-              'Select and unhide units from the sidebar to visualize trends.',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 13,
-                color: isDark ? Colors.white54 : const Color(0xFF64748B),
-                fontWeight: FontWeight.w600,
-              ),
+            child: const Row(
+              children: [
+                Expanded(flex: 3, child: _TableHeader('Batch')),
+                Expanded(child: _TableHeader('FCR')),
+                Expanded(child: _TableHeader('Mortality')),
+                Expanded(flex: 2, child: _TableHeader('Revenue')),
+                Expanded(flex: 2, child: _TableHeader('Costs')),
+                Expanded(flex: 2, child: _TableHeader('Net')),
+              ],
             ),
-          ],
+          ),
+          Expanded(
+            child: rows.isEmpty
+                ? const _PanelEmptyState('No batch data available')
+                : ListView.builder(
+                    itemCount: rows.length,
+                    itemBuilder: (context, index) {
+                      final row = rows[index];
+                      final selected = row.batchId == selectedBatchId;
+                      final color = selected
+                          ? const Color(0xFF16A34A).withValues(alpha: 0.08)
+                          : Colors.transparent;
+                      return Container(
+                        height: 38,
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        color: color,
+                        child: Row(
+                          children: [
+                            Expanded(
+                              flex: 3,
+                              child: Text(
+                                row.batchName,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: theme.colorScheme.onSurface,
+                                  fontSize: 12,
+                                  fontWeight: selected
+                                      ? FontWeight.w900
+                                      : FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                            Expanded(
+                              child: _TableCell(
+                                row.currentFcr > 0
+                                    ? row.currentFcr.toStringAsFixed(2)
+                                    : 'N/A',
+                              ),
+                            ),
+                            Expanded(
+                              child: _TableCell(
+                                '${row.mortalityRate.toStringAsFixed(1)}%',
+                              ),
+                            ),
+                            Expanded(
+                              flex: 2,
+                              child: _TableCell(
+                                currency.format(row.grossRevenue),
+                              ),
+                            ),
+                            Expanded(
+                              flex: 2,
+                              child: _TableCell(
+                                currency.format(row.totalCosts),
+                              ),
+                            ),
+                            Expanded(
+                              flex: 2,
+                              child: _TableCell(
+                                currency.format(row.netProfitability),
+                                color: row.netProfitability >= 0
+                                    ? const Color(0xFF16A34A)
+                                    : const Color(0xFFDC2626),
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TableHeader extends StatelessWidget {
+  final String label;
+
+  const _TableHeader(this.label);
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      label,
+      overflow: TextOverflow.ellipsis,
+      style: const TextStyle(
+        color: Colors.white,
+        fontSize: 11,
+        fontWeight: FontWeight.w900,
+      ),
+    );
+  }
+}
+
+class _TableCell extends StatelessWidget {
+  final String value;
+  final Color? color;
+
+  const _TableCell(this.value, {this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      value,
+      overflow: TextOverflow.ellipsis,
+      style: TextStyle(
+        color: color ?? Theme.of(context).colorScheme.onSurface,
+        fontSize: 12,
+        fontWeight: FontWeight.w800,
+      ),
+    );
+  }
+}
+
+class _PanelEmptyState extends StatelessWidget {
+  final String text;
+
+  const _PanelEmptyState(this.text);
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Text(
+        text,
+        textAlign: TextAlign.center,
+        style: TextStyle(
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+          fontSize: 12,
+          fontWeight: FontWeight.w700,
         ),
       ),
     );
   }
+}
 
-  Widget _buildLineChart(List<Batch> batches, bool isDark) {
-    final subColor = isDark ? Colors.white30 : Colors.grey.shade300;
+class _EmptyAnalyticsState extends StatelessWidget {
+  final VoidCallback onRefresh;
 
-    // Compile line list
-    final List<LineChartBarData> lines = [];
+  const _EmptyAnalyticsState({required this.onRefresh});
 
-    for (int i = 0; i < batches.length; i++) {
-      final batch = batches[i];
-      final lineColor = _lineColors[i % _lineColors.length];
-
-      // Simulate robust, premium lines with smooth trends depending on Flock age
-      final age = DateTime.now().difference(batch.arrivalDate).inDays;
-      final totalWeeks = (age / 7).clamp(2.0, 8.0).toInt();
-
-      final List<FlSpot> spots = [];
-      for (int week = 1; week <= totalWeeks; week++) {
-        double val = 0.0;
-
-        if (_activeTab == 'FCR') {
-          // Normal broiler FCR starts high at week 1 (~2.2) and settles into 1.4-1.6 efficiency
-          val = (1.9 - (week * 0.08) + (0.01 * (batch.id % 3))).clamp(1.4, 2.3);
-        } else if (_activeTab == 'MORTALITY') {
-          // Staggered cumulative mortality
-          val = (0.2 + (week * 0.15) + (0.05 * (batch.id % 4))).clamp(0.0, 8.0);
-        } else {
-          // EPEF growth curve: starts low, climbs to 320 - 420 range
-          val = (260.0 + (week * 20.0) + (10.0 * (batch.id % 5))).clamp(200.0, 450.0);
-        }
-
-        spots.add(FlSpot(week.toDouble(), val));
-      }
-
-      lines.add(
-        LineChartBarData(
-          spots: spots,
-          isCurved: true,
-          color: lineColor,
-          barWidth: 3.5,
-          dotData: FlDotData(
-            show: true,
-            getDotPainter: (spot, percent, barData, index) => FlDotCirclePainter(
-              radius: 4,
-              color: lineColor,
-              strokeWidth: 2,
-              strokeColor: Colors.white,
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.analytics_outlined,
+            size: 42,
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'No local batch analytics available',
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurface,
+              fontSize: 16,
+              fontWeight: FontWeight.w900,
             ),
           ),
-          belowBarData: BarAreaData(
-            show: true,
-            color: lineColor.withValues(alpha: 0.03),
+          const SizedBox(height: 14),
+          OutlinedButton.icon(
+            onPressed: onRefresh,
+            icon: const Icon(Icons.refresh_rounded),
+            label: const Text('REFRESH'),
           ),
-        ),
-      );
-    }
-
-    // Dynamic Industry Standard Reference Line
-    if (_showBenchmark) {
-      double targetVal = 1.5;
-      if (_activeTab == 'FCR') {
-        targetVal = 1.5;
-      } else if (_activeTab == 'MORTALITY') {
-        targetVal = 1.8;
-      } else {
-        targetVal = 350.0;
-      }
-
-      // Span target from week 1 to max weeks
-      final int maxWeeks = lines.fold<int>(4, (m, line) => line.spots.length > m ? line.spots.length : m);
-      final List<FlSpot> targetSpots = List.generate(
-        maxWeeks,
-        (w) => FlSpot((w + 1).toDouble(), targetVal),
-      );
-
-      lines.add(
-        LineChartBarData(
-          spots: targetSpots,
-          isCurved: false,
-          color: Colors.orange.withValues(alpha: 0.5),
-          barWidth: 2,
-          isStrokeCapRound: true,
-          dashArray: [6, 4],
-          dotData: const FlDotData(show: false),
-        ),
-      );
-    }
-
-    return LineChart(
-      LineChartData(
-        gridData: FlGridData(
-          show: true,
-          drawVerticalLine: true,
-          drawHorizontalLine: true,
-          horizontalInterval: _activeTab == 'EPEF' ? 50 : 0.5,
-          verticalInterval: 1,
-          getDrawingHorizontalLine: (value) => FlLine(
-            color: subColor,
-            strokeWidth: 0.8,
-          ),
-          getDrawingVerticalLine: (value) => FlLine(
-            color: subColor,
-            strokeWidth: 0.8,
-          ),
-        ),
-        titlesData: FlTitlesData(
-          show: true,
-          rightTitles: const AxisTitles(
-            sideTitles: SideTitles(showTitles: false),
-          ),
-          topTitles: const AxisTitles(
-            sideTitles: SideTitles(showTitles: false),
-          ),
-          bottomTitles: AxisTitles(
-            sideTitles: SideTitles(
-              showTitles: true,
-              reservedSize: 32,
-              interval: 1,
-              getTitlesWidget: (value, meta) {
-                return SideTitleWidget(
-                  meta: meta,
-                  child: Text(
-                    'Week ${value.toInt()}',
-                    style: TextStyle(
-                      color: isDark ? Colors.white38 : const Color(0xFF64748B),
-                      fontSize: 10,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-          leftTitles: AxisTitles(
-            sideTitles: SideTitles(
-              showTitles: true,
-              reservedSize: 48,
-              interval: _activeTab == 'EPEF' ? 50 : 0.5,
-              getTitlesWidget: (value, meta) {
-                String suffix = '';
-                if (_activeTab == 'MORTALITY') suffix = '%';
-                return SideTitleWidget(
-                  meta: meta,
-                  child: Text(
-                    '${value.toStringAsFixed(_activeTab == 'EPEF' ? 0 : 1)}$suffix',
-                    style: TextStyle(
-                      color: isDark ? Colors.white38 : const Color(0xFF64748B),
-                      fontSize: 10,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-        ),
-        borderData: FlBorderData(show: false),
-        lineBarsData: lines,
+        ],
       ),
     );
   }
