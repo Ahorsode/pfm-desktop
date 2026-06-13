@@ -8,6 +8,7 @@ import '../data/local_db.dart';
 import '../utils/farm_utils.dart';
 import '../utils/id_utils.dart';
 import '../utils/inventory_constants.dart';
+import 'feed_analytics_screen.dart';
 
 class FeedManagementScreen extends StatefulWidget {
   const FeedManagementScreen({super.key});
@@ -74,7 +75,8 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
                                       title: 'Active Formulations',
                                       icon: Icons.layers_rounded,
                                       iconColor: Colors.amber,
-                                      onTap: () => _showActiveFormulationsDialog(db),
+                                      onTap: () =>
+                                          _showActiveFormulationsDialog(db),
                                       isDark: isDark,
                                     ),
                                   ),
@@ -84,7 +86,8 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
                                       title: 'Inventory Check',
                                       icon: Icons.widgets_outlined,
                                       iconColor: const Color(0xFF0D9488),
-                                      onTap: () => _showInventoryCheckDialog(db),
+                                      onTap: () =>
+                                          _showInventoryCheckDialog(db),
                                       isDark: isDark,
                                     ),
                                   ),
@@ -148,19 +151,66 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
         Row(
           mainAxisSize: MainAxisSize.min,
           children: [
+            OutlinedButton.icon(
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const FeedAnalyticsScreen()),
+              ),
+              icon: const Icon(
+                Icons.analytics_rounded,
+                color: Color(0xFF3B82F6),
+                size: 18,
+              ),
+              label: const Text(
+                'ANALYTICS',
+                style: TextStyle(
+                  color: Color(0xFF3B82F6),
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 0.5,
+                ),
+              ),
+              style: OutlinedButton.styleFrom(
+                side: const BorderSide(color: Color(0xFF3B82F6), width: 1.5),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 20,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                backgroundColor: const Color(
+                  0xFF3B82F6,
+                ).withValues(alpha: 0.05),
+              ),
+            ),
+            const SizedBox(width: 16),
             // LOG FEEDING button
             OutlinedButton.icon(
               onPressed: () => _showLogFeedingDialog(db),
-              icon: const Icon(Icons.dining_outlined, color: Color(0xFF10B981), size: 18),
+              icon: const Icon(
+                Icons.dining_outlined,
+                color: Color(0xFF10B981),
+                size: 18,
+              ),
               label: const Text(
                 'LOG FEEDING',
-                style: TextStyle(color: Color(0xFF10B981), fontWeight: FontWeight.bold, letterSpacing: 0.5),
+                style: TextStyle(
+                  color: Color(0xFF10B981),
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 0.5,
+                ),
               ),
               style: OutlinedButton.styleFrom(
                 side: const BorderSide(color: Color(0xFF10B981), width: 1.5),
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                backgroundColor: const Color(0xFF10B981).withValues(alpha: 0.05),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 20,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                backgroundColor: const Color(
+                  0xFF10B981,
+                ).withValues(alpha: 0.05),
               ),
             ),
             const SizedBox(width: 16),
@@ -170,12 +220,21 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
               icon: const Icon(Icons.add, color: Colors.white, size: 18),
               label: const Text(
                 'CREATE FORMULATION',
-                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, letterSpacing: 0.5),
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 0.5,
+                ),
               ),
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF10B981),
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 20,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
                 elevation: 4,
                 shadowColor: const Color(0xFF10B981).withValues(alpha: 0.3),
               ),
@@ -188,14 +247,22 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
 
   // --- CONSUMPTION EFFICIENCY (FCR) CARD ---
   Widget _buildFcrCard(AppDatabase db, bool isDark) {
-    final cardBg = isDark ? const Color(0xFF0F172A).withValues(alpha: 0.7) : Colors.white;
-    final borderColor = isDark ? Colors.white.withValues(alpha: 0.05) : Colors.grey.shade200;
+    final cardBg = isDark
+        ? const Color(0xFF0F172A).withValues(alpha: 0.7)
+        : Colors.white;
+    final borderColor = isDark
+        ? Colors.white.withValues(alpha: 0.05)
+        : Colors.grey.shade200;
     final titleColor = isDark ? Colors.white70 : const Color(0xFF334155);
     final textStyleColor = isDark ? Colors.white : const Color(0xFF0F172A);
     final subtitleColor = isDark ? Colors.white38 : Colors.grey.shade500;
     final warningTextColor = isDark ? Colors.white60 : const Color(0xFF475569);
-    final warningCardBg = isDark ? Colors.green.withValues(alpha: 0.02) : const Color(0xFFF0FDF4);
-    final shadowColor = isDark ? Colors.transparent : Colors.black.withValues(alpha: 0.02);
+    final warningCardBg = isDark
+        ? Colors.green.withValues(alpha: 0.02)
+        : const Color(0xFFF0FDF4);
+    final shadowColor = isDark
+        ? Colors.transparent
+        : Colors.black.withValues(alpha: 0.02);
 
     return StreamBuilder<List<FeedingLog>>(
       stream: db.select(db.feedingLogs).watch(),
@@ -209,12 +276,19 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
             // Calculate active FCR
             double? averageFcr;
             if (feedings.isNotEmpty && weights.isNotEmpty) {
-              final totalFeed = feedings.fold<double>(0.0, (sum, f) => sum + f.amountConsumed);
+              final totalFeed = feedings.fold<double>(
+                0.0,
+                (sum, f) => sum + f.amountConsumed,
+              );
               // Get average weight in kg
-              final totalWeight = weights.fold<double>(0.0, (sum, w) => sum + w.averageWeight);
+              final totalWeight = weights.fold<double>(
+                0.0,
+                (sum, w) => sum + w.averageWeight,
+              );
               final avgWeightKg = (totalWeight / weights.length);
               if (avgWeightKg > 0) {
-                averageFcr = totalFeed / (avgWeightKg * 100); // scaled estimation
+                averageFcr =
+                    totalFeed / (avgWeightKg * 100); // scaled estimation
               }
             }
 
@@ -249,7 +323,13 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
                       children: [
                         Row(
                           children: [
-                            Icon(Icons.trending_up, color: isDark ? Colors.green.shade400 : const Color(0xFF16A34A), size: 20),
+                            Icon(
+                              Icons.trending_up,
+                              color: isDark
+                                  ? Colors.green.shade400
+                                  : const Color(0xFF16A34A),
+                              size: 20,
+                            ),
                             const SizedBox(width: 8),
                             Text(
                               'CONSUMPTION EFFICIENCY (FCR)',
@@ -266,15 +346,27 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
                         if (averageFcr == null) ...[
                           Center(
                             child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 24,
+                                vertical: 32,
+                              ),
                               decoration: BoxDecoration(
-                                border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.3), style: BorderStyle.solid),
+                                border: Border.all(
+                                  color: const Color(
+                                    0xFF10B981,
+                                  ).withValues(alpha: 0.3),
+                                  style: BorderStyle.solid,
+                                ),
                                 borderRadius: BorderRadius.circular(16),
                                 color: warningCardBg,
                               ),
                               child: Text(
                                 'No efficiency data available. Log weights and feedings.',
-                                style: TextStyle(color: warningTextColor, fontSize: 16, fontWeight: FontWeight.w600),
+                                style: TextStyle(
+                                  color: warningTextColor,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                ),
                               ),
                             ),
                           ),
@@ -284,20 +376,34 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
                             children: [
                               Text(
                                 averageFcr.toStringAsFixed(2),
-                                style: TextStyle(fontSize: 64, fontWeight: FontWeight.w900, color: textStyleColor, height: 1),
+                                style: TextStyle(
+                                  fontSize: 64,
+                                  fontWeight: FontWeight.w900,
+                                  color: textStyleColor,
+                                  height: 1,
+                                ),
                               ),
                               const SizedBox(width: 12),
                               Padding(
                                 padding: const EdgeInsets.only(bottom: 12.0),
                                 child: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 4,
+                                  ),
                                   decoration: BoxDecoration(
-                                    color: const Color(0xFF10B981).withValues(alpha: 0.2),
+                                    color: const Color(
+                                      0xFF10B981,
+                                    ).withValues(alpha: 0.2),
                                     borderRadius: BorderRadius.circular(6),
                                   ),
                                   child: const Text(
                                     'OPTIMAL',
-                                    style: TextStyle(color: Color(0xFF10B981), fontSize: 11, fontWeight: FontWeight.w900),
+                                    style: TextStyle(
+                                      color: Color(0xFF10B981),
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w900,
+                                    ),
                                   ),
                                 ),
                               ),
@@ -306,7 +412,10 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
                           const SizedBox(height: 8),
                           Text(
                             'Estimated feed conversion efficiency based on current flock weight records and active feeding logs.',
-                            style: TextStyle(color: subtitleColor, fontSize: 12),
+                            style: TextStyle(
+                              color: subtitleColor,
+                              fontSize: 12,
+                            ),
                           ),
                         ],
                         const Spacer(),
@@ -330,11 +439,17 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
     required VoidCallback onTap,
     required bool isDark,
   }) {
-    final cardBg = isDark ? const Color(0xFF0F172A).withValues(alpha: 0.7) : Colors.white;
-    final borderColor = isDark ? Colors.white.withValues(alpha: 0.05) : Colors.grey.shade200;
+    final cardBg = isDark
+        ? const Color(0xFF0F172A).withValues(alpha: 0.7)
+        : Colors.white;
+    final borderColor = isDark
+        ? Colors.white.withValues(alpha: 0.05)
+        : Colors.grey.shade200;
     final textColor = isDark ? Colors.white : const Color(0xFF0F172A);
     final arrowColor = isDark ? Colors.white30 : Colors.grey.shade400;
-    final shadowColor = isDark ? Colors.transparent : Colors.black.withValues(alpha: 0.02);
+    final shadowColor = isDark
+        ? Colors.transparent
+        : Colors.black.withValues(alpha: 0.02);
 
     return InkWell(
       onTap: onTap,
@@ -385,14 +500,20 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
 
   // --- INGREDIENT USAGE CARD ---
   Widget _buildIngredientUsageCard(AppDatabase db, bool isDark) {
-    final cardBg = isDark ? const Color(0xFF0F172A).withValues(alpha: 0.7) : Colors.white;
-    final borderColor = isDark ? Colors.white.withValues(alpha: 0.05) : Colors.grey.shade200;
+    final cardBg = isDark
+        ? const Color(0xFF0F172A).withValues(alpha: 0.7)
+        : Colors.white;
+    final borderColor = isDark
+        ? Colors.white.withValues(alpha: 0.05)
+        : Colors.grey.shade200;
     final titleColor = isDark ? Colors.white : const Color(0xFF0F172A);
     final labelColor = isDark ? Colors.white70 : const Color(0xFF334155);
     final valueColor = isDark ? Colors.white : const Color(0xFF0F172A);
     final emptyTextColor = isDark ? Colors.white38 : Colors.grey.shade500;
     final progressBg = isDark ? Colors.white10 : Colors.grey.shade200;
-    final shadowColor = isDark ? Colors.transparent : Colors.black.withValues(alpha: 0.02);
+    final shadowColor = isDark
+        ? Colors.transparent
+        : Colors.black.withValues(alpha: 0.02);
 
     return StreamBuilder<List<FeedingLog>>(
       stream: db.select(db.feedingLogs).watch(),
@@ -408,14 +529,29 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
 
             for (var log in logs) {
               if (log.formulationId != null) {
-                final form = formulations.firstWhere((f) => f.id == log.formulationId, orElse: () => const FeedFormulation(id: '', farmId: '', name: '', isActive: false, synced: false));
+                final form = formulations.firstWhere(
+                  (f) => f.id == log.formulationId,
+                  orElse: () => const FeedFormulation(
+                    id: '',
+                    farmId: '',
+                    name: '',
+                    isActive: false,
+                    synced: false,
+                  ),
+                );
                 if (form.id.isNotEmpty && form.ingredientsJson != null) {
                   try {
-                    final Map<String, dynamic> ratios = jsonDecode(form.ingredientsJson!);
+                    final Map<String, dynamic> ratios = jsonDecode(
+                      form.ingredientsJson!,
+                    );
                     ratios.forEach((ingredient, percentage) {
-                      final parsedPercentage = double.tryParse(percentage.toString()) ?? 0.0;
-                      final ingredientUsed = log.amountConsumed * (parsedPercentage / 100.0);
-                      ingredientTotals[ingredient] = (ingredientTotals[ingredient] ?? 0.0) + ingredientUsed;
+                      final parsedPercentage =
+                          double.tryParse(percentage.toString()) ?? 0.0;
+                      final ingredientUsed =
+                          log.amountConsumed * (parsedPercentage / 100.0);
+                      ingredientTotals[ingredient] =
+                          (ingredientTotals[ingredient] ?? 0.0) +
+                          ingredientUsed;
                     });
                   } catch (_) {}
                 }
@@ -459,7 +595,11 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
                         child: Text(
                           'No ingredients used yet.\nLog feedings with active formulas.',
                           textAlign: TextAlign.center,
-                          style: TextStyle(color: emptyTextColor, fontSize: 13, height: 1.5),
+                          style: TextStyle(
+                            color: emptyTextColor,
+                            fontSize: 13,
+                            height: 1.5,
+                          ),
                         ),
                       ),
                     ),
@@ -473,15 +613,24 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
                                   children: [
                                     Text(
                                       entry.key,
-                                      style: TextStyle(color: labelColor, fontWeight: FontWeight.w600, fontSize: 14),
+                                      style: TextStyle(
+                                        color: labelColor,
+                                        fontWeight: FontWeight.w600,
+                                        fontSize: 14,
+                                      ),
                                     ),
                                     Text(
                                       '${entry.value.toStringAsFixed(1)} kg',
-                                      style: TextStyle(color: valueColor, fontWeight: FontWeight.bold, fontSize: 14),
+                                      style: TextStyle(
+                                        color: valueColor,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 14,
+                                      ),
                                     ),
                                   ],
                                 ),
@@ -489,9 +638,16 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
                                 ClipRRect(
                                   borderRadius: BorderRadius.circular(4),
                                   child: LinearProgressIndicator(
-                                    value: (entry.value / 1000).clamp(0.0, 1.0), // dynamic scaling
+                                    value: (entry.value / 1000).clamp(
+                                      0.0,
+                                      1.0,
+                                    ), // dynamic scaling
                                     backgroundColor: progressBg,
-                                    valueColor: AlwaysStoppedAnimation<Color>(isDark ? Colors.green.shade400 : const Color(0xFF16A34A)),
+                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                      isDark
+                                          ? Colors.green.shade400
+                                          : const Color(0xFF16A34A),
+                                    ),
                                     minHeight: 6,
                                   ),
                                 ),
@@ -527,7 +683,9 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
           builder: (context, setDialogState) {
             return Dialog(
               backgroundColor: isDark ? const Color(0xFF0F172A) : Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
               child: Container(
                 width: 500,
                 padding: const EdgeInsets.all(32),
@@ -543,7 +701,9 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
                           style: TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.w900,
-                            color: isDark ? Colors.white : const Color(0xFF0F172A),
+                            color: isDark
+                                ? Colors.white
+                                : const Color(0xFF0F172A),
                           ),
                         ),
                         IconButton(
@@ -555,61 +715,149 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
                     const SizedBox(height: 24),
 
                     // Batch Dropdown
-                    Text('Select Batch', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: isDark ? Colors.white70 : const Color(0xFF475569))),
+                    Text(
+                      'Select Batch',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12,
+                        color: isDark
+                            ? Colors.white70
+                            : const Color(0xFF475569),
+                      ),
+                    ),
                     const SizedBox(height: 8),
                     StreamBuilder<List<Batch>>(
-                      stream: (db.select(db.batches)..where((t) => t.status.equals('active'))).watch(),
+                      stream: (db.select(
+                        db.batches,
+                      )..where((t) => t.status.equals('active'))).watch(),
                       builder: (context, snapshot) {
                         final list = snapshot.data ?? [];
                         return DropdownButtonFormField<String>(
-                          dropdownColor: isDark ? const Color(0xFF0F172A) : Colors.white,
-                          style: TextStyle(color: isDark ? Colors.white : Colors.black87),
-                          items: list.map((b) => DropdownMenuItem(value: b.id, child: Text(b.batchName))).toList(),
-                          onChanged: (val) => setDialogState(() => selectedBatch = val),
-                          decoration: _dialogInputDecoration('Select Layer/Broiler flock', isDark),
+                          dropdownColor: isDark
+                              ? const Color(0xFF0F172A)
+                              : Colors.white,
+                          style: TextStyle(
+                            color: isDark ? Colors.white : Colors.black87,
+                          ),
+                          items: list
+                              .map(
+                                (b) => DropdownMenuItem(
+                                  value: b.id,
+                                  child: Text(b.batchName),
+                                ),
+                              )
+                              .toList(),
+                          onChanged: (val) =>
+                              setDialogState(() => selectedBatch = val),
+                          decoration: _dialogInputDecoration(
+                            'Select Layer/Broiler flock',
+                            isDark,
+                          ),
                         );
                       },
                     ),
                     const SizedBox(height: 16),
 
                     // Feed Type Dropdown
-                    Text('Feed Type', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: isDark ? Colors.white70 : const Color(0xFF475569))),
+                    Text(
+                      'Feed Type',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12,
+                        color: isDark
+                            ? Colors.white70
+                            : const Color(0xFF475569),
+                      ),
+                    ),
                     const SizedBox(height: 8),
                     StreamBuilder<List<InventoryItem>>(
-                      stream: (db.select(db.inventory)..where((t) => t.category.equals(kFeedInventoryCategory))).watch(),
+                      stream:
+                          (db.select(db.inventory)..where(
+                                (t) =>
+                                    t.category.equals(kFeedInventoryCategory),
+                              ))
+                              .watch(),
                       builder: (context, snapshot) {
                         final list = snapshot.data ?? [];
                         return DropdownButtonFormField<String>(
-                          dropdownColor: isDark ? const Color(0xFF0F172A) : Colors.white,
-                          style: TextStyle(color: isDark ? Colors.white : Colors.black87),
-                          items: list.map((f) => DropdownMenuItem(value: f.id, child: Text(f.itemName))).toList(),
-                          onChanged: (val) => setDialogState(() => selectedFeedType = val),
-                          decoration: _dialogInputDecoration('Select raw feed ingredient', isDark),
+                          dropdownColor: isDark
+                              ? const Color(0xFF0F172A)
+                              : Colors.white,
+                          style: TextStyle(
+                            color: isDark ? Colors.white : Colors.black87,
+                          ),
+                          items: list
+                              .map(
+                                (f) => DropdownMenuItem(
+                                  value: f.id,
+                                  child: Text(f.itemName),
+                                ),
+                              )
+                              .toList(),
+                          onChanged: (val) =>
+                              setDialogState(() => selectedFeedType = val),
+                          decoration: _dialogInputDecoration(
+                            'Select raw feed ingredient',
+                            isDark,
+                          ),
                         );
                       },
                     ),
                     const SizedBox(height: 16),
 
                     // Active Formulation Dropdown
-                    Text('Active Formulation', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: isDark ? Colors.white70 : const Color(0xFF475569))),
+                    Text(
+                      'Active Formulation',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12,
+                        color: isDark
+                            ? Colors.white70
+                            : const Color(0xFF475569),
+                      ),
+                    ),
                     const SizedBox(height: 8),
                     StreamBuilder<List<FeedFormulation>>(
                       stream: db.select(db.feedFormulations).watch(),
                       builder: (context, snapshot) {
                         final list = snapshot.data ?? [];
                         return DropdownButtonFormField<String>(
-                          dropdownColor: isDark ? const Color(0xFF0F172A) : Colors.white,
-                          style: TextStyle(color: isDark ? Colors.white : Colors.black87),
-                          items: list.map((f) => DropdownMenuItem(value: f.id, child: Text(f.name))).toList(),
-                          onChanged: (val) => setDialogState(() => selectedFormulation = val),
-                          decoration: _dialogInputDecoration('Select feed formula split', isDark),
+                          dropdownColor: isDark
+                              ? const Color(0xFF0F172A)
+                              : Colors.white,
+                          style: TextStyle(
+                            color: isDark ? Colors.white : Colors.black87,
+                          ),
+                          items: list
+                              .map(
+                                (f) => DropdownMenuItem(
+                                  value: f.id,
+                                  child: Text(f.name),
+                                ),
+                              )
+                              .toList(),
+                          onChanged: (val) =>
+                              setDialogState(() => selectedFormulation = val),
+                          decoration: _dialogInputDecoration(
+                            'Select feed formula split',
+                            isDark,
+                          ),
                         );
                       },
                     ),
                     const SizedBox(height: 16),
 
                     // Log Date picker field
-                    Text('Log Date', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: isDark ? Colors.white70 : const Color(0xFF475569))),
+                    Text(
+                      'Log Date',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12,
+                        color: isDark
+                            ? Colors.white70
+                            : const Color(0xFF475569),
+                      ),
+                    ),
                     const SizedBox(height: 8),
                     InkWell(
                       onTap: () async {
@@ -617,7 +865,9 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
                           context: context,
                           initialDate: selectedDate,
                           firstDate: DateTime(2020),
-                          lastDate: DateTime.now().add(const Duration(days: 365)),
+                          lastDate: DateTime.now().add(
+                            const Duration(days: 365),
+                          ),
                           builder: (context, child) {
                             return Theme(
                               data: isDark
@@ -646,20 +896,36 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
                         }
                       },
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 14,
+                        ),
                         decoration: BoxDecoration(
-                          color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.grey.shade100,
+                          color: isDark
+                              ? Colors.white.withValues(alpha: 0.05)
+                              : Colors.grey.shade100,
                           borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.grey.shade300),
+                          border: Border.all(
+                            color: isDark
+                                ? Colors.white.withValues(alpha: 0.05)
+                                : Colors.grey.shade300,
+                          ),
                         ),
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             Text(
                               DateFormat('dd MMMM yyyy').format(selectedDate),
-                              style: TextStyle(color: isDark ? Colors.white : Colors.black87, fontSize: 13),
+                              style: TextStyle(
+                                color: isDark ? Colors.white : Colors.black87,
+                                fontSize: 13,
+                              ),
                             ),
-                            const Icon(Icons.calendar_today_rounded, color: Color(0xFF10B981), size: 18),
+                            const Icon(
+                              Icons.calendar_today_rounded,
+                              color: Color(0xFF10B981),
+                              size: 18,
+                            ),
                           ],
                         ),
                       ),
@@ -667,14 +933,34 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
                     const SizedBox(height: 16),
 
                     // Feed Weight Input
-                    Text('Amount Consumed (KG)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: isDark ? Colors.white70 : const Color(0xFF475569))),
+                    Text(
+                      'Amount Consumed (KG)',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12,
+                        color: isDark
+                            ? Colors.white70
+                            : const Color(0xFF475569),
+                      ),
+                    ),
                     const SizedBox(height: 8),
                     TextField(
                       controller: amountCtrl,
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                      inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*'))],
-                      style: TextStyle(color: isDark ? Colors.white : Colors.black87),
-                      decoration: _dialogInputDecoration('Weight in kilograms', isDark),
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      inputFormatters: [
+                        FilteringTextInputFormatter.allow(
+                          RegExp(r'^\d*\.?\d*'),
+                        ),
+                      ],
+                      style: TextStyle(
+                        color: isDark ? Colors.white : Colors.black87,
+                      ),
+                      decoration: _dialogInputDecoration(
+                        'Weight in kilograms',
+                        isDark,
+                      ),
                     ),
                     const SizedBox(height: 24),
 
@@ -684,12 +970,19 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
                       height: 52,
                       child: ElevatedButton(
                         onPressed: () async {
-                          final amount = double.tryParse(amountCtrl.text) ?? 0.0;
-                          if (selectedBatch == null || selectedFeedType == null || amount <= 0) {
-                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                              content: Text('Please select batch, feed type, and enter amount'),
-                              backgroundColor: Colors.orange,
-                            ));
+                          final amount =
+                              double.tryParse(amountCtrl.text) ?? 0.0;
+                          if (selectedBatch == null ||
+                              selectedFeedType == null ||
+                              amount <= 0) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                  'Please select batch, feed type, and enter amount',
+                                ),
+                                backgroundColor: Colors.orange,
+                              ),
+                            );
                             return;
                           }
 
@@ -700,52 +993,86 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
                           try {
                             await db.transaction(() async {
                               // 1. Insert Feeding log record
-                              await db.into(db.feedingLogs).insert(FeedingLogsCompanion.insert(
-                                id: newLocalId(),
-                                farmId: farmId,
-                                batchId: Value(selectedBatch),
-                                feedTypeId: Value(selectedFeedType),
-                                formulationId: Value(selectedFormulation),
-                                amountConsumed: amount,
-                                logDate: selectedDate,
-                                userId: Value(workerId),
-                                synced: const Value(false),
-                              ));
+                              await db
+                                  .into(db.feedingLogs)
+                                  .insert(
+                                    FeedingLogsCompanion.insert(
+                                      id: newLocalId(),
+                                      farmId: farmId,
+                                      batchId: Value(selectedBatch),
+                                      feedTypeId: Value(selectedFeedType),
+                                      formulationId: Value(selectedFormulation),
+                                      amountConsumed: amount,
+                                      logDate: selectedDate,
+                                      userId: Value(workerId),
+                                      synced: const Value(false),
+                                    ),
+                                  );
 
                               // 2. Decrement feed ingredient stock (cloud: inventory.category = FEED)
-                              final currentFeedList = await (db.select(db.inventory)..where((t) => t.id.equals(selectedFeedType!) & t.category.equals(kFeedInventoryCategory))).get();
+                              final currentFeedList =
+                                  await (db.select(db.inventory)..where(
+                                        (t) =>
+                                            t.id.equals(selectedFeedType!) &
+                                            t.category.equals(
+                                              kFeedInventoryCategory,
+                                            ),
+                                      ))
+                                      .get();
                               if (currentFeedList.isNotEmpty) {
                                 final feed = currentFeedList.first;
-                                await (db.update(db.inventory)..where((t) => t.id.equals(selectedFeedType!))).write(
-                                  InventoryCompanion(
-                                    stockLevel: Value((feed.stockLevel - amount).clamp(0.0, 999999.0)),
-                                    synced: const Value(false),
-                                  ),
-                                );
+                                await (db.update(db.inventory)..where(
+                                      (t) => t.id.equals(selectedFeedType!),
+                                    ))
+                                    .write(
+                                      InventoryCompanion(
+                                        stockLevel: Value(
+                                          (feed.stockLevel - amount).clamp(
+                                            0.0,
+                                            999999.0,
+                                          ),
+                                        ),
+                                        synced: const Value(false),
+                                      ),
+                                    );
                               }
                             });
 
                             if (context.mounted) {
                               Navigator.pop(context);
-                              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                                content: Text('Feeding logged and inventory updated successfully'),
-                                backgroundColor: Colors.green,
-                              ));
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                    'Feeding logged and inventory updated successfully',
+                                  ),
+                                  backgroundColor: Colors.green,
+                                ),
+                              );
                             }
                           } catch (e) {
                             if (context.mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                                content: Text('Error: $e'),
-                                backgroundColor: Colors.red,
-                              ));
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('Error: $e'),
+                                  backgroundColor: Colors.red,
+                                ),
+                              );
                             }
                           }
                         },
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color(0xFF10B981),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
                         ),
-                        child: const Text('SUBMIT FEED RECORD', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                        child: const Text(
+                          'SUBMIT FEED RECORD',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                       ),
                     ),
                   ],
@@ -774,14 +1101,20 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
             double totalPercentage = 0.0;
             try {
               totalPercentage = ingredients.fold<double>(0.0, (sum, item) {
-                final p = double.tryParse((item['percentage'] as TextEditingController).text) ?? 0.0;
+                final p =
+                    double.tryParse(
+                      (item['percentage'] as TextEditingController).text,
+                    ) ??
+                    0.0;
                 return sum + p;
               });
             } catch (_) {}
 
             return Dialog(
               backgroundColor: isDark ? const Color(0xFF0F172A) : Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
               child: Container(
                 width: 600,
                 padding: const EdgeInsets.all(32),
@@ -797,7 +1130,9 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
                           style: TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.w900,
-                            color: isDark ? Colors.white : const Color(0xFF0F172A),
+                            color: isDark
+                                ? Colors.white
+                                : const Color(0xFF0F172A),
                           ),
                         ),
                         IconButton(
@@ -809,12 +1144,26 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
                     const SizedBox(height: 24),
 
                     // Formulation Name Input
-                    Text('Formulation Name', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: isDark ? Colors.white70 : const Color(0xFF475569))),
+                    Text(
+                      'Formulation Name',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12,
+                        color: isDark
+                            ? Colors.white70
+                            : const Color(0xFF475569),
+                      ),
+                    ),
                     const SizedBox(height: 8),
                     TextField(
                       controller: nameCtrl,
-                      style: TextStyle(color: isDark ? Colors.white : Colors.black87),
-                      decoration: _dialogInputDecoration('e.g., Layer Starter Formula', isDark),
+                      style: TextStyle(
+                        color: isDark ? Colors.white : Colors.black87,
+                      ),
+                      decoration: _dialogInputDecoration(
+                        'e.g., Layer Starter Formula',
+                        isDark,
+                      ),
                     ),
                     const SizedBox(height: 16),
 
@@ -822,15 +1171,37 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text('Ingredients Distribution', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: isDark ? Colors.white70 : const Color(0xFF475569))),
+                        Text(
+                          'Ingredients Distribution',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12,
+                            color: isDark
+                                ? Colors.white70
+                                : const Color(0xFF475569),
+                          ),
+                        ),
                         TextButton.icon(
                           onPressed: () {
                             setDialogState(() {
-                              ingredients.add({'name': TextEditingController(), 'percentage': TextEditingController()});
+                              ingredients.add({
+                                'name': TextEditingController(),
+                                'percentage': TextEditingController(),
+                              });
                             });
                           },
-                          icon: const Icon(Icons.add, size: 16, color: Color(0xFF10B981)),
-                          label: const Text('Add Item', style: TextStyle(color: Color(0xFF10B981), fontSize: 12)),
+                          icon: const Icon(
+                            Icons.add,
+                            size: 16,
+                            color: Color(0xFF10B981),
+                          ),
+                          label: const Text(
+                            'Add Item',
+                            style: TextStyle(
+                              color: Color(0xFF10B981),
+                              fontSize: 12,
+                            ),
+                          ),
                         ),
                       ],
                     ),
@@ -848,25 +1219,50 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
                                 Expanded(
                                   flex: 3,
                                   child: TextField(
-                                    controller: ingredients[index]['name'] as TextEditingController,
-                                    style: TextStyle(color: isDark ? Colors.white : Colors.black87),
-                                    decoration: _dialogInputDecoration('Maize, Fishmeal, etc.', isDark),
+                                    controller:
+                                        ingredients[index]['name']
+                                            as TextEditingController,
+                                    style: TextStyle(
+                                      color: isDark
+                                          ? Colors.white
+                                          : Colors.black87,
+                                    ),
+                                    decoration: _dialogInputDecoration(
+                                      'Maize, Fishmeal, etc.',
+                                      isDark,
+                                    ),
                                   ),
                                 ),
                                 const SizedBox(width: 8),
                                 Expanded(
                                   flex: 2,
                                   child: TextField(
-                                    controller: ingredients[index]['percentage'] as TextEditingController,
+                                    controller:
+                                        ingredients[index]['percentage']
+                                            as TextEditingController,
                                     keyboardType: TextInputType.number,
-                                    inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*'))],
-                                    style: TextStyle(color: isDark ? Colors.white : Colors.black87),
-                                    decoration: _dialogInputDecoration('% ratio', isDark),
+                                    inputFormatters: [
+                                      FilteringTextInputFormatter.allow(
+                                        RegExp(r'^\d*\.?\d*'),
+                                      ),
+                                    ],
+                                    style: TextStyle(
+                                      color: isDark
+                                          ? Colors.white
+                                          : Colors.black87,
+                                    ),
+                                    decoration: _dialogInputDecoration(
+                                      '% ratio',
+                                      isDark,
+                                    ),
                                     onChanged: (_) => setDialogState(() {}),
                                   ),
                                 ),
                                 IconButton(
-                                  icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
+                                  icon: const Icon(
+                                    Icons.delete_outline,
+                                    color: Colors.redAccent,
+                                  ),
                                   onPressed: () {
                                     setDialogState(() {
                                       ingredients.removeAt(index);
@@ -885,11 +1281,26 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text('Total Ratio Allocation:', style: TextStyle(color: isDark ? Colors.white70 : const Color(0xFF475569), fontSize: 13, fontWeight: FontWeight.bold)),
+                        Text(
+                          'Total Ratio Allocation:',
+                          style: TextStyle(
+                            color: isDark
+                                ? Colors.white70
+                                : const Color(0xFF475569),
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                         Text(
                           '${totalPercentage.toStringAsFixed(1)}% / 100.0%',
                           style: TextStyle(
-                            color: totalPercentage == 100.0 ? (isDark ? Colors.green : const Color(0xFF16A34A)) : (isDark ? Colors.amberAccent : Colors.orange.shade800),
+                            color: totalPercentage == 100.0
+                                ? (isDark
+                                      ? Colors.green
+                                      : const Color(0xFF16A34A))
+                                : (isDark
+                                      ? Colors.amberAccent
+                                      : Colors.orange.shade800),
                             fontSize: 14,
                             fontWeight: FontWeight.w900,
                           ),
@@ -906,17 +1317,25 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
                         onPressed: () async {
                           final name = nameCtrl.text.trim();
                           if (name.isEmpty) {
-                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                              content: Text('Please name this custom formulation'),
-                              backgroundColor: Colors.orange,
-                            ));
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                  'Please name this custom formulation',
+                                ),
+                                backgroundColor: Colors.orange,
+                              ),
+                            );
                             return;
                           }
                           if (totalPercentage != 100.0) {
-                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                              content: Text('Ingredient ratios must sum to exactly 100%'),
-                              backgroundColor: Colors.orange,
-                            ));
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                  'Ingredient ratios must sum to exactly 100%',
+                                ),
+                                backgroundColor: Colors.orange,
+                              ),
+                            );
                             return;
                           }
 
@@ -926,44 +1345,69 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
                           // Construct ingredient map JSON
                           final Map<String, double> ratios = {};
                           for (var item in ingredients) {
-                            final ingName = (item['name'] as TextEditingController).text.trim();
-                            final ingPct = double.tryParse((item['percentage'] as TextEditingController).text) ?? 0.0;
+                            final ingName =
+                                (item['name'] as TextEditingController).text
+                                    .trim();
+                            final ingPct =
+                                double.tryParse(
+                                  (item['percentage'] as TextEditingController)
+                                      .text,
+                                ) ??
+                                0.0;
                             if (ingName.isNotEmpty && ingPct > 0) {
                               ratios[ingName] = ingPct;
                             }
                           }
 
                           try {
-                            await db.into(db.feedFormulations).insert(FeedFormulationsCompanion.insert(
-                              id: newLocalId(),
-                              farmId: farmId,
-                              name: name,
-                              ingredientsJson: Value(jsonEncode(ratios)),
-                              isActive: const Value(true),
-                              synced: const Value(false),
-                            ));
+                            await db
+                                .into(db.feedFormulations)
+                                .insert(
+                                  FeedFormulationsCompanion.insert(
+                                    id: newLocalId(),
+                                    farmId: farmId,
+                                    name: name,
+                                    ingredientsJson: Value(jsonEncode(ratios)),
+                                    isActive: const Value(true),
+                                    synced: const Value(false),
+                                  ),
+                                );
 
                             if (context.mounted) {
                               Navigator.pop(context);
-                              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                                content: Text('Formulation created successfully'),
-                                backgroundColor: Colors.green,
-                              ));
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                    'Formulation created successfully',
+                                  ),
+                                  backgroundColor: Colors.green,
+                                ),
+                              );
                             }
                           } catch (e) {
                             if (context.mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                                content: Text('Error: $e'),
-                                backgroundColor: Colors.red,
-                              ));
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('Error: $e'),
+                                  backgroundColor: Colors.red,
+                                ),
+                              );
                             }
                           }
                         },
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color(0xFF10B981),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
                         ),
-                        child: const Text('SAVE FORMULATION', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                        child: const Text(
+                          'SAVE FORMULATION',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                       ),
                     ),
                   ],
@@ -984,7 +1428,9 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
       builder: (context) {
         return Dialog(
           backgroundColor: isDark ? const Color(0xFF0F172A) : Colors.white,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
           child: Container(
             width: 600,
             padding: const EdgeInsets.all(32),
@@ -997,10 +1443,17 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
                   children: [
                     Text(
                       'ACTIVE FORMULATIONS',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: isDark ? Colors.white : const Color(0xFF0F172A)),
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w900,
+                        color: isDark ? Colors.white : const Color(0xFF0F172A),
+                      ),
                     ),
                     IconButton(
-                      icon: Icon(Icons.close, color: isDark ? Colors.white : const Color(0xFF0F172A)),
+                      icon: Icon(
+                        Icons.close,
+                        color: isDark ? Colors.white : const Color(0xFF0F172A),
+                      ),
                       onPressed: () => Navigator.pop(context),
                     ),
                   ],
@@ -1014,7 +1467,14 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
                       return Padding(
                         padding: const EdgeInsets.symmetric(vertical: 40),
                         child: Center(
-                          child: Text('No formulas created yet. Get started by clicking Create Formulation.', style: TextStyle(color: isDark ? Colors.white38 : Colors.grey.shade500)),
+                          child: Text(
+                            'No formulas created yet. Get started by clicking Create Formulation.',
+                            style: TextStyle(
+                              color: isDark
+                                  ? Colors.white38
+                                  : Colors.grey.shade500,
+                            ),
+                          ),
                         ),
                       );
                     }
@@ -1028,33 +1488,64 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
                           final formula = list[index];
                           Map<String, dynamic> ingredientsMap = {};
                           try {
-                            ingredientsMap = jsonDecode(formula.ingredientsJson ?? '{}');
+                            ingredientsMap = jsonDecode(
+                              formula.ingredientsJson ?? '{}',
+                            );
                           } catch (_) {}
 
                           return Container(
                             margin: const EdgeInsets.only(bottom: 16),
                             padding: const EdgeInsets.all(20),
                             decoration: BoxDecoration(
-                              color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.grey.shade100,
+                              color: isDark
+                                  ? Colors.white.withValues(alpha: 0.05)
+                                  : Colors.grey.shade100,
                               borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.grey.shade200),
+                              border: Border.all(
+                                color: isDark
+                                    ? Colors.white.withValues(alpha: 0.05)
+                                    : Colors.grey.shade200,
+                              ),
                             ),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
                                   children: [
                                     Text(
                                       formula.name,
-                                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: isDark ? Colors.white : const Color(0xFF0F172A)),
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 16,
+                                        color: isDark
+                                            ? Colors.white
+                                            : const Color(0xFF0F172A),
+                                      ),
                                     ),
                                     IconButton(
-                                      icon: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 20),
+                                      icon: const Icon(
+                                        Icons.delete_outline,
+                                        color: Colors.redAccent,
+                                        size: 20,
+                                      ),
                                       onPressed: () async {
-                                        await (db.delete(db.feedFormulations)..where((t) => t.id.equals(formula.id))).go();
+                                        await (db.delete(db.feedFormulations)
+                                              ..where(
+                                                (t) => t.id.equals(formula.id),
+                                              ))
+                                            .go();
                                         if (context.mounted) {
-                                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Formulation removed')));
+                                          ScaffoldMessenger.of(
+                                            context,
+                                          ).showSnackBar(
+                                            const SnackBar(
+                                              content: Text(
+                                                'Formulation removed',
+                                              ),
+                                            ),
+                                          );
                                         }
                                       },
                                     ),
@@ -1066,14 +1557,27 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
                                   runSpacing: 8,
                                   children: ingredientsMap.entries.map((e) {
                                     return Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 10,
+                                        vertical: 6,
+                                      ),
                                       decoration: BoxDecoration(
-                                        color: isDark ? Colors.green.withValues(alpha: 0.1) : const Color(0xFFDCFCE7),
+                                        color: isDark
+                                            ? Colors.green.withValues(
+                                                alpha: 0.1,
+                                              )
+                                            : const Color(0xFFDCFCE7),
                                         borderRadius: BorderRadius.circular(8),
                                       ),
                                       child: Text(
                                         '${e.key}: ${e.value}%',
-                                        style: TextStyle(color: isDark ? Colors.green.shade300 : const Color(0xFF15803D), fontSize: 12, fontWeight: FontWeight.bold),
+                                        style: TextStyle(
+                                          color: isDark
+                                              ? Colors.green.shade300
+                                              : const Color(0xFF15803D),
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.bold,
+                                        ),
                                       ),
                                     );
                                   }).toList(),
@@ -1107,7 +1611,9 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
           builder: (context, setDialogState) {
             return Dialog(
               backgroundColor: isDark ? const Color(0xFF0F172A) : Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
               child: Container(
                 width: 600,
                 padding: const EdgeInsets.all(32),
@@ -1120,10 +1626,21 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
                       children: [
                         Text(
                           'INVENTORY CHECK',
-                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: isDark ? Colors.white : const Color(0xFF0F172A)),
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w900,
+                            color: isDark
+                                ? Colors.white
+                                : const Color(0xFF0F172A),
+                          ),
                         ),
                         IconButton(
-                          icon: Icon(Icons.close, color: isDark ? Colors.white : const Color(0xFF0F172A)),
+                          icon: Icon(
+                            Icons.close,
+                            color: isDark
+                                ? Colors.white
+                                : const Color(0xFF0F172A),
+                          ),
                           onPressed: () => Navigator.pop(context),
                         ),
                       ],
@@ -1131,7 +1648,16 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
                     const SizedBox(height: 24),
 
                     // Raw Feed Ingredients Add block
-                    Text('Quick Add Feed Ingredient', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: isDark ? Colors.white70 : const Color(0xFF475569))),
+                    Text(
+                      'Quick Add Feed Ingredient',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13,
+                        color: isDark
+                            ? Colors.white70
+                            : const Color(0xFF475569),
+                      ),
+                    ),
                     const SizedBox(height: 12),
                     Row(
                       children: [
@@ -1139,8 +1665,13 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
                           flex: 3,
                           child: TextField(
                             controller: nameCtrl,
-                            style: TextStyle(color: isDark ? Colors.white : Colors.black87),
-                            decoration: _dialogInputDecoration('Ingredient Name (e.g., Maize)', isDark),
+                            style: TextStyle(
+                              color: isDark ? Colors.white : Colors.black87,
+                            ),
+                            decoration: _dialogInputDecoration(
+                              'Ingredient Name (e.g., Maize)',
+                              isDark,
+                            ),
                           ),
                         ),
                         const SizedBox(width: 8),
@@ -1149,56 +1680,99 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
                           child: TextField(
                             controller: stockCtrl,
                             keyboardType: TextInputType.number,
-                            inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*'))],
-                            style: TextStyle(color: isDark ? Colors.white : Colors.black87),
-                            decoration: _dialogInputDecoration('Initial Stock (KG)', isDark),
+                            inputFormatters: [
+                              FilteringTextInputFormatter.allow(
+                                RegExp(r'^\d*\.?\d*'),
+                              ),
+                            ],
+                            style: TextStyle(
+                              color: isDark ? Colors.white : Colors.black87,
+                            ),
+                            decoration: _dialogInputDecoration(
+                              'Initial Stock (KG)',
+                              isDark,
+                            ),
                           ),
                         ),
                         const SizedBox(width: 8),
                         ElevatedButton(
                           onPressed: () async {
                             final name = nameCtrl.text.trim();
-                            final stock = double.tryParse(stockCtrl.text) ?? 0.0;
+                            final stock =
+                                double.tryParse(stockCtrl.text) ?? 0.0;
                             if (name.isEmpty || stock <= 0) return;
 
                             final farmId = await FarmUtils.getBoundFarmId();
-                            final workerId = await FarmUtils.getRequiredUserId();
+                            final workerId =
+                                await FarmUtils.getRequiredUserId();
                             if (farmId == null) return;
 
                             try {
-                              await db.into(db.inventory).insert(InventoryCompanion.insert(
-                                id: newLocalId(),
-                                farmId: farmId,
-                                itemName: name,
-                                stockLevel: stock,
-                                unit: kDefaultFeedUnit,
-                                category: Value(kFeedInventoryCategory),
-                                userId: Value(workerId),
-                                synced: const Value(false),
-                              ));
+                              await db
+                                  .into(db.inventory)
+                                  .insert(
+                                    InventoryCompanion.insert(
+                                      id: newLocalId(),
+                                      farmId: farmId,
+                                      itemName: name,
+                                      stockLevel: stock,
+                                      unit: kDefaultFeedUnit,
+                                      category: Value(kFeedInventoryCategory),
+                                      userId: Value(workerId),
+                                      synced: const Value(false),
+                                    ),
+                                  );
                               nameCtrl.clear();
                               stockCtrl.clear();
                               setDialogState(() {});
                             } catch (_) {}
                           },
-                          style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF10B981)),
-                          child: const Text('Add', style: TextStyle(color: Colors.white)),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF10B981),
+                          ),
+                          child: const Text(
+                            'Add',
+                            style: TextStyle(color: Colors.white),
+                          ),
                         ),
                       ],
                     ),
                     const SizedBox(height: 28),
 
                     // List of current items
-                    Text('Current Ingredient Stock Levels', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: isDark ? Colors.white70 : const Color(0xFF475569))),
+                    Text(
+                      'Current Ingredient Stock Levels',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13,
+                        color: isDark
+                            ? Colors.white70
+                            : const Color(0xFF475569),
+                      ),
+                    ),
                     const SizedBox(height: 12),
                     StreamBuilder<List<InventoryItem>>(
-                      stream: (db.select(db.inventory)..where((t) => t.category.equals(kFeedInventoryCategory))).watch(),
+                      stream:
+                          (db.select(db.inventory)..where(
+                                (t) =>
+                                    t.category.equals(kFeedInventoryCategory),
+                              ))
+                              .watch(),
                       builder: (context, snapshot) {
                         final list = snapshot.data ?? [];
                         if (list.isEmpty) {
                           return Padding(
                             padding: const EdgeInsets.symmetric(vertical: 24),
-                            child: Center(child: Text('No ingredients in stock.', style: TextStyle(color: isDark ? Colors.white38 : Colors.grey.shade500))),
+                            child: Center(
+                              child: Text(
+                                'No ingredients in stock.',
+                                style: TextStyle(
+                                  color: isDark
+                                      ? Colors.white38
+                                      : Colors.grey.shade500,
+                                ),
+                              ),
+                            ),
                           );
                         }
 
@@ -1214,21 +1788,49 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
                               return Padding(
                                 padding: const EdgeInsets.only(bottom: 12.0),
                                 child: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                    vertical: 12,
+                                  ),
                                   decoration: BoxDecoration(
-                                    color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.grey.shade100,
+                                    color: isDark
+                                        ? Colors.white.withValues(alpha: 0.05)
+                                        : Colors.grey.shade100,
                                     borderRadius: BorderRadius.circular(8),
-                                    border: Border.all(color: isDark ? Colors.transparent : Colors.grey.shade200),
+                                    border: Border.all(
+                                      color: isDark
+                                          ? Colors.transparent
+                                          : Colors.grey.shade200,
+                                    ),
                                   ),
                                   child: Row(
-                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceBetween,
                                     children: [
                                       Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
                                         children: [
-                                          Text(item.itemName, style: TextStyle(fontWeight: FontWeight.bold, color: isDark ? Colors.white : const Color(0xFF0F172A))),
+                                          Text(
+                                            item.itemName,
+                                            style: TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              color: isDark
+                                                  ? Colors.white
+                                                  : const Color(0xFF0F172A),
+                                            ),
+                                          ),
                                           if (isLow)
-                                            Text('LOW STOCK WARNING', style: TextStyle(color: isDark ? Colors.amberAccent : Colors.orange.shade800, fontSize: 9, fontWeight: FontWeight.bold)),
+                                            Text(
+                                              'LOW STOCK WARNING',
+                                              style: TextStyle(
+                                                color: isDark
+                                                    ? Colors.amberAccent
+                                                    : Colors.orange.shade800,
+                                                fontSize: 9,
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            ),
                                         ],
                                       ),
                                       Row(
@@ -1237,75 +1839,223 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
                                             '${item.stockLevel.toStringAsFixed(1)} ${item.unit}',
                                             style: TextStyle(
                                               fontWeight: FontWeight.bold,
-                                              color: isLow ? (isDark ? Colors.amberAccent : Colors.orange.shade800) : (isDark ? Colors.green.shade400 : const Color(0xFF16A34A)),
+                                              color: isLow
+                                                  ? (isDark
+                                                        ? Colors.amberAccent
+                                                        : Colors
+                                                              .orange
+                                                              .shade800)
+                                                  : (isDark
+                                                        ? Colors.green.shade400
+                                                        : const Color(
+                                                            0xFF16A34A,
+                                                          )),
                                             ),
                                           ),
                                           const SizedBox(width: 12),
                                           // Restock Quick Action
                                           IconButton(
-                                            icon: const Icon(Icons.add_circle_outline, color: Color(0xFF10B981), size: 20),
+                                            icon: const Icon(
+                                              Icons.add_circle_outline,
+                                              color: Color(0xFF10B981),
+                                              size: 20,
+                                            ),
                                             onPressed: () async {
-                                              final restockController = TextEditingController(text: '100.0');
+                                              final restockController =
+                                                  TextEditingController(
+                                                    text: '100.0',
+                                                  );
                                               final restockAmount = await showDialog<double>(
                                                 context: context,
                                                 builder: (context) {
                                                   return AlertDialog(
-                                                    backgroundColor: isDark ? const Color(0xFF0F172A) : Colors.white,
-                                                    title: Text('Restock Feed', style: TextStyle(color: isDark ? Colors.white : const Color(0xFF0F172A), fontWeight: FontWeight.bold)),
+                                                    backgroundColor: isDark
+                                                        ? const Color(
+                                                            0xFF0F172A,
+                                                          )
+                                                        : Colors.white,
+                                                    title: Text(
+                                                      'Restock Feed',
+                                                      style: TextStyle(
+                                                        color: isDark
+                                                            ? Colors.white
+                                                            : const Color(
+                                                                0xFF0F172A,
+                                                              ),
+                                                        fontWeight:
+                                                            FontWeight.bold,
+                                                      ),
+                                                    ),
                                                     content: Column(
-                                                      mainAxisSize: MainAxisSize.min,
-                                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                                      mainAxisSize:
+                                                          MainAxisSize.min,
+                                                      crossAxisAlignment:
+                                                          CrossAxisAlignment
+                                                              .start,
                                                       children: [
-                                                        Text('Enter amount to restock ${item.itemName} (${item.unit}):', style: TextStyle(color: isDark ? Colors.white70 : const Color(0xFF475569))),
-                                                        const SizedBox(height: 12),
+                                                        Text(
+                                                          'Enter amount to restock ${item.itemName} (${item.unit}):',
+                                                          style: TextStyle(
+                                                            color: isDark
+                                                                ? Colors.white70
+                                                                : const Color(
+                                                                    0xFF475569,
+                                                                  ),
+                                                          ),
+                                                        ),
+                                                        const SizedBox(
+                                                          height: 12,
+                                                        ),
                                                         TextField(
-                                                          controller: restockController,
-                                                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                                                          style: TextStyle(color: isDark ? Colors.white : Colors.black87),
-                                                          inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*'))],
+                                                          controller:
+                                                              restockController,
+                                                          keyboardType:
+                                                              const TextInputType.numberWithOptions(
+                                                                decimal: true,
+                                                              ),
+                                                          style: TextStyle(
+                                                            color: isDark
+                                                                ? Colors.white
+                                                                : Colors
+                                                                      .black87,
+                                                          ),
+                                                          inputFormatters: [
+                                                            FilteringTextInputFormatter.allow(
+                                                              RegExp(
+                                                                r'^\d*\.?\d*',
+                                                              ),
+                                                            ),
+                                                          ],
                                                           decoration: InputDecoration(
-                                                            hintText: 'Weight in KG',
-                                                            hintStyle: TextStyle(color: isDark ? Colors.white38 : Colors.black38),
+                                                            hintText:
+                                                                'Weight in KG',
+                                                            hintStyle: TextStyle(
+                                                              color: isDark
+                                                                  ? Colors
+                                                                        .white38
+                                                                  : Colors
+                                                                        .black38,
+                                                            ),
                                                             filled: true,
-                                                            fillColor: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.grey.shade100,
-                                                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: isDark ? Colors.transparent : Colors.grey.shade300)),
-                                                            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: isDark ? Colors.transparent : Colors.grey.shade300)),
+                                                            fillColor: isDark
+                                                                ? Colors.white
+                                                                      .withValues(
+                                                                        alpha:
+                                                                            0.05,
+                                                                      )
+                                                                : Colors
+                                                                      .grey
+                                                                      .shade100,
+                                                            border: OutlineInputBorder(
+                                                              borderRadius:
+                                                                  BorderRadius.circular(
+                                                                    8,
+                                                                  ),
+                                                              borderSide: BorderSide(
+                                                                color: isDark
+                                                                    ? Colors
+                                                                          .transparent
+                                                                    : Colors
+                                                                          .grey
+                                                                          .shade300,
+                                                              ),
+                                                            ),
+                                                            enabledBorder: OutlineInputBorder(
+                                                              borderRadius:
+                                                                  BorderRadius.circular(
+                                                                    8,
+                                                                  ),
+                                                              borderSide: BorderSide(
+                                                                color: isDark
+                                                                    ? Colors
+                                                                          .transparent
+                                                                    : Colors
+                                                                          .grey
+                                                                          .shade300,
+                                                              ),
+                                                            ),
                                                           ),
                                                         ),
                                                       ],
                                                     ),
                                                     actions: [
                                                       TextButton(
-                                                        onPressed: () => Navigator.pop(context),
-                                                        child: const Text('CANCEL', style: TextStyle(color: Colors.grey)),
+                                                        onPressed: () =>
+                                                            Navigator.pop(
+                                                              context,
+                                                            ),
+                                                        child: const Text(
+                                                          'CANCEL',
+                                                          style: TextStyle(
+                                                            color: Colors.grey,
+                                                          ),
+                                                        ),
                                                       ),
                                                       TextButton(
                                                         onPressed: () {
-                                                          final val = double.tryParse(restockController.text) ?? 0.0;
-                                                          Navigator.pop(context, val);
+                                                          final val =
+                                                              double.tryParse(
+                                                                restockController
+                                                                    .text,
+                                                              ) ??
+                                                              0.0;
+                                                          Navigator.pop(
+                                                            context,
+                                                            val,
+                                                          );
                                                         },
-                                                        child: const Text('RESTOCK', style: TextStyle(color: Color(0xFF10B981), fontWeight: FontWeight.bold)),
+                                                        child: const Text(
+                                                          'RESTOCK',
+                                                          style: TextStyle(
+                                                            color: Color(
+                                                              0xFF10B981,
+                                                            ),
+                                                            fontWeight:
+                                                                FontWeight.bold,
+                                                          ),
+                                                        ),
                                                       ),
                                                     ],
                                                   );
                                                 },
                                               );
-                                              if (restockAmount != null && restockAmount > 0) {
-                                                await (db.update(db.inventory)..where((t) => t.id.equals(item.id))).write(
-                                                  InventoryCompanion(
-                                                    stockLevel: Value(item.stockLevel + restockAmount),
-                                                    synced: const Value(false),
-                                                  ),
-                                                );
+                                              if (restockAmount != null &&
+                                                  restockAmount > 0) {
+                                                await (db.update(
+                                                      db.inventory,
+                                                    )..where(
+                                                      (t) =>
+                                                          t.id.equals(item.id),
+                                                    ))
+                                                    .write(
+                                                      InventoryCompanion(
+                                                        stockLevel: Value(
+                                                          item.stockLevel +
+                                                              restockAmount,
+                                                        ),
+                                                        synced: const Value(
+                                                          false,
+                                                        ),
+                                                      ),
+                                                    );
                                                 setDialogState(() {});
                                               }
                                             },
                                             tooltip: 'Restock Feed',
                                           ),
                                           IconButton(
-                                            icon: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 20),
+                                            icon: const Icon(
+                                              Icons.delete_outline,
+                                              color: Colors.redAccent,
+                                              size: 20,
+                                            ),
                                             onPressed: () async {
-                                              await (db.delete(db.inventory)..where((t) => t.id.equals(item.id))).go();
+                                              await (db.delete(db.inventory)
+                                                    ..where(
+                                                      (t) =>
+                                                          t.id.equals(item.id),
+                                                    ))
+                                                  .go();
                                               setDialogState(() {});
                                             },
                                           ),
@@ -1334,17 +2084,31 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
   InputDecoration _dialogInputDecoration(String hint, bool isDark) {
     return InputDecoration(
       hintText: hint,
-      hintStyle: TextStyle(color: isDark ? Colors.white54 : Colors.black54, fontSize: 13, fontWeight: FontWeight.w600),
+      hintStyle: TextStyle(
+        color: isDark ? Colors.white54 : Colors.black54,
+        fontSize: 13,
+        fontWeight: FontWeight.w600,
+      ),
       filled: true,
-      fillColor: isDark ? Colors.white.withValues(alpha: 0.08) : Colors.grey.shade50,
+      fillColor: isDark
+          ? Colors.white.withValues(alpha: 0.08)
+          : Colors.grey.shade50,
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(8),
-        borderSide: BorderSide(color: isDark ? Colors.white.withValues(alpha: 0.12) : Colors.grey.shade300),
+        borderSide: BorderSide(
+          color: isDark
+              ? Colors.white.withValues(alpha: 0.12)
+              : Colors.grey.shade300,
+        ),
       ),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(8),
-        borderSide: BorderSide(color: isDark ? Colors.white.withValues(alpha: 0.12) : Colors.grey.shade400),
+        borderSide: BorderSide(
+          color: isDark
+              ? Colors.white.withValues(alpha: 0.12)
+              : Colors.grey.shade400,
+        ),
       ),
     );
   }
@@ -1391,7 +2155,9 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
           const SizedBox(height: 24),
 
           StreamBuilder<List<FeedingLog>>(
-            stream: (db.select(db.feedingLogs)..orderBy([(t) => OrderingTerm.desc(t.logDate)])).watch(),
+            stream: (db.select(
+              db.feedingLogs,
+            )..orderBy([(t) => OrderingTerm.desc(t.logDate)])).watch(),
             builder: (context, snapshot) {
               final logs = snapshot.data ?? [];
 
@@ -1401,7 +2167,11 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
                     padding: const EdgeInsets.symmetric(vertical: 40.0),
                     child: Column(
                       children: [
-                        Icon(Icons.restaurant_rounded, size: 36, color: subColor.withValues(alpha: 0.3)),
+                        Icon(
+                          Icons.restaurant_rounded,
+                          size: 36,
+                          color: subColor.withValues(alpha: 0.3),
+                        ),
                         const SizedBox(height: 12),
                         Text(
                           'No feeding logs registered yet.',
@@ -1421,18 +2191,31 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
               return FutureBuilder<List<dynamic>>(
                 future: Future.wait([
                   db.select(db.batches).get(),
-                  (db.select(db.inventory)..where((t) => t.category.equals(kFeedInventoryCategory))).get(),
+                  (db.select(db.inventory)..where(
+                        (t) => t.category.equals(kFeedInventoryCategory),
+                      ))
+                      .get(),
                   db.select(db.feedFormulations).get(),
                 ]),
                 builder: (context, dynamicSnapshot) {
                   final data = dynamicSnapshot.data;
-                  final List<Batch> batches = data != null ? data[0] as List<Batch> : [];
-                  final List<InventoryItem> feedTypes = data != null ? data[1] as List<InventoryItem> : [];
-                  final List<FeedFormulation> formulations = data != null ? data[2] as List<FeedFormulation> : [];
+                  final List<Batch> batches = data != null
+                      ? data[0] as List<Batch>
+                      : [];
+                  final List<InventoryItem> feedTypes = data != null
+                      ? data[1] as List<InventoryItem>
+                      : [];
+                  final List<FeedFormulation> formulations = data != null
+                      ? data[2] as List<FeedFormulation>
+                      : [];
 
                   final batchMap = {for (var b in batches) b.id: b.batchName};
-                  final feedTypeMap = {for (var f in feedTypes) f.id: f.itemName};
-                  final formulationMap = {for (var f in formulations) f.id: f.name};
+                  final feedTypeMap = {
+                    for (var f in feedTypes) f.id: f.itemName,
+                  };
+                  final formulationMap = {
+                    for (var f in formulations) f.id: f.name,
+                  };
 
                   return LayoutBuilder(
                     builder: (context, constraints) {
@@ -1445,126 +2228,175 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
                             controller: _tableHorizontalController,
                             scrollDirection: Axis.horizontal,
                             child: ConstrainedBox(
-                              constraints: BoxConstraints(minHeight: constraints.maxHeight),
-                            child: DataTable(
-                              columnSpacing: 36,
-                        headingRowColor: WidgetStateProperty.all(
-                          isDark
-                              ? Colors.white.withValues(alpha: 0.02)
-                              : Colors.black.withValues(alpha: 0.02),
-                        ),
-                        headingRowHeight: 46,
-                        dataRowMinHeight: 52,
-                        dataRowMaxHeight: 52,
-                        horizontalMargin: 12,
-                        columns: [
-                          _buildTableColumn('DATE', isDark),
-                          _buildTableColumn('FLOCK/BATCH', isDark),
-                          _buildTableColumn('FEED TYPE', isDark),
-                          _buildTableColumn('FORMULATION', isDark),
-                          _buildTableColumn('AMOUNT CONSUMED', isDark),
-                          _buildTableColumn('STATUS', isDark),
-                          _buildTableColumn('ACTION', isDark),
-                        ],
-                        rows: logs.map((log) {
-                          final batchName = log.batchId != null ? (batchMap[log.batchId] ?? 'Flock #${log.batchId}') : 'Global';
-                          final feedTypeName = log.feedTypeId != null ? (feedTypeMap[log.feedTypeId] ?? 'Feed Type #${log.feedTypeId}') : 'N/A';
-                          final formulationName = log.formulationId != null ? (formulationMap[log.formulationId] ?? 'Custom Formulation') : 'None';
-                          
-                          // Synced status
-                          final isSynced = log.synced;
-                          final statusChipColor = isSynced ? const Color(0xFF10B981) : Colors.orange;
+                              constraints: BoxConstraints(
+                                minHeight: constraints.maxHeight,
+                              ),
+                              child: DataTable(
+                                columnSpacing: 36,
+                                headingRowColor: WidgetStateProperty.all(
+                                  isDark
+                                      ? Colors.white.withValues(alpha: 0.02)
+                                      : Colors.black.withValues(alpha: 0.02),
+                                ),
+                                headingRowHeight: 46,
+                                dataRowMinHeight: 52,
+                                dataRowMaxHeight: 52,
+                                horizontalMargin: 12,
+                                columns: [
+                                  _buildTableColumn('DATE', isDark),
+                                  _buildTableColumn('FLOCK/BATCH', isDark),
+                                  _buildTableColumn('FEED TYPE', isDark),
+                                  _buildTableColumn('FORMULATION', isDark),
+                                  _buildTableColumn('AMOUNT CONSUMED', isDark),
+                                  _buildTableColumn('STATUS', isDark),
+                                  _buildTableColumn('ACTION', isDark),
+                                ],
+                                rows: logs.map((log) {
+                                  final batchName = log.batchId != null
+                                      ? (batchMap[log.batchId] ??
+                                            'Flock #${log.batchId}')
+                                      : 'Global';
+                                  final feedTypeName = log.feedTypeId != null
+                                      ? (feedTypeMap[log.feedTypeId] ??
+                                            'Feed Type #${log.feedTypeId}')
+                                      : 'N/A';
+                                  final formulationName =
+                                      log.formulationId != null
+                                      ? (formulationMap[log.formulationId] ??
+                                            'Custom Formulation')
+                                      : 'None';
 
-                          return DataRow(
-                            cells: [
-                              DataCell(
-                                Text(
-                                  DateFormat('dd MMM yyyy').format(log.logDate),
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: isDark ? Colors.white70 : Colors.black87,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
+                                  // Synced status
+                                  final isSynced = log.synced;
+                                  final statusChipColor = isSynced
+                                      ? const Color(0xFF10B981)
+                                      : Colors.orange;
+
+                                  return DataRow(
+                                    cells: [
+                                      DataCell(
+                                        Text(
+                                          DateFormat(
+                                            'dd MMM yyyy',
+                                          ).format(log.logDate),
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            color: isDark
+                                                ? Colors.white70
+                                                : Colors.black87,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ),
+                                      DataCell(
+                                        Text(
+                                          batchName,
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            color: isDark
+                                                ? Colors.white
+                                                : const Color(0xFF0F172A),
+                                            fontWeight: FontWeight.w800,
+                                          ),
+                                        ),
+                                      ),
+                                      DataCell(
+                                        Text(
+                                          feedTypeName,
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            color: isDark
+                                                ? Colors.white70
+                                                : Colors.black54,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ),
+                                      DataCell(
+                                        Text(
+                                          formulationName,
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            color: isDark
+                                                ? Colors.white70
+                                                : Colors.black54,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ),
+                                      DataCell(
+                                        Text(
+                                          '${log.amountConsumed.toStringAsFixed(1)} kg',
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            color: isDark
+                                                ? Colors.greenAccent
+                                                : const Color(0xFF047857),
+                                            fontWeight: FontWeight.w900,
+                                          ),
+                                        ),
+                                      ),
+                                      DataCell(
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 8,
+                                            vertical: 4,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: statusChipColor.withValues(
+                                              alpha: 0.1,
+                                            ),
+                                            borderRadius: BorderRadius.circular(
+                                              12,
+                                            ),
+                                            border: Border.all(
+                                              color: statusChipColor.withValues(
+                                                alpha: 0.2,
+                                              ),
+                                            ),
+                                          ),
+                                          child: Text(
+                                            isSynced ? 'SYNCED' : 'OFFLINE',
+                                            style: TextStyle(
+                                              color: statusChipColor,
+                                              fontSize: 9,
+                                              fontWeight: FontWeight.w900,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                      DataCell(
+                                        IconButton(
+                                          icon: const Icon(
+                                            Icons.delete_outline_rounded,
+                                            color: Colors.redAccent,
+                                            size: 18,
+                                          ),
+                                          onPressed: () =>
+                                              _confirmDeleteFeedingLog(
+                                                db,
+                                                log.id,
+                                              ),
+                                          tooltip: 'Delete log',
+                                        ),
+                                      ),
+                                    ],
+                                  );
+                                }).toList(),
                               ),
-                              DataCell(
-                                Text(
-                                  batchName,
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: isDark ? Colors.white : const Color(0xFF0F172A),
-                                    fontWeight: FontWeight.w800,
-                                  ),
-                                ),
-                              ),
-                              DataCell(
-                                Text(
-                                  feedTypeName,
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: isDark ? Colors.white70 : Colors.black54,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ),
-                              DataCell(
-                                Text(
-                                  formulationName,
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: isDark ? Colors.white70 : Colors.black54,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ),
-                              DataCell(
-                                Text(
-                                  '${log.amountConsumed.toStringAsFixed(1)} kg',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: isDark ? Colors.greenAccent : const Color(0xFF047857),
-                                    fontWeight: FontWeight.w900,
-                                  ),
-                                ),
-                              ),
-                              DataCell(
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                  decoration: BoxDecoration(
-                                    color: statusChipColor.withValues(alpha: 0.1),
-                                    borderRadius: BorderRadius.circular(12),
-                                    border: Border.all(color: statusChipColor.withValues(alpha: 0.2)),
-                                  ),
-                                  child: Text(
-                                    isSynced ? 'SYNCED' : 'OFFLINE',
-                                    style: TextStyle(color: statusChipColor, fontSize: 9, fontWeight: FontWeight.w900),
-                                  ),
-                                ),
-                              ),
-                              DataCell(
-                                IconButton(
-                                  icon: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent, size: 18),
-                                  onPressed: () => _confirmDeleteFeedingLog(db, log.id),
-                                  tooltip: 'Delete log',
-                                ),
-                              ),
-                            ],
-                          );
-                            }).toList(),
+                            ),
                           ),
                         ),
-                      ),
-                    ),
+                      );
+                    },
                   );
-                  },
-                );
-              },
-            );
-          },
-        ),
-      ],
-    ),
-  );
+                },
+              );
+            },
+          ),
+        ],
+      ),
+    );
   }
 
   DataColumn _buildTableColumn(String label, bool isDark) {
@@ -1588,25 +2420,46 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
       builder: (context) {
         return AlertDialog(
           backgroundColor: isDark ? const Color(0xFF0F172A) : Colors.white,
-          title: Text('Confirm Deletion', style: TextStyle(fontWeight: FontWeight.w900, color: isDark ? Colors.white : const Color(0xFF0F172A))),
-          content: Text('Are you sure you want to permanently delete this feeding log?', style: TextStyle(color: isDark ? Colors.white70 : const Color(0xFF475569))),
+          title: Text(
+            'Confirm Deletion',
+            style: TextStyle(
+              fontWeight: FontWeight.w900,
+              color: isDark ? Colors.white : const Color(0xFF0F172A),
+            ),
+          ),
+          content: Text(
+            'Are you sure you want to permanently delete this feeding log?',
+            style: TextStyle(
+              color: isDark ? Colors.white70 : const Color(0xFF475569),
+            ),
+          ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('CANCEL', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey)),
+              child: const Text(
+                'CANCEL',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: Colors.grey,
+                ),
+              ),
             ),
             TextButton(
               onPressed: () async {
                 final messenger = ScaffoldMessenger.of(context);
                 Navigator.pop(context);
                 try {
-                  await (db.delete(db.feedingLogs)..where((t) => t.id.equals(logId))).go();
+                  await (db.delete(
+                    db.feedingLogs,
+                  )..where((t) => t.id.equals(logId))).go();
                   messenger.showSnackBar(
                     SnackBar(
                       content: const Text('Log deleted successfully.'),
                       backgroundColor: Colors.redAccent,
                       behavior: SnackBarBehavior.floating,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
                       margin: const EdgeInsets.all(20),
                     ),
                   );
@@ -1614,7 +2467,13 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
                   messenger.showSnackBar(SnackBar(content: Text('Error: $e')));
                 }
               },
-              child: const Text('DELETE', style: TextStyle(fontWeight: FontWeight.w900, color: Colors.redAccent)),
+              child: const Text(
+                'DELETE',
+                style: TextStyle(
+                  fontWeight: FontWeight.w900,
+                  color: Colors.redAccent,
+                ),
+              ),
             ),
           ],
         );

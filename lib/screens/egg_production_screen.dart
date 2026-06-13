@@ -7,6 +7,7 @@ import '../data/local_db.dart';
 import '../utils/farm_utils.dart';
 import '../utils/id_utils.dart';
 import '../utils/livestock_breed_options.dart';
+import 'egg_analytics_screen.dart';
 
 class EggProductionScreen extends StatefulWidget {
   const EggProductionScreen({super.key});
@@ -125,6 +126,45 @@ class _EggProductionScreenState extends State<EggProductionScreen> {
         Row(
           mainAxisSize: MainAxisSize.min,
           children: [
+            OutlinedButton(
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const EggAnalyticsScreen()),
+              ),
+              style: OutlinedButton.styleFrom(
+                side: const BorderSide(color: Color(0xFF3B82F6), width: 1.5),
+                backgroundColor: const Color(
+                  0xFF3B82F6,
+                ).withValues(alpha: 0.05),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 18,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.analytics_rounded,
+                    color: Color(0xFF3B82F6),
+                    size: 16,
+                  ),
+                  SizedBox(width: 8),
+                  Text(
+                    'ANALYTICS',
+                    style: TextStyle(
+                      color: Color(0xFF3B82F6),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
             // INDEPT MANAGEMENT Button
             OutlinedButton(
               onPressed: () => _showManagementInsights(isDark),
@@ -274,74 +314,78 @@ class _EggProductionScreenState extends State<EggProductionScreen> {
                         ? (constraints.maxWidth - 16) / 2
                         : constraints.maxWidth;
                     return Wrap(
-                  spacing: 16,
-                  runSpacing: 16,
-                  children: flocks.map((f) {
-                    final ageDays = DateTime.now()
-                        .difference(f.arrivalDate)
-                        .inDays;
-                    return Container(
-                      padding: const EdgeInsets.all(16),
-                      width: cardWidth,
-                      decoration: BoxDecoration(
-                        color: isDark
-                            ? Colors.white.withValues(alpha: 0.02)
-                            : const Color(0xFFF8FAFC),
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: borderColor),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
+                      spacing: 16,
+                      runSpacing: 16,
+                      children: flocks.map((f) {
+                        final ageDays = DateTime.now()
+                            .difference(f.arrivalDate)
+                            .inDays;
+                        return Container(
+                          padding: const EdgeInsets.all(16),
+                          width: cardWidth,
+                          decoration: BoxDecoration(
+                            color: isDark
+                                ? Colors.white.withValues(alpha: 0.02)
+                                : const Color(0xFFF8FAFC),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: borderColor),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Container(
-                                padding: const EdgeInsets.all(6),
-                                decoration: BoxDecoration(
-                                  color: const Color(
-                                    0xFF0D9488,
-                                  ).withValues(alpha: 0.1),
-                                  shape: BoxShape.circle,
-                                ),
-                                child: const Icon(
-                                  Icons.layers_rounded,
-                                  color: Color(0xFF0D9488),
-                                  size: 14,
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  f.batchName,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w900,
-                                    color: textColor,
+                              Row(
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.all(6),
+                                    decoration: BoxDecoration(
+                                      color: const Color(
+                                        0xFF0D9488,
+                                      ).withValues(alpha: 0.1),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: const Icon(
+                                      Icons.layers_rounded,
+                                      color: Color(0xFF0D9488),
+                                      size: 14,
+                                    ),
                                   ),
-                                ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      f.batchName,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w900,
+                                        color: textColor,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 12),
+                              _smallStatRow(
+                                'Breed Type:',
+                                LivestockBreedCatalog.labelForKey(f.breedType),
+                                isDark,
+                              ),
+                              const SizedBox(height: 4),
+                              _smallStatRow(
+                                'Flock Size:',
+                                '${f.currentCount} Birds',
+                                isDark,
+                              ),
+                              const SizedBox(height: 4),
+                              _smallStatRow(
+                                'Flock Age:',
+                                '$ageDays Days',
+                                isDark,
                               ),
                             ],
                           ),
-                          const SizedBox(height: 12),
-                          _smallStatRow(
-                            'Breed Type:',
-                            LivestockBreedCatalog.labelForKey(f.breedType),
-                            isDark,
-                          ),
-                          const SizedBox(height: 4),
-                          _smallStatRow(
-                            'Flock Size:',
-                            '${f.currentCount} Birds',
-                            isDark,
-                          ),
-                          const SizedBox(height: 4),
-                          _smallStatRow('Flock Age:', '$ageDays Days', isDark),
-                        ],
-                      ),
+                        );
+                      }).toList(),
                     );
-                  }).toList(),
-                );
                   },
                 ),
             ],

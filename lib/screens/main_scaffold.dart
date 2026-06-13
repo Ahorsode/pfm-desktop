@@ -24,6 +24,11 @@ import 'financial_control_screen.dart';
 import 'team_management_screen.dart';
 import 'settings_screen.dart';
 import 'report_log_screen.dart';
+import 'climate_screen.dart';
+import 'comprehensive_report_screen.dart';
+import 'egg_analytics_screen.dart';
+import 'feed_analytics_screen.dart';
+import 'sales_analytics_screen.dart';
 
 import 'mortality_screen.dart';
 import 'quarantine_screen.dart';
@@ -326,6 +331,7 @@ _RoleDashboardConfig _buildRoleConfig(String role) {
       EggProductionScreen(),
       FeedManagementScreen(),
       MortalityScreen(),
+      ClimateScreen(),
       QuarantineScreen(),
       SalesScreen(),
       CustomerDirectoryScreen(),
@@ -334,7 +340,10 @@ _RoleDashboardConfig _buildRoleConfig(String role) {
       InventoryManager(),
       TeamManagementScreen(),
       SettingsScreen(),
-      ReportLogScreen(),
+      ComprehensiveReportScreen(),
+      EggAnalyticsScreen(),
+      FeedAnalyticsScreen(),
+      SalesAnalyticsScreen(),
     ],
     sections: const [
       SidebarMenuSection(
@@ -373,6 +382,11 @@ _RoleDashboardConfig _buildRoleConfig(String role) {
           ),
           SidebarMenuItem(
             index: 7,
+            icon: Icons.thermostat_rounded,
+            label: 'Climate',
+          ),
+          SidebarMenuItem(
+            index: 8,
             icon: Icons.health_and_safety_outlined,
             label: 'Quarantine',
           ),
@@ -382,27 +396,27 @@ _RoleDashboardConfig _buildRoleConfig(String role) {
         title: 'COMMERCIAL HUB',
         items: [
           SidebarMenuItem(
-            index: 8,
+            index: 9,
             icon: Icons.receipt_long_rounded,
             label: 'Sales',
           ),
           SidebarMenuItem(
-            index: 9,
+            index: 10,
             icon: Icons.people_alt_rounded,
             label: 'Customers',
           ),
           SidebarMenuItem(
-            index: 10,
+            index: 11,
             icon: Icons.local_shipping_rounded,
             label: 'Suppliers',
           ),
           SidebarMenuItem(
-            index: 11,
+            index: 12,
             icon: Icons.account_balance_wallet_rounded,
             label: 'Finance',
           ),
           SidebarMenuItem(
-            index: 12,
+            index: 13,
             icon: Icons.inventory_2_rounded,
             label: 'Inventory',
           ),
@@ -411,14 +425,14 @@ _RoleDashboardConfig _buildRoleConfig(String role) {
       SidebarMenuSection(
         title: 'GOVERNANCE',
         items: [
-          SidebarMenuItem(index: 13, icon: Icons.group_rounded, label: 'Team'),
+          SidebarMenuItem(index: 14, icon: Icons.group_rounded, label: 'Team'),
           SidebarMenuItem(
-            index: 14,
+            index: 15,
             icon: Icons.settings_rounded,
             label: 'Settings',
           ),
           SidebarMenuItem(
-            index: 15,
+            index: 16,
             icon: Icons.library_books_rounded,
             label: 'Reports & Logs',
           ),

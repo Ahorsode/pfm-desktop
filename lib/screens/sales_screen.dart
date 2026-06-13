@@ -18,6 +18,7 @@ import '../services/auth_service.dart';
 import '../utils/farm_utils.dart';
 import '../utils/id_utils.dart';
 import '../utils/user_role.dart';
+import 'sales_analytics_screen.dart';
 
 class SalesScreen extends StatefulWidget {
   const SalesScreen({super.key});
@@ -1041,6 +1042,28 @@ class _SalesScreenState extends State<SalesScreen> {
                               const SizedBox(height: 8),
                               SizedBox(
                                 width: double.infinity,
+                                child: OutlinedButton.icon(
+                                  onPressed: () => Navigator.of(context).push(
+                                    MaterialPageRoute(
+                                      builder: (_) =>
+                                          const SalesAnalyticsScreen(),
+                                    ),
+                                  ),
+                                  icon: const Icon(Icons.analytics_rounded),
+                                  label: const Text('Analytics'),
+                                  style: OutlinedButton.styleFrom(
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 14,
+                                    ),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              SizedBox(
+                                width: double.infinity,
                                 child: FilledButton.icon(
                                   onPressed: customers.isEmpty
                                       ? null
@@ -1087,22 +1110,48 @@ class _SalesScreenState extends State<SalesScreen> {
                                 ),
                               ],
                             ),
-                            FilledButton.icon(
-                              onPressed: customers.isEmpty
-                                  ? null
-                                  : () => _showSaleDialog(customers, batches),
-                              icon: const Icon(Icons.add),
-                              label: const Text('Record Sale'),
-                              style: FilledButton.styleFrom(
-                                backgroundColor: const Color(0xFF16A34A),
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 20,
-                                  vertical: 14,
+                            Wrap(
+                              spacing: 12,
+                              runSpacing: 12,
+                              children: [
+                                OutlinedButton.icon(
+                                  onPressed: () => Navigator.of(context).push(
+                                    MaterialPageRoute(
+                                      builder: (_) =>
+                                          const SalesAnalyticsScreen(),
+                                    ),
+                                  ),
+                                  icon: const Icon(Icons.analytics_rounded),
+                                  label: const Text('Analytics'),
+                                  style: OutlinedButton.styleFrom(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 20,
+                                      vertical: 14,
+                                    ),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                  ),
                                 ),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
+                                FilledButton.icon(
+                                  onPressed: customers.isEmpty
+                                      ? null
+                                      : () =>
+                                            _showSaleDialog(customers, batches),
+                                  icon: const Icon(Icons.add),
+                                  label: const Text('Record Sale'),
+                                  style: FilledButton.styleFrom(
+                                    backgroundColor: const Color(0xFF16A34A),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 20,
+                                      vertical: 14,
+                                    ),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                  ),
                                 ),
-                              ),
+                              ],
                             ),
                           ],
                         );
