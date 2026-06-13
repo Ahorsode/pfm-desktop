@@ -519,7 +519,7 @@ class LicenseConfigs extends Table {
   /// Always 'singleton' – only one row ever exists.
   TextColumn get id => text()();
 
-  /// 'CLOUD' | 'OFFLINE' | 'GRACE_PERIOD' | 'LOCKED'
+  /// 'CLOUD_TRIAL' | 'CLOUD_ACTIVE' | 'EXPIRED' | 'HARD_LOCKED'
   TextColumn get mode => text().withDefault(const Constant('OFFLINE'))();
 
   /// Local SQLite farm_id (may be overwritten by webFarmId after cascade)
@@ -540,6 +540,12 @@ class LicenseConfigs extends Table {
 
   /// Updated on every DB write; used for anti-clock-tamper detection
   DateTimeColumn get lastUsed => dateTime().withDefault(currentDateAndTime)();
+
+  /// Timestamp of the last successful cloud subscription check.
+  /// Used for the 10-day offline tolerance window.
+  /// Null means never successfully checked.
+  DateTimeColumn get lastCloudCheckAt =>
+      dateTime().named('last_cloud_check_at').nullable()();
 
   @override
   Set<Column> get primaryKey => {id};
@@ -590,7 +596,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 22;
+  int get schemaVersion => 23;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -660,6 +666,9 @@ class AppDatabase extends _$AppDatabase {
       }
       if (from < 22) {
         await _ensureProvisioningLocalTables(m);
+      }
+      if (from >= 17 && from < 23) {
+        await m.addColumn(licenseConfigs, licenseConfigs.lastCloudCheckAt);
       }
     },
   );

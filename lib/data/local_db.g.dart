@@ -13254,6 +13254,18 @@ class $LicenseConfigsTable extends LicenseConfigs
     requiredDuringInsert: false,
     defaultValue: currentDateAndTime,
   );
+  static const VerificationMeta _lastCloudCheckAtMeta = const VerificationMeta(
+    'lastCloudCheckAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> lastCloudCheckAt =
+      GeneratedColumn<DateTime>(
+        'last_cloud_check_at',
+        aliasedName,
+        true,
+        type: DriftSqlType.dateTime,
+        requiredDuringInsert: false,
+      );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -13264,6 +13276,7 @@ class $LicenseConfigsTable extends LicenseConfigs
     installedAt,
     expiresAt,
     lastUsed,
+    lastCloudCheckAt,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -13329,6 +13342,15 @@ class $LicenseConfigsTable extends LicenseConfigs
         lastUsed.isAcceptableOrUnknown(data['last_used']!, _lastUsedMeta),
       );
     }
+    if (data.containsKey('last_cloud_check_at')) {
+      context.handle(
+        _lastCloudCheckAtMeta,
+        lastCloudCheckAt.isAcceptableOrUnknown(
+          data['last_cloud_check_at']!,
+          _lastCloudCheckAtMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -13370,6 +13392,10 @@ class $LicenseConfigsTable extends LicenseConfigs
         DriftSqlType.dateTime,
         data['${effectivePrefix}last_used'],
       )!,
+      lastCloudCheckAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}last_cloud_check_at'],
+      ),
     );
   }
 
@@ -13383,7 +13409,7 @@ class LicenseConfig extends DataClass implements Insertable<LicenseConfig> {
   /// Always 'singleton' – only one row ever exists.
   final String id;
 
-  /// 'CLOUD' | 'OFFLINE' | 'GRACE_PERIOD' | 'LOCKED'
+  /// 'CLOUD_TRIAL' | 'CLOUD_ACTIVE' | 'EXPIRED' | 'HARD_LOCKED'
   final String mode;
 
   /// Local SQLite farm_id (may be overwritten by webFarmId after cascade)
@@ -13403,6 +13429,11 @@ class LicenseConfig extends DataClass implements Insertable<LicenseConfig> {
 
   /// Updated on every DB write; used for anti-clock-tamper detection
   final DateTime lastUsed;
+
+  /// Timestamp of the last successful cloud subscription check.
+  /// Used for the 10-day offline tolerance window.
+  /// Null means never successfully checked.
+  final DateTime? lastCloudCheckAt;
   const LicenseConfig({
     required this.id,
     required this.mode,
@@ -13412,6 +13443,7 @@ class LicenseConfig extends DataClass implements Insertable<LicenseConfig> {
     required this.installedAt,
     required this.expiresAt,
     required this.lastUsed,
+    this.lastCloudCheckAt,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -13430,6 +13462,9 @@ class LicenseConfig extends DataClass implements Insertable<LicenseConfig> {
     map['installed_at'] = Variable<DateTime>(installedAt);
     map['expires_at'] = Variable<DateTime>(expiresAt);
     map['last_used'] = Variable<DateTime>(lastUsed);
+    if (!nullToAbsent || lastCloudCheckAt != null) {
+      map['last_cloud_check_at'] = Variable<DateTime>(lastCloudCheckAt);
+    }
     return map;
   }
 
@@ -13449,6 +13484,9 @@ class LicenseConfig extends DataClass implements Insertable<LicenseConfig> {
       installedAt: Value(installedAt),
       expiresAt: Value(expiresAt),
       lastUsed: Value(lastUsed),
+      lastCloudCheckAt: lastCloudCheckAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lastCloudCheckAt),
     );
   }
 
@@ -13466,6 +13504,9 @@ class LicenseConfig extends DataClass implements Insertable<LicenseConfig> {
       installedAt: serializer.fromJson<DateTime>(json['installedAt']),
       expiresAt: serializer.fromJson<DateTime>(json['expiresAt']),
       lastUsed: serializer.fromJson<DateTime>(json['lastUsed']),
+      lastCloudCheckAt: serializer.fromJson<DateTime?>(
+        json['lastCloudCheckAt'],
+      ),
     );
   }
   @override
@@ -13480,6 +13521,7 @@ class LicenseConfig extends DataClass implements Insertable<LicenseConfig> {
       'installedAt': serializer.toJson<DateTime>(installedAt),
       'expiresAt': serializer.toJson<DateTime>(expiresAt),
       'lastUsed': serializer.toJson<DateTime>(lastUsed),
+      'lastCloudCheckAt': serializer.toJson<DateTime?>(lastCloudCheckAt),
     };
   }
 
@@ -13492,6 +13534,7 @@ class LicenseConfig extends DataClass implements Insertable<LicenseConfig> {
     DateTime? installedAt,
     DateTime? expiresAt,
     DateTime? lastUsed,
+    Value<DateTime?> lastCloudCheckAt = const Value.absent(),
   }) => LicenseConfig(
     id: id ?? this.id,
     mode: mode ?? this.mode,
@@ -13501,6 +13544,9 @@ class LicenseConfig extends DataClass implements Insertable<LicenseConfig> {
     installedAt: installedAt ?? this.installedAt,
     expiresAt: expiresAt ?? this.expiresAt,
     lastUsed: lastUsed ?? this.lastUsed,
+    lastCloudCheckAt: lastCloudCheckAt.present
+        ? lastCloudCheckAt.value
+        : this.lastCloudCheckAt,
   );
   LicenseConfig copyWithCompanion(LicenseConfigsCompanion data) {
     return LicenseConfig(
@@ -13516,6 +13562,9 @@ class LicenseConfig extends DataClass implements Insertable<LicenseConfig> {
           : this.installedAt,
       expiresAt: data.expiresAt.present ? data.expiresAt.value : this.expiresAt,
       lastUsed: data.lastUsed.present ? data.lastUsed.value : this.lastUsed,
+      lastCloudCheckAt: data.lastCloudCheckAt.present
+          ? data.lastCloudCheckAt.value
+          : this.lastCloudCheckAt,
     );
   }
 
@@ -13529,7 +13578,8 @@ class LicenseConfig extends DataClass implements Insertable<LicenseConfig> {
           ..write('hardwareId: $hardwareId, ')
           ..write('installedAt: $installedAt, ')
           ..write('expiresAt: $expiresAt, ')
-          ..write('lastUsed: $lastUsed')
+          ..write('lastUsed: $lastUsed, ')
+          ..write('lastCloudCheckAt: $lastCloudCheckAt')
           ..write(')'))
         .toString();
   }
@@ -13544,6 +13594,7 @@ class LicenseConfig extends DataClass implements Insertable<LicenseConfig> {
     installedAt,
     expiresAt,
     lastUsed,
+    lastCloudCheckAt,
   );
   @override
   bool operator ==(Object other) =>
@@ -13556,7 +13607,8 @@ class LicenseConfig extends DataClass implements Insertable<LicenseConfig> {
           other.hardwareId == this.hardwareId &&
           other.installedAt == this.installedAt &&
           other.expiresAt == this.expiresAt &&
-          other.lastUsed == this.lastUsed);
+          other.lastUsed == this.lastUsed &&
+          other.lastCloudCheckAt == this.lastCloudCheckAt);
 }
 
 class LicenseConfigsCompanion extends UpdateCompanion<LicenseConfig> {
@@ -13568,6 +13620,7 @@ class LicenseConfigsCompanion extends UpdateCompanion<LicenseConfig> {
   final Value<DateTime> installedAt;
   final Value<DateTime> expiresAt;
   final Value<DateTime> lastUsed;
+  final Value<DateTime?> lastCloudCheckAt;
   final Value<int> rowid;
   const LicenseConfigsCompanion({
     this.id = const Value.absent(),
@@ -13578,6 +13631,7 @@ class LicenseConfigsCompanion extends UpdateCompanion<LicenseConfig> {
     this.installedAt = const Value.absent(),
     this.expiresAt = const Value.absent(),
     this.lastUsed = const Value.absent(),
+    this.lastCloudCheckAt = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   LicenseConfigsCompanion.insert({
@@ -13589,6 +13643,7 @@ class LicenseConfigsCompanion extends UpdateCompanion<LicenseConfig> {
     this.installedAt = const Value.absent(),
     required DateTime expiresAt,
     this.lastUsed = const Value.absent(),
+    this.lastCloudCheckAt = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        expiresAt = Value(expiresAt);
@@ -13601,6 +13656,7 @@ class LicenseConfigsCompanion extends UpdateCompanion<LicenseConfig> {
     Expression<DateTime>? installedAt,
     Expression<DateTime>? expiresAt,
     Expression<DateTime>? lastUsed,
+    Expression<DateTime>? lastCloudCheckAt,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -13612,6 +13668,7 @@ class LicenseConfigsCompanion extends UpdateCompanion<LicenseConfig> {
       if (installedAt != null) 'installed_at': installedAt,
       if (expiresAt != null) 'expires_at': expiresAt,
       if (lastUsed != null) 'last_used': lastUsed,
+      if (lastCloudCheckAt != null) 'last_cloud_check_at': lastCloudCheckAt,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -13625,6 +13682,7 @@ class LicenseConfigsCompanion extends UpdateCompanion<LicenseConfig> {
     Value<DateTime>? installedAt,
     Value<DateTime>? expiresAt,
     Value<DateTime>? lastUsed,
+    Value<DateTime?>? lastCloudCheckAt,
     Value<int>? rowid,
   }) {
     return LicenseConfigsCompanion(
@@ -13636,6 +13694,7 @@ class LicenseConfigsCompanion extends UpdateCompanion<LicenseConfig> {
       installedAt: installedAt ?? this.installedAt,
       expiresAt: expiresAt ?? this.expiresAt,
       lastUsed: lastUsed ?? this.lastUsed,
+      lastCloudCheckAt: lastCloudCheckAt ?? this.lastCloudCheckAt,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -13667,6 +13726,9 @@ class LicenseConfigsCompanion extends UpdateCompanion<LicenseConfig> {
     if (lastUsed.present) {
       map['last_used'] = Variable<DateTime>(lastUsed.value);
     }
+    if (lastCloudCheckAt.present) {
+      map['last_cloud_check_at'] = Variable<DateTime>(lastCloudCheckAt.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -13684,6 +13746,7 @@ class LicenseConfigsCompanion extends UpdateCompanion<LicenseConfig> {
           ..write('installedAt: $installedAt, ')
           ..write('expiresAt: $expiresAt, ')
           ..write('lastUsed: $lastUsed, ')
+          ..write('lastCloudCheckAt: $lastCloudCheckAt, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -21425,6 +21488,7 @@ typedef $$LicenseConfigsTableCreateCompanionBuilder =
       Value<DateTime> installedAt,
       required DateTime expiresAt,
       Value<DateTime> lastUsed,
+      Value<DateTime?> lastCloudCheckAt,
       Value<int> rowid,
     });
 typedef $$LicenseConfigsTableUpdateCompanionBuilder =
@@ -21437,6 +21501,7 @@ typedef $$LicenseConfigsTableUpdateCompanionBuilder =
       Value<DateTime> installedAt,
       Value<DateTime> expiresAt,
       Value<DateTime> lastUsed,
+      Value<DateTime?> lastCloudCheckAt,
       Value<int> rowid,
     });
 
@@ -21486,6 +21551,11 @@ class $$LicenseConfigsTableFilterComposer
 
   ColumnFilters<DateTime> get lastUsed => $composableBuilder(
     column: $table.lastUsed,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get lastCloudCheckAt => $composableBuilder(
+    column: $table.lastCloudCheckAt,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -21538,6 +21608,11 @@ class $$LicenseConfigsTableOrderingComposer
     column: $table.lastUsed,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<DateTime> get lastCloudCheckAt => $composableBuilder(
+    column: $table.lastCloudCheckAt,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$LicenseConfigsTableAnnotationComposer
@@ -21576,6 +21651,11 @@ class $$LicenseConfigsTableAnnotationComposer
 
   GeneratedColumn<DateTime> get lastUsed =>
       $composableBuilder(column: $table.lastUsed, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get lastCloudCheckAt => $composableBuilder(
+    column: $table.lastCloudCheckAt,
+    builder: (column) => column,
+  );
 }
 
 class $$LicenseConfigsTableTableManager
@@ -21619,6 +21699,7 @@ class $$LicenseConfigsTableTableManager
                 Value<DateTime> installedAt = const Value.absent(),
                 Value<DateTime> expiresAt = const Value.absent(),
                 Value<DateTime> lastUsed = const Value.absent(),
+                Value<DateTime?> lastCloudCheckAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => LicenseConfigsCompanion(
                 id: id,
@@ -21629,6 +21710,7 @@ class $$LicenseConfigsTableTableManager
                 installedAt: installedAt,
                 expiresAt: expiresAt,
                 lastUsed: lastUsed,
+                lastCloudCheckAt: lastCloudCheckAt,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -21641,6 +21723,7 @@ class $$LicenseConfigsTableTableManager
                 Value<DateTime> installedAt = const Value.absent(),
                 required DateTime expiresAt,
                 Value<DateTime> lastUsed = const Value.absent(),
+                Value<DateTime?> lastCloudCheckAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => LicenseConfigsCompanion.insert(
                 id: id,
@@ -21651,6 +21734,7 @@ class $$LicenseConfigsTableTableManager
                 installedAt: installedAt,
                 expiresAt: expiresAt,
                 lastUsed: lastUsed,
+                lastCloudCheckAt: lastCloudCheckAt,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0

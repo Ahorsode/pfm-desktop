@@ -10,7 +10,6 @@ import '../utils/farm_utils.dart';
 import '../utils/id_utils.dart';
 import '../utils/secure_auth_storage.dart';
 import 'auth_service.dart';
-import 'license_service.dart';
 import 'session_mode_service.dart';
 
 class DesktopRegistrationResult {
@@ -175,10 +174,6 @@ class DesktopRegistrationService {
       farmId: farmId,
       farmName: normalizedFarmName,
       cloudSynced: authResponse.session != null,
-    );
-    await LicenseService(db).initCloudLicenseFromActivation(
-      farmId: farmId,
-      hardwareId: await getDeviceHardwareId(),
     );
     await _persistSession(
       userId: authUser.id,

@@ -4,23 +4,13 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:provider/provider.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' hide User;
-import 'package:drift/drift.dart' hide Column;
-import 'package:uuid/uuid.dart';
 
 import '../data/local_db.dart';
 import '../data/sync_engine.dart';
-import '../services/activation_service.dart';
-import '../services/auth_service.dart';
-import '../services/cloud_owner_bind_service.dart';
 import '../services/desktop_registration_service.dart';
 import '../services/license_service.dart';
-import '../utils/farm_utils.dart';
 import '../utils/id_utils.dart';
-import '../utils/secure_auth_storage.dart';
-import '../utils/user_role.dart';
-import 'offline_terminal_login_screen.dart';
 import 'role_dashboard_router.dart';
 
 class WelcomeOnboardingScreen extends StatefulWidget {
@@ -36,30 +26,19 @@ class WelcomeOnboardingScreen extends StatefulWidget {
       _WelcomeOnboardingScreenState();
 }
 
-enum _OnboardingStep {
-  desktopRegistration,
-  choice,
-  webKeyIngestion,
-  localDesktopSetup,
-  offlineLocalSetup,
-}
+enum _OnboardingStep { desktopRegistration, choice }
 
-enum WelcomeOnboardingEntry { choice, webKeyIngestion, offlineLocalSetup }
+enum WelcomeOnboardingEntry { choice }
 
 class _WelcomeOnboardingScreenState extends State<WelcomeOnboardingScreen>
     with SingleTickerProviderStateMixin {
   late _OnboardingStep _step;
 
-  final _farmIdCtrl = TextEditingController();
-  final _activationKeyCtrl = TextEditingController();
-  final _desktopUserCtrl = TextEditingController();
-  final _desktopPasswordCtrl = TextEditingController();
   final _regFarmNameCtrl = TextEditingController();
   final _regOwnerPhoneCtrl = TextEditingController();
   final _regAdminEmailCtrl = TextEditingController();
   final _regMasterPasswordCtrl = TextEditingController();
 
-  bool _obscureDesktopPassword = true;
   bool _obscureMasterPassword = true;
   bool _isLoading = false;
   bool _googleAuthPending = false;
@@ -107,10 +86,6 @@ class _WelcomeOnboardingScreenState extends State<WelcomeOnboardingScreen>
 
   _OnboardingStep _mapEntryToStep(WelcomeOnboardingEntry entry) {
     switch (entry) {
-      case WelcomeOnboardingEntry.webKeyIngestion:
-        return _OnboardingStep.webKeyIngestion;
-      case WelcomeOnboardingEntry.offlineLocalSetup:
-        return _OnboardingStep.offlineLocalSetup;
       case WelcomeOnboardingEntry.choice:
         return _OnboardingStep.desktopRegistration;
     }
@@ -125,10 +100,6 @@ class _WelcomeOnboardingScreenState extends State<WelcomeOnboardingScreen>
 
   @override
   void dispose() {
-    _farmIdCtrl.dispose();
-    _activationKeyCtrl.dispose();
-    _desktopUserCtrl.dispose();
-    _desktopPasswordCtrl.dispose();
     _regFarmNameCtrl.dispose();
     _regOwnerPhoneCtrl.dispose();
     _regAdminEmailCtrl.dispose();
@@ -147,80 +118,6 @@ class _WelcomeOnboardingScreenState extends State<WelcomeOnboardingScreen>
     _fadeCtrl
       ..reset()
       ..forward();
-  }
-
-  Future<void> _verifyAndStartSync() async {
-    final farmId = _farmIdCtrl.text.trim();
-    final activationKey = _activationKeyCtrl.text.trim();
-    if (farmId.isEmpty || activationKey.isEmpty) {
-      setState(() => _error = 'Please enter both Farm ID and Activation Key.');
-      return;
-    }
-
-    setState(() {
-      _isLoading = true;
-      _error = null;
-      _message = null;
-    });
-
-    try {
-      final syncEngine = context.read<SyncEngine>();
-      if (!syncEngine.isOnline) {
-        throw Exception('Internet connection is required to verify and sync.');
-      }
-
-      final hardwareId = await getDeviceHardwareId();
-      final activationService = ActivationService();
-
-      final verifyError = await activationService.verifyActivationKey(
-        farmId: farmId,
-        activationKey: activationKey,
-        hardwareId: hardwareId,
-      );
-      if (verifyError != null) {
-        throw Exception(verifyError);
-      }
-
-      final canBind = await Supabase.instance.client.rpc(
-        'verify_farm_binding',
-        params: {'p_farm_id': farmId},
-      );
-      if (canBind != true) {
-        throw Exception('This Farm ID cannot be bound on this desktop.');
-      }
-
-      await syncEngine.initialFullSync(farmId);
-      await FarmUtils.setBoundFarmId(farmId);
-
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setBool('is_bound', true);
-
-      final db = context.read<AppDatabase>();
-      await LicenseService(
-        db,
-      ).initCloudLicenseFromActivation(farmId: farmId, hardwareId: hardwareId);
-
-      // Map offline/local owner UUIDs to the cloud farm owner (fixes batch push FK).
-      await CloudOwnerBindService(db).rebindLocalOwnerToCloud(farmId: farmId);
-
-      if (!mounted) return;
-
-      final boundToCloudOwner = await _tryBindSyncedCloudOwnerAndEnterDashboard(
-        farmId,
-      );
-      if (boundToCloudOwner) return;
-
-      _navigate(
-        _OnboardingStep.localDesktopSetup,
-        message: 'Verification successful. Cloud sync completed.',
-      );
-    } on PostgrestException catch (e) {
-      setState(() => _error = e.message);
-    } catch (e) {
-      setState(() => _error = e.toString().replaceAll('Exception: ', ''));
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
   }
 
   Future<void> _startGoogleRegistration() async {
@@ -258,10 +155,17 @@ class _WelcomeOnboardingScreenState extends State<WelcomeOnboardingScreen>
     });
 
     try {
+      final db = context.read<AppDatabase>();
+      final syncEngine = context.read<SyncEngine>();
       final result = await _desktopRegistrationService
-          .completeGoogleRegistration(db: context.read<AppDatabase>());
-      context.read<SyncEngine>().startPeriodicSync();
+          .completeGoogleRegistration(db: db);
+      await _initTrialForRegistration(
+        userId: result.userId,
+        farmId: result.farmId,
+        db: db,
+      );
       if (!mounted) return;
+      syncEngine.startPeriodicSync();
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(
           builder: (_) => RoleDashboardRouter(role: result.role),
@@ -308,228 +212,52 @@ class _WelcomeOnboardingScreenState extends State<WelcomeOnboardingScreen>
     });
 
     try {
+      final db = context.read<AppDatabase>();
+      final syncEngine = context.read<SyncEngine>();
       final result = await _desktopRegistrationService.registerTraditional(
-        db: context.read<AppDatabase>(),
+        db: db,
         farmName: farmName,
         ownerPhoneNumber: phone,
         adminEmail: email,
         masterPassword: password,
       );
-      context.read<SyncEngine>().startPeriodicSync();
+      await _initTrialForRegistration(
+        userId: result.userId,
+        farmId: result.farmId,
+        db: db,
+      );
       if (!mounted) return;
+      syncEngine.startPeriodicSync();
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(
           builder: (_) => RoleDashboardRouter(role: result.role),
         ),
       );
     } on AuthException catch (e) {
+      if (!mounted) return;
       setState(() => _error = e.message);
     } catch (e) {
+      if (!mounted) return;
       setState(() => _error = e.toString().replaceAll('Exception: ', ''));
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  /// After cloud sync, bind the desktop session to the farm owner already on
-  /// HatchLog Web — skip manual local username/password when that user exists.
-  Future<bool> _tryBindSyncedCloudOwnerAndEnterDashboard(String farmId) async {
-    final db = context.read<AppDatabase>();
-    final owner = await CloudOwnerBindService(db).cloudOwnerUser(farmId);
-    if (owner == null) return false;
-
-    final role = UserRoleUtils.normalize(owner.role);
-    final displayName = owner.name?.trim().isNotEmpty == true
-        ? owner.name!.trim()
-        : (owner.email?.trim().isNotEmpty == true
-              ? owner.email!.trim()
-              : 'Farm Owner');
-
-    UserSession().startSession(id: owner.id, name: displayName, role: role);
-    await UserSession().persistToPrefs();
-
-    if (!mounted) return true;
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(builder: (_) => RoleDashboardRouter(role: role)),
+  Future<void> _initTrialForRegistration({
+    required String userId,
+    required String farmId,
+    required AppDatabase db,
+  }) async {
+    final hardwareId = await getDeviceHardwareId();
+    final licSvc = LicenseService(db);
+    final licErr = await licSvc.initTrialFromCloud(
+      userId: userId,
+      farmId: farmId,
+      hardwareId: hardwareId,
     );
-    return true;
-  }
-
-  Future<void> _completeSetupAndEnterDashboard() async {
-    final username = _desktopUserCtrl.text.trim();
-    final password = _desktopPasswordCtrl.text;
-
-    if (username.isEmpty || password.isEmpty) {
-      setState(() => _error = 'Choose both desktop username and password.');
-      return;
-    }
-    if (password.length < 6) {
-      setState(
-        () => _error = 'Desktop password must be at least 6 characters.',
-      );
-      return;
-    }
-
-    setState(() {
-      _isLoading = true;
-      _error = null;
-    });
-
-    try {
-      final db = context.read<AppDatabase>();
-
-      final existing =
-          await (db.select(db.users)..where(
-                (u) => u.email.equals(username) | u.name.equals(username),
-              ))
-              .getSingleOrNull();
-      if (existing != null) {
-        throw Exception('This desktop username is already in use.');
-      }
-
-      final ownerId = newLocalId();
-      final farmId = await FarmUtils.getBoundFarmId();
-      await SecureAuthStorage.saveOfflineCredential(
-        userId: ownerId,
-        secret: password,
-        displayName: username,
-        farmId: farmId,
-        provider: 'desktop_activation',
-      );
-
-      await db
-          .into(db.users)
-          .insert(
-            UsersCompanion.insert(
-              id: ownerId,
-              email: Value(username),
-              password: const Value(null),
-              name: Value(username),
-              role: const Value('OWNER'),
-              mustChangePassword: const Value(false),
-            ),
-          );
-
-      if (farmId != null && farmId.isNotEmpty) {
-        final existingMember =
-            await (db.select(db.farmMembers)..where(
-                  (m) => m.farmId.equals(farmId) & m.userId.equals(ownerId),
-                ))
-                .getSingleOrNull();
-        if (existingMember == null) {
-          await db
-              .into(db.farmMembers)
-              .insert(
-                FarmMembersCompanion.insert(
-                  id: newLocalId(),
-                  farmId: farmId,
-                  userId: ownerId,
-                  role: const Value('OWNER'),
-                ),
-              );
-        }
-      }
-
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('owner_id', ownerId);
-      await prefs.setString('user_id', ownerId);
-      await prefs.setString('user_email', username);
-      await prefs.setString('user_name', username);
-      await prefs.setString('user_role', 'OWNER');
-      await prefs.setBool('is_bound', true);
-
-      UserSession().startSession(id: ownerId, name: username, role: 'OWNER');
-
-      if (!mounted) return;
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => RoleDashboardRouter(role: 'OWNER')),
-      );
-    } catch (e) {
-      setState(() => _error = e.toString().replaceAll('Exception: ', ''));
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
-  }
-
-  Future<void> _createOfflineLocalProfile() async {
-    final username = _desktopUserCtrl.text.trim();
-    final password = _desktopPasswordCtrl.text;
-    if (username.isEmpty || password.isEmpty) {
-      setState(
-        () => _error = 'Choose Username and Choose Password are required.',
-      );
-      return;
-    }
-    if (password.length < 6) {
-      setState(() => _error = 'Password must be at least 6 characters.');
-      return;
-    }
-
-    setState(() {
-      _isLoading = true;
-      _error = null;
-      _message = null;
-    });
-
-    try {
-      final db = context.read<AppDatabase>();
-
-      final existing =
-          await (db.select(db.users)..where(
-                (u) => u.name.equals(username) | u.email.equals(username),
-              ))
-              .getSingleOrNull();
-      if (existing != null) {
-        throw Exception('This username already exists on this device.');
-      }
-
-      final ownerId = const Uuid().v4();
-      await SecureAuthStorage.saveOfflineCredential(
-        userId: ownerId,
-        secret: password,
-        displayName: username,
-        farmId: FarmUtils.localGenesisFarmId,
-        farmName: FarmUtils.localGenesisFarmName,
-        provider: 'offline_local',
-      );
-
-      await db
-          .into(db.users)
-          .insert(
-            UsersCompanion.insert(
-              id: ownerId,
-              name: Value(username),
-              password: const Value(null),
-              email: const Value(null),
-              phoneNumber: const Value(null),
-              role: const Value('OWNER'),
-              mustChangePassword: const Value(false),
-            ),
-          );
-
-      await FarmUtils.ensureLocalGenesisFarm(db, ownerId: ownerId);
-      await LicenseService(db).initOfflineLicense();
-
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setBool(localProfileEstablishedKey, true);
-      await prefs.setString(localProfileOwnerIdKey, ownerId);
-      await prefs.setBool('is_bound', true);
-      await prefs.setString('owner_id', ownerId);
-      await prefs.setString('user_id', ownerId);
-      await prefs.setString('user_name', username);
-      await prefs.setString('user_email', '');
-      await prefs.setString('user_role', 'OWNER');
-
-      UserSession().startSession(id: ownerId, name: username, role: 'OWNER');
-
-      if (!mounted) return;
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const OfflineTerminalLoginScreen()),
-      );
-    } catch (e) {
-      setState(() => _error = e.toString().replaceAll('Exception: ', ''));
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
+    if (licErr != null) {
+      debugPrint('[Onboarding] Trial init warning: $licErr');
     }
   }
 
@@ -578,9 +306,6 @@ class _WelcomeOnboardingScreenState extends State<WelcomeOnboardingScreen>
     return switch (_step) {
       _OnboardingStep.desktopRegistration => _buildDesktopRegistrationPanel(),
       _OnboardingStep.choice => _buildChoicePanel(),
-      _OnboardingStep.webKeyIngestion => _buildWebKeyIngestionPanel(),
-      _OnboardingStep.localDesktopSetup => _buildLocalDesktopSetupPanel(),
-      _OnboardingStep.offlineLocalSetup => _buildOfflineLocalSetupPanel(),
     };
   }
 
@@ -664,18 +389,6 @@ class _WelcomeOnboardingScreenState extends State<WelcomeOnboardingScreen>
                           ),
                         ),
                       ),
-                    ),
-                    const SizedBox(height: 20),
-                    _RegistrationLink(
-                      icon: LucideIcons.badgeCheck,
-                      label: 'Use Farm ID and Activation Key',
-                      onTap: () => _navigate(_OnboardingStep.webKeyIngestion),
-                    ),
-                    const SizedBox(height: 10),
-                    _RegistrationLink(
-                      icon: LucideIcons.hardDrive,
-                      label: 'Create offline-only local profile',
-                      onTap: () => _navigate(_OnboardingStep.offlineLocalSetup),
                     ),
                   ],
                 );
@@ -799,16 +512,17 @@ class _WelcomeOnboardingScreenState extends State<WelcomeOnboardingScreen>
             children: [
               Expanded(
                 child: _OptionCard(
-                  icon: LucideIcons.badgeCheck,
+                  icon: LucideIcons.cloud,
                   iconColor: const Color(0xFF38BDF8),
-                  title: 'Existing Web Account',
+                  title: 'Use Web Account',
                   subtitle:
-                      'Use your Farm ID and Activation Key from your HatchLog web dashboard to verify this desktop and start sync.',
-                  badge: 'ACCOUNT READY',
+                      'Sign in or register with your HatchLog cloud account to start your desktop trial.',
+                  badge: 'CLOUD ACCOUNT',
                   badgeColor: const Color(0xFF38BDF8),
-                  buttonLabel: 'Yes, I have a HatchLog Website Account',
+                  buttonLabel: 'Continue',
                   buttonColor: const Color(0xFF38BDF8),
-                  onPressed: () => _navigate(_OnboardingStep.webKeyIngestion),
+                  onPressed: () =>
+                      _navigate(_OnboardingStep.desktopRegistration),
                 ),
               ),
               const SizedBox(width: 20),
@@ -816,231 +530,18 @@ class _WelcomeOnboardingScreenState extends State<WelcomeOnboardingScreen>
                 child: _OptionCard(
                   icon: LucideIcons.userPlus,
                   iconColor: const Color(0xFF22C55E),
-                  title: 'Offline Local Setup',
+                  title: 'Create Account',
                   subtitle:
-                      'Create a local terminal-only profile for this desktop without email, phone, or Google sign-in.',
-                  badge: 'OFFLINE PROFILE',
+                      'Create your farm account on the cloud, then continue into HatchLog Desktop.',
+                  badge: 'NEW ACCOUNT',
                   badgeColor: const Color(0xFF22C55E),
-                  buttonLabel: "Don't have an account? Create one offline",
+                  buttonLabel: 'Register',
                   buttonColor: const Color(0xFF22C55E),
-                  onPressed: () => _navigate(_OnboardingStep.offlineLocalSetup),
+                  onPressed: () =>
+                      _navigate(_OnboardingStep.desktopRegistration),
                 ),
               ),
             ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildWebKeyIngestionPanel() {
-    return _GlassCard(
-      width: 540,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _BackButton(onTap: () => _navigate(_OnboardingStep.choice)),
-          const SizedBox(height: 14),
-          const Text(
-            'Activate Desktop & Verify Web Keys',
-            style: TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.w700,
-              color: Colors.white,
-            ),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 10),
-          Text(
-            'Log into your HatchLog Web Dashboard, navigate to Settings -> Desktop Licenses, and copy your generated Farm ID and Activation Key.',
-            style: TextStyle(
-              fontSize: 14,
-              height: 1.45,
-              color: Colors.white.withOpacity(0.72),
-            ),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 24),
-          if (_message != null) ...[
-            _InfoBanner(message: _message!),
-            const SizedBox(height: 14),
-          ],
-          if (_error != null) ...[
-            _ErrorBanner(message: _error!),
-            const SizedBox(height: 14),
-          ],
-          _GlassTextField(
-            controller: _farmIdCtrl,
-            label: 'Farm ID',
-            hint: 'Enter farm id from web dashboard',
-            icon: LucideIcons.layoutGrid,
-          ),
-          const SizedBox(height: 14),
-          _GlassTextField(
-            controller: _activationKeyCtrl,
-            label: 'Activation Key',
-            hint: 'Enter desktop activation key',
-            icon: LucideIcons.key,
-            onSubmitted: (_) => _verifyAndStartSync(),
-          ),
-          const SizedBox(height: 24),
-          _PrimaryButton(
-            label: 'Verify & Start Sync',
-            icon: LucideIcons.cloudLightning,
-            color: const Color(0xFF38BDF8),
-            isLoading: _isLoading,
-            onPressed: _verifyAndStartSync,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildLocalDesktopSetupPanel() {
-    return _GlassCard(
-      width: 540,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _BackButton(onTap: () => _navigate(_OnboardingStep.webKeyIngestion)),
-          const SizedBox(height: 14),
-          const Text(
-            'Set Up Your Local Desktop Access',
-            style: TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.w700,
-              color: Colors.white,
-            ),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 10),
-          Text(
-            'Since you use Google Sign-In on the web, create a secure local username and password to log into this desktop machine while offline.',
-            style: TextStyle(
-              fontSize: 14,
-              height: 1.45,
-              color: Colors.white.withOpacity(0.72),
-            ),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 24),
-          if (_message != null) ...[
-            _InfoBanner(message: _message!),
-            const SizedBox(height: 14),
-          ],
-          if (_error != null) ...[
-            _ErrorBanner(message: _error!),
-            const SizedBox(height: 14),
-          ],
-          _GlassTextField(
-            controller: _desktopUserCtrl,
-            label: 'Choose Desktop Username',
-            hint: 'e.g. farm-owner-desktop',
-            icon: LucideIcons.user,
-          ),
-          const SizedBox(height: 14),
-          _GlassTextField(
-            controller: _desktopPasswordCtrl,
-            label: 'Choose Desktop Password',
-            hint: 'At least 6 characters',
-            icon: LucideIcons.lock,
-            obscureText: _obscureDesktopPassword,
-            onSubmitted: (_) => _completeSetupAndEnterDashboard(),
-            suffix: IconButton(
-              icon: Icon(
-                _obscureDesktopPassword ? LucideIcons.eyeOff : LucideIcons.eye,
-                size: 18,
-                color: const Color(0xFF94A3B8),
-              ),
-              onPressed: () => setState(
-                () => _obscureDesktopPassword = !_obscureDesktopPassword,
-              ),
-            ),
-          ),
-          const SizedBox(height: 24),
-          _PrimaryButton(
-            label: 'Complete Setup & Enter Dashboard',
-            icon: LucideIcons.checkCircle2,
-            color: const Color(0xFF22C55E),
-            isLoading: _isLoading,
-            onPressed: _completeSetupAndEnterDashboard,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildOfflineLocalSetupPanel() {
-    return _GlassCard(
-      width: 540,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _BackButton(onTap: () => _navigate(_OnboardingStep.choice)),
-          const SizedBox(height: 14),
-          const Text(
-            'Create Your Local Desktop Profile',
-            style: TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.w700,
-              color: Colors.white,
-            ),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 10),
-          Text(
-            'Set up a one-time local terminal profile for offline desktop access.',
-            style: TextStyle(
-              fontSize: 14,
-              height: 1.45,
-              color: Colors.white.withOpacity(0.74),
-            ),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 24),
-          if (_message != null) ...[
-            _InfoBanner(message: _message!),
-            const SizedBox(height: 14),
-          ],
-          if (_error != null) ...[
-            _ErrorBanner(message: _error!),
-            const SizedBox(height: 14),
-          ],
-          _GlassTextField(
-            controller: _desktopUserCtrl,
-            label: 'Choose Username',
-            hint: 'local_owner',
-            icon: LucideIcons.user,
-          ),
-          const SizedBox(height: 14),
-          _GlassTextField(
-            controller: _desktopPasswordCtrl,
-            label: 'Choose Password',
-            hint: 'At least 6 characters',
-            icon: LucideIcons.lock,
-            obscureText: _obscureDesktopPassword,
-            onSubmitted: (_) => _createOfflineLocalProfile(),
-            suffix: IconButton(
-              icon: Icon(
-                _obscureDesktopPassword ? LucideIcons.eyeOff : LucideIcons.eye,
-                size: 18,
-                color: const Color(0xFF94A3B8),
-              ),
-              onPressed: () => setState(
-                () => _obscureDesktopPassword = !_obscureDesktopPassword,
-              ),
-            ),
-          ),
-          const SizedBox(height: 24),
-          _PrimaryButton(
-            label: 'Create Local Profile',
-            icon: LucideIcons.checkCircle2,
-            color: const Color(0xFF16A34A),
-            isLoading: _isLoading,
-            onPressed: _createOfflineLocalProfile,
           ),
         ],
       ),
@@ -1251,55 +752,6 @@ class _RegistrationRoutePanel extends StatelessWidget {
           const SizedBox(height: 20),
           ...children,
         ],
-      ),
-    );
-  }
-}
-
-class _RegistrationLink extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
-
-  const _RegistrationLink({
-    required this.icon,
-    required this.label,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(8),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.05),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: Colors.white.withOpacity(0.11)),
-        ),
-        child: Row(
-          children: [
-            Icon(icon, color: const Color(0xFFB6C2D1), size: 17),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                label,
-                style: const TextStyle(
-                  color: Color(0xFFE2E8F0),
-                  fontSize: 13,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            ),
-            const Icon(
-              Icons.arrow_forward_ios_rounded,
-              color: Color(0xFF94A3B8),
-              size: 13,
-            ),
-          ],
-        ),
       ),
     );
   }
@@ -1527,27 +979,6 @@ class _InfoBanner extends StatelessWidget {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _BackButton extends StatelessWidget {
-  final VoidCallback onTap;
-  const _BackButton({required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: IconButton(
-        onPressed: onTap,
-        icon: Icon(
-          Icons.arrow_back_ios_new,
-          size: 18,
-          color: Colors.white.withOpacity(0.75),
-        ),
-        splashRadius: 18,
       ),
     );
   }

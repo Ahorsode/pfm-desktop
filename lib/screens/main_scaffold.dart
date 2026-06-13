@@ -1,8 +1,15 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
+import '../data/local_db.dart';
 import '../data/sync_engine.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../services/license_service.dart';
+import 'lockout_screen.dart';
 import 'offline_terminal_login_screen.dart';
 import 'overview.dart';
 import 'livestock_manager.dart';
@@ -42,6 +49,7 @@ class MainScaffold extends StatefulWidget {
 class MainScaffoldState extends State<MainScaffold> {
   int _selectedIndex = 0;
   bool _isCollapsed = false;
+  Timer? _subscriptionCheckTimer;
   late final String _normalizedRole;
   late final List<Widget> _pages;
   late final List<SidebarMenuSection> _sections;
@@ -53,6 +61,62 @@ class MainScaffoldState extends State<MainScaffold> {
     final config = _buildRoleConfig(_normalizedRole);
     _pages = config.pages;
     _sections = config.sections;
+    _subscriptionCheckTimer = Timer.periodic(
+      const Duration(hours: 6),
+      (_) => _checkSubscriptionInBackground(),
+    );
+  }
+
+  Future<void> _checkSubscriptionInBackground() async {
+    try {
+      final db = context.read<AppDatabase>();
+      final svc = LicenseService(db);
+      final config = await svc.getConfig();
+      if (config?.hardwareId == null) return;
+
+      await svc.renewFromCloud(config!.hardwareId!);
+      final status = await svc.checkLicense();
+
+      if (!mounted) return;
+
+      if (status == LicenseStatus.hardLocked) {
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(
+            builder: (_) =>
+                const LockoutScreen(reason: LockoutReason.trialExpired),
+          ),
+          (_) => false,
+        );
+      } else if (status == LicenseStatus.softLocked) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text(
+              'Subscription expiring soon. Upgrade to keep access.',
+            ),
+            backgroundColor: const Color(0xFFEF4444),
+            action: SnackBarAction(
+              label: 'Upgrade',
+              textColor: Colors.white,
+              onPressed: () async {
+                final url = dotenv.env['WEB_APP_URL'] ?? '';
+                if (url.isNotEmpty) {
+                  await launchUrl(Uri.parse('$url/dashboard/license-upgrade'));
+                }
+              },
+            ),
+            duration: const Duration(seconds: 10),
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('[Background] Subscription check failed: $e');
+    }
+  }
+
+  @override
+  void dispose() {
+    _subscriptionCheckTimer?.cancel();
+    super.dispose();
   }
 
   void setSelectedIndex(int index) {

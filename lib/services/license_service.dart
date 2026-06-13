@@ -9,19 +9,22 @@ import '../utils/id_utils.dart';
 
 /// All possible license states the app can be in at boot time.
 enum LicenseStatus {
-  /// First ever launch – no install record found.
+  /// First ever launch - no install record found.
   firstLaunch,
 
-  /// License is valid (CLOUD, OFFLINE within 30 days, or GRACE_PERIOD).
+  /// License is valid (trial or active paid subscription).
   valid,
 
-  /// GRACE_PERIOD mode – valid but shows a grace banner.
-  gracePeriod,
+  /// Subscription expired, within the 5-day soft-lock window.
+  /// App still fully works but shows a prominent banner.
+  softLocked,
 
-  /// Offline trial has passed the 30-day limit (or LOCKED in DB).
-  expired,
+  /// Subscription expired by more than 5 days AND offline tolerance
+  /// window (10 days since last cloud check) is also exhausted.
+  /// Shows full lockout screen, app is not accessible.
+  hardLocked,
 
-  /// System clock was rolled back past `last_used` – fraud lockdown.
+  /// System clock was rolled back past last_used - fraud lockdown.
   clockTampered,
 }
 
@@ -56,387 +59,188 @@ class LicenseService {
 
   LicenseService(this._db);
 
-  // ─────────────────────────────────────────────────────────────────────────
+  // -------------------------------------------------------------------------
   // BOOT CHECK
-  // ─────────────────────────────────────────────────────────────────────────
+  // -------------------------------------------------------------------------
 
-  /// Called once on every app boot inside LicenseGate.
-  /// Returns the current [LicenseStatus] and, as a side-effect, runs the
-  /// anti-clock-tamper check.
   Future<LicenseStatus> checkLicense() async {
     final config = await _loadConfig();
-
-    // No row → first ever launch
     if (config == null) return LicenseStatus.firstLaunch;
 
-    // ── Anti-clock-tamper ──────────────────────────────────────────────────
-    // If the wall clock is BEFORE the last recorded write, the user has
-    // rolled the system clock backwards.
     final now = DateTime.now();
+
+    // Anti-clock-tamper
     if (now.isBefore(config.lastUsed.subtract(const Duration(minutes: 2)))) {
-      // 2-minute grace for NTP drift
       debugPrint(
         '[License] CLOCK TAMPER: now=$now lastUsed=${config.lastUsed}',
       );
       return LicenseStatus.clockTampered;
     }
 
-    // ── Expiry check ───────────────────────────────────────────────────────
-    if (now.isAfter(config.expiresAt)) {
-      // Mark as LOCKED in the DB so we don't recalculate each time
-      await _setMode('LOCKED');
-      return LicenseStatus.expired;
+    // Still within subscription period -> valid.
+    if (now.isBefore(config.expiresAt)) {
+      return LicenseStatus.valid;
     }
 
-    // ── Grace period ───────────────────────────────────────────────────────
-    if (config.mode == 'GRACE_PERIOD') return LicenseStatus.gracePeriod;
-
-    return LicenseStatus.valid;
-  }
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // OPTION 1 – CLOUD HANDSHAKE
-  // ─────────────────────────────────────────────────────────────────────────
-
-  /// Authenticates against Supabase, registers the hardware ID, reads the
-  /// `expires_at` from the server and persists a CLOUD license row locally.
-  ///
-  /// Returns `null` on success, or an error string to display.
-  Future<String?> initCloudLicense({
-    required String email,
-    required String password,
-    required String hardwareId,
-  }) async {
-    try {
-      // 1. Supabase sign-in
-      final response = await Supabase.instance.client.auth.signInWithPassword(
-        email: email,
-        password: password,
-      );
-      final user = response.user;
-      if (user == null) return 'Authentication failed. Check your credentials.';
-
-      // 2. Fetch the web farm_id for this user
-      final farmRow = await Supabase.instance.client
-          .from('farms')
-          .select('id')
-          .eq('user_id', user.id)
-          .maybeSingle();
-
-      final webFarmId = farmRow?['id'] as String?;
-
-      // 3. Upsert the device registration on Supabase, get expires_at
-      DateTime expiresAt;
-      try {
-        final regResult = await Supabase.instance.client
-            .from('device_registrations')
-            .upsert({
-              'user_id': user.id,
-              'farm_id': ?webFarmId,
-              'hardware_id': hardwareId,
-              'registered_at': DateTime.now().toIso8601String(),
-            }, onConflict: 'hardware_id')
-            .select('expires_at')
-            .maybeSingle();
-
-        final raw = regResult?['expires_at'];
-        expiresAt = raw != null
-            ? DateTime.parse(raw.toString())
-            : DateTime.now().add(const Duration(days: 30));
-      } catch (_) {
-        // If registration fails (e.g. no internet after auth), default 30 days
-        expiresAt = DateTime.now().add(const Duration(days: 30));
+    // Past expires_at: check offline tolerance first.
+    final lastCheck = config.lastCloudCheckAt;
+    if (lastCheck != null) {
+      final daysSinceCheck = now.difference(lastCheck).inDays;
+      if (daysSinceCheck < 10) {
+        return LicenseStatus.valid;
       }
-
-      // 4. Persist license config locally
-      await _upsertConfig(
-        mode: 'CLOUD',
-        farmId: webFarmId,
-        userId: user.id,
-        hardwareId: hardwareId,
-        installedAt: DateTime.now(),
-        expiresAt: expiresAt,
-      );
-
-      return null; // success
-    } on AuthException catch (e) {
-      return e.message;
-    } catch (e) {
-      return 'Cloud handshake failed: $e';
     }
+
+    final daysPastExpiry = now.difference(config.expiresAt).inDays;
+
+    if (daysPastExpiry <= 5) {
+      return LicenseStatus.softLocked;
+    }
+
+    await _setMode('HARD_LOCKED');
+    return LicenseStatus.hardLocked;
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // OPTION 2 – OFFLINE TRIAL
-  // ─────────────────────────────────────────────────────────────────────────
+  // -------------------------------------------------------------------------
+  // CLOUD TRIAL REGISTRATION
+  // -------------------------------------------------------------------------
 
-  /// Records the current timestamp as the installation benchmark and grants
-  /// 30 days of unhindered offline access.
-  Future<void> initOfflineLicense() async {
-    final now = DateTime.now();
-    await _upsertConfig(
-      mode: 'PURE_OFFLINE',
-      farmId: FarmUtils.localGenesisFarmId,
-      userId: null,
-      hardwareId: null,
-      installedAt: now,
-      expiresAt: now.add(const Duration(days: 30)),
-    );
-  }
-
-  /// Bootstraps license state for desktop activation-key onboarding.
-  /// This does not require web email/password authentication.
-  Future<void> initCloudLicenseFromActivation({
+  /// Registers this device on Supabase via RPC and persists a 30-day
+  /// CLOUD_TRIAL license locally. Idempotent - safe to call again if the
+  /// device is already registered.
+  ///
+  /// Returns null on success, or an error string.
+  Future<String?> initTrialFromCloud({
+    required String userId,
     required String farmId,
     required String hardwareId,
   }) async {
-    final now = DateTime.now();
-    await _upsertConfig(
-      mode: 'CLOUD',
-      farmId: farmId.trim().isEmpty ? null : farmId.trim(),
-      userId: null,
-      hardwareId: hardwareId.trim().isEmpty ? null : hardwareId.trim(),
-      installedAt: now,
-      expiresAt: now.add(const Duration(days: 30)),
-    );
-  }
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // VOLUNTARY MID-TRIAL CLOUD MIGRATION
-  // ─────────────────────────────────────────────────────────────────────────
-
-  @visibleForTesting
-  Future<Map<String, dynamic>?> fetchSupabaseFarmAndUser({
-    required String email,
-    required String password,
-  }) async {
-    final response = await Supabase.instance.client.auth.signInWithPassword(
-      email: email,
-      password: password,
-    );
-    final user = response.user;
-    if (user == null) return null;
-
-    final farmRow = await Supabase.instance.client
-        .from('farms')
-        .select('id')
-        .eq('user_id', user.id)
-        .maybeSingle();
-
-    return {'userId': user.id, 'webFarmId': farmRow?['id'] as String?};
-  }
-
-  @visibleForTesting
-  Future<void> registerDeviceOnSupabase({
-    required String userId,
-    required String? webFarmId,
-    required String hardwareId,
-  }) async {
-    await Supabase.instance.client.from('device_registrations').upsert({
-      'user_id': userId,
-      'farm_id': ?webFarmId,
-      'hardware_id': hardwareId,
-      'registered_at': DateTime.now().toIso8601String(),
-    }, onConflict: 'hardware_id');
-  }
-
-  /// Links an existing PURE_OFFLINE trial to a cloud Supabase account.
-  /// 1. Authenticates with Supabase.
-  /// 2. Retrieves the user's web_farm_id from the farms table.
-  /// 3. Executes the 20-table cascade update of local farm_id to web_farm_id.
-  /// 4. Registers the hardware ID.
-  /// 5. Updates mode to CLOUD_TRIAL, preserving the original expiration countdown.
-  ///
-  /// Returns null on success, or an error message.
-  Future<String?> linkCloudAccount({
-    required String email,
-    required String password,
-    required String hardwareId,
-  }) async {
     try {
-      // 1 & 2. Supabase sign-in and fetch farm
-      final authData = await fetchSupabaseFarmAndUser(
-        email: email,
-        password: password,
-      );
-      if (authData == null) {
-        return 'Authentication failed. Check your credentials.';
-      }
-
-      final userId = authData['userId'] as String;
-      final webFarmId = authData['webFarmId'] as String?;
-
-      // 3. Read local farm_id to cascade-migrate
-      final config = await _loadConfig();
-      if (config == null) return 'Local license configuration not found.';
-      final localFarmId = config.farmId;
-
-      if (webFarmId != null &&
-          localFarmId != null &&
-          localFarmId != webFarmId) {
-        await runFarmIdCascade(localFarmId: localFarmId, webFarmId: webFarmId);
-      }
-
-      // 4. Register hardware on Supabase
-      try {
-        await registerDeviceOnSupabase(
-          userId: userId,
-          webFarmId: webFarmId,
-          hardwareId: hardwareId,
-        );
-      } catch (e) {
-        debugPrint('[License] Device registration warning: $e');
-      }
-
-      // 5. Calculate remaining trial time and preserve countdown
-      final remainingTime = config.expiresAt.difference(DateTime.now());
-      debugPrint(
-        '[License] Cloud link migration: remaining trial countdown is $remainingTime',
-      );
-      final preservedExpiry = config.expiresAt;
-
-      // Update license config locally
-      await (_db.update(
-        _db.licenseConfigs,
-      )..where((t) => t.id.equals('singleton'))).write(
-        LicenseConfigsCompanion(
-          mode: const Value('CLOUD_TRIAL'),
-          farmId: Value(webFarmId ?? localFarmId),
-          userId: Value(userId),
-          hardwareId: Value(hardwareId),
-          expiresAt: Value(preservedExpiry),
-          lastUsed: Value(DateTime.now()),
-        ),
+      final result = await Supabase.instance.client.rpc(
+        'register_device_trial',
+        params: {
+          'p_user_id': userId,
+          'p_farm_id': farmId,
+          'p_hardware_id': hardwareId,
+          'p_device_name': 'Flutter Desktop',
+          'p_device_type': 'Desktop',
+        },
       );
 
-      return null; // success
-    } on AuthException catch (e) {
-      return e.message;
-    } catch (e) {
-      return 'Cloud migration failed: $e';
-    }
-  }
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // LOCKOUT RESCUE – GRACE PERIOD BRIDGE
-  // ─────────────────────────────────────────────────────────────────────────
-
-  /// Called from the LockoutScreen after the user logs in online.
-  ///
-  /// 1. Authenticates against Supabase.
-  /// 2. Fetches `web_farm_id` from the `farms` table.
-  /// 3. Runs the SQLite farm_id cascade migration.
-  /// 4. Upserts hardware ID to Supabase `device_registrations`.
-  /// 5. Writes a GRACE_PERIOD license with 10 extra days.
-  ///
-  /// Returns `null` on success or an error string.
-  Future<String?> applyGracePeriod({
-    required String email,
-    required String password,
-    required String hardwareId,
-  }) async {
-    try {
-      // 1. Sign in
-      final response = await Supabase.instance.client.auth.signInWithPassword(
-        email: email,
-        password: password,
-      );
-      final user = response.user;
-      if (user == null) return 'Authentication failed.';
-
-      // 2. Get web farm_id
-      final farmRow = await Supabase.instance.client
-          .from('farms')
-          .select('id')
-          .eq('user_id', user.id)
-          .maybeSingle();
-
-      final webFarmId = farmRow?['id'] as String?;
-
-      // 3. Read local farm_id to cascade-migrate
-      final config = await _loadConfig();
-      final localFarmId = config?.farmId;
-
-      if (webFarmId != null &&
-          localFarmId != null &&
-          localFarmId != webFarmId) {
-        await runFarmIdCascade(localFarmId: localFarmId, webFarmId: webFarmId);
+      if (result == null) {
+        return 'Trial registration returned no data.';
       }
 
-      // 4. Register hardware on Supabase
-      try {
-        await Supabase.instance.client.from('device_registrations').upsert({
-          'user_id': user.id,
-          'farm_id': ?webFarmId,
-          'hardware_id': hardwareId,
-          'registered_at': DateTime.now().toIso8601String(),
-        }, onConflict: 'hardware_id');
-      } catch (e) {
-        debugPrint('[License] Grace period device registration warn: $e');
+      final data = Map<String, dynamic>.from(result as Map);
+
+      if (data['success'] != true) {
+        return data['error']?.toString() ?? 'Trial registration failed.';
       }
 
-      // 5. Write GRACE_PERIOD config (+10 days)
-      final now = DateTime.now();
+      final rawExpiry = data['license_expires_at'];
+      final expiresAt = rawExpiry != null
+          ? DateTime.tryParse(rawExpiry.toString()) ??
+                DateTime.now().add(const Duration(days: 30))
+          : DateTime.now().add(const Duration(days: 30));
+
       await _upsertConfig(
-        mode: 'GRACE_PERIOD',
-        farmId: webFarmId ?? localFarmId,
-        userId: user.id,
+        mode: 'CLOUD_TRIAL',
+        farmId: farmId,
+        userId: userId,
         hardwareId: hardwareId,
-        installedAt: config?.installedAt ?? now,
-        expiresAt: now.add(const Duration(days: 10)),
+        installedAt: DateTime.now(),
+        expiresAt: expiresAt,
+        lastCloudCheckAt: DateTime.now(),
       );
 
+      debugPrint('[License] Trial registered. Expires: $expiresAt');
       return null;
-    } on AuthException catch (e) {
-      return e.message;
     } catch (e) {
-      return 'Grace period activation failed: $e';
+      debugPrint('[License] initTrialFromCloud error: $e');
+      await _upsertConfig(
+        mode: 'CLOUD_TRIAL',
+        farmId: farmId,
+        userId: userId,
+        hardwareId: hardwareId,
+        installedAt: DateTime.now(),
+        expiresAt: DateTime.now().add(const Duration(days: 30)),
+        lastCloudCheckAt: null,
+      );
+      return null;
     }
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // SECONDARY RENEWAL (subsequent cloud sync checkups)
-  // ─────────────────────────────────────────────────────────────────────────
+  // -------------------------------------------------------------------------
+  // CLOUD SUBSCRIPTION STATUS CHECK
+  // -------------------------------------------------------------------------
 
-  /// On each boot (when online), silently refresh the local `expires_at`
-  /// from whatever Supabase has for this hardware ID.
-  /// Does NOT re-fetch or re-verify `farm_id`.
+  /// Called on every boot (when online) and every 6 hours while the app runs.
+  /// Fetches current subscription status from Supabase and syncs locally.
+  /// Stamps last_cloud_check_at on every successful contact with the server.
   Future<void> renewFromCloud(String hardwareId) async {
     try {
-      final row = await Supabase.instance.client
-          .from('device_registrations')
-          .select('expires_at')
-          .eq('hardware_id', hardwareId)
-          .maybeSingle();
+      final result = await Supabase.instance.client.rpc(
+        'get_device_subscription_status',
+        params: {'p_hardware_id': hardwareId},
+      );
 
-      final raw = row?['expires_at'];
-      if (raw == null) return;
-      final serverExpiry = DateTime.tryParse(raw.toString());
-      if (serverExpiry == null) return;
+      if (result == null) return;
 
+      final data = Map<String, dynamic>.from(result as Map);
+      if (data['success'] != true) {
+        debugPrint('[License] Status check failed: ${data['error']}');
+        return;
+      }
+
+      final rawExpiry = data['license_expires_at'];
+      final statusStr = data['license_status']?.toString();
+      final serverExpiry = rawExpiry != null
+          ? DateTime.tryParse(rawExpiry.toString())
+          : null;
+
+      final now = DateTime.now();
       final config = await _loadConfig();
       if (config == null) return;
 
-      // Only update if server has a later expiry than what we have locally
-      if (serverExpiry.isAfter(config.expiresAt)) {
-        await (_db.update(
-          _db.licenseConfigs,
-        )..where((t) => t.id.equals('singleton'))).write(
-          LicenseConfigsCompanion(
-            expiresAt: Value(serverExpiry),
-            lastUsed: Value(DateTime.now()),
-          ),
-        );
+      LicenseConfigsCompanion update = LicenseConfigsCompanion(
+        lastUsed: Value(now),
+        lastCloudCheckAt: Value(now),
+      );
+
+      if (serverExpiry != null && serverExpiry.isAfter(config.expiresAt)) {
+        update = update.copyWith(expiresAt: Value(serverExpiry));
         debugPrint('[License] Renewed expiry to $serverExpiry from cloud.');
       }
+
+      if (statusStr != null) {
+        final localMode = _serverStatusToLocalMode(statusStr);
+        update = update.copyWith(mode: Value(localMode));
+      }
+
+      await (_db.update(
+        _db.licenseConfigs,
+      )..where((t) => t.id.equals('singleton'))).write(update);
     } catch (e) {
       debugPrint('[License] Cloud renewal skipped (offline?): $e');
     }
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
+  String _serverStatusToLocalMode(String serverStatus) {
+    switch (serverStatus) {
+      case 'ACTIVE':
+        return 'CLOUD_ACTIVE';
+      case 'CLOUD_TRIAL':
+        return 'CLOUD_TRIAL';
+      case 'EXPIRED':
+        return 'EXPIRED';
+      default:
+        return 'CLOUD_TRIAL';
+    }
+  }
+
+  // -------------------------------------------------------------------------
   // ANTI-CLOCK-TAMPER STAMP
-  // ─────────────────────────────────────────────────────────────────────────
+  // -------------------------------------------------------------------------
 
   /// Call this on every local DB write operation to keep `last_used` fresh.
   /// If the clock is later rolled back, `checkLicense()` will catch it.
@@ -446,13 +250,13 @@ class LicenseService {
             ..where((t) => t.id.equals('singleton')))
           .write(LicenseConfigsCompanion(lastUsed: Value(DateTime.now())));
     } catch (_) {
-      // Silent – license row may not exist yet on very first boot
+      // Silent - license row may not exist yet on very first boot.
     }
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
+  // -------------------------------------------------------------------------
   // FARM ID CASCADE MIGRATION ENGINE
-  // ─────────────────────────────────────────────────────────────────────────
+  // -------------------------------------------------------------------------
 
   /// Rewrites `farm_id` on child tables without changing the parent `farms` row.
   Future<void> remapFarmIdReferences(String fromFarmId, String toFarmId) async {
@@ -542,20 +346,17 @@ class LicenseService {
     required String localFarmId,
     required String webFarmId,
   }) async {
-    debugPrint('[License] Running farm_id cascade: $localFarmId → $webFarmId');
+    debugPrint('[License] Running farm_id cascade: $localFarmId -> $webFarmId');
 
     await _db.transaction(() async {
-      // Disable FK enforcement so we can rewrite the PK safely
       await _db.customStatement('PRAGMA foreign_keys = OFF;');
 
       try {
-        // 1. Update the parent farms row (PK change)
         await _db.customStatement(
           'UPDATE farms SET id = ?, sync_status = ? WHERE id = ?',
           [webFarmId, 'CLOUD_SYNCED', localFarmId],
         );
 
-        // 2. Cascade farm_id across all child tables
         for (final tableName in _farmIdChildTables) {
           await _db.customStatement(
             'UPDATE $tableName SET farm_id = ? WHERE farm_id = ?',
@@ -563,9 +364,8 @@ class LicenseService {
           );
         }
 
-        debugPrint('[License] Cascade complete for $localFarmId → $webFarmId');
+        debugPrint('[License] Cascade complete for $localFarmId -> $webFarmId');
       } finally {
-        // Always re-enable FK enforcement
         await _db.customStatement('PRAGMA foreign_keys = ON;');
       }
     });
@@ -573,9 +373,9 @@ class LicenseService {
     await FarmUtils.setBoundFarmId(webFarmId);
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
+  // -------------------------------------------------------------------------
   // HELPERS
-  // ─────────────────────────────────────────────────────────────────────────
+  // -------------------------------------------------------------------------
 
   Future<LicenseConfig?> _loadConfig() async {
     return (_db.select(
@@ -590,6 +390,7 @@ class LicenseService {
     required String? hardwareId,
     required DateTime installedAt,
     required DateTime expiresAt,
+    DateTime? lastCloudCheckAt,
   }) async {
     final now = DateTime.now();
     await _db
@@ -604,6 +405,7 @@ class LicenseService {
             installedAt: Value(installedAt),
             expiresAt: expiresAt,
             lastUsed: Value(now),
+            lastCloudCheckAt: Value(lastCloudCheckAt),
           ),
         );
   }

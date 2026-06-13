@@ -4,7 +4,6 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:provider/provider.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:app_links/app_links.dart';
 
@@ -123,19 +122,6 @@ void main() async {
   final syncEngine = SyncEngine(database);
   await UserSession().hydrateFromPrefs();
 
-  // Check Device Binding Status (legacy activation token path)
-  final prefs = await SharedPreferences.getInstance();
-  final secureStorage = const FlutterSecureStorage();
-  final bool hasActivation = await secureStorage.containsKey(
-    key: 'activation_token',
-  );
-  final bool isBound = hasActivation || (prefs.getBool('is_bound') ?? false);
-
-  if (isBound) {
-    // Start background sync only if bound or activated
-    syncEngine.startPeriodicSync();
-  }
-
   // Start handoff watcher for Windows
   if (Platform.isWindows) {
     _startHandoffWatcher();
@@ -185,9 +171,9 @@ class MyApp extends StatelessWidget {
 /// to the correct screen:
 ///
 /// - [LicenseStatus.firstLaunch]   → [WelcomeOnboardingScreen]
-/// - [LicenseStatus.valid]
-///   [LicenseStatus.gracePeriod]   → [OfflineTerminalLoginScreen] (+ silent cloud renewal)
-/// - [LicenseStatus.expired]       → [LockoutScreen] (trial-expired variant)
+/// - [LicenseStatus.valid]         → [OfflineTerminalLoginScreen]
+/// - [LicenseStatus.softLocked]    → [OfflineTerminalLoginScreen] with banner
+/// - [LicenseStatus.hardLocked]    → [LockoutScreen] (trial-expired variant)
 /// - [LicenseStatus.clockTampered] → [LockoutScreen] (clock-tamper variant)
 class LicenseGate extends StatefulWidget {
   const LicenseGate({super.key});
@@ -205,16 +191,6 @@ class _LicenseGateState extends State<LicenseGate> {
 
   Future<void> _route() async {
     if (!mounted) return;
-
-    final prefs = await SharedPreferences.getInstance();
-    final localProfileEstablished =
-        prefs.getBool(localProfileEstablishedKey) ?? false;
-    if (localProfileEstablished) {
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const OfflineTerminalLoginScreen()),
-      );
-      return;
-    }
 
     final db = context.read<AppDatabase>();
     final svc = LicenseService(db);
@@ -237,14 +213,25 @@ class _LicenseGateState extends State<LicenseGate> {
         );
 
       case LicenseStatus.valid:
-      case LicenseStatus.gracePeriod:
-        // Attempt silent cloud renewal in the background (no-op when offline)
-        _tryCloudRenewal(svc);
+        final hardwareId = await _hardwareIdForRenewal(svc);
+        if (!mounted) return;
+        if (hardwareId != null) _silentRenew(hardwareId);
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(builder: (_) => const OfflineTerminalLoginScreen()),
         );
 
-      case LicenseStatus.expired:
+      case LicenseStatus.softLocked:
+        final hardwareId = await _hardwareIdForRenewal(svc);
+        if (!mounted) return;
+        if (hardwareId != null) _silentRenew(hardwareId);
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(
+            builder: (_) =>
+                const OfflineTerminalLoginScreen(showSoftLockBanner: true),
+          ),
+        );
+
+      case LicenseStatus.hardLocked:
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(
             builder: (_) =>
@@ -262,15 +249,20 @@ class _LicenseGateState extends State<LicenseGate> {
     }
   }
 
-  /// Fire-and-forget cloud renewal; errors are swallowed (offline is fine).
-  Future<void> _tryCloudRenewal(LicenseService svc) async {
+  Future<String?> _hardwareIdForRenewal(LicenseService svc) async {
     try {
       final config = await svc.getConfig();
       final hw = config?.hardwareId;
-      if (hw != null && hw.isNotEmpty) {
-        await svc.renewFromCloud(hw);
-      }
-    } catch (_) {}
+      return hw != null && hw.isNotEmpty ? hw : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  void _silentRenew(String hardwareId) {
+    LicenseService(context.read<AppDatabase>())
+        .renewFromCloud(hardwareId)
+        .catchError((e) => debugPrint('[LicenseGate] Silent renew failed: $e'));
   }
 
   @override

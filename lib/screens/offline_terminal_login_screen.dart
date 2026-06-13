@@ -4,10 +4,12 @@ import 'package:bcrypt/bcrypt.dart';
 import 'package:drift/drift.dart' show Value;
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:lucide_icons/lucide_icons.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart' hide User;
+import 'package:url_launcher/url_launcher.dart';
 
 import '../data/local_db.dart';
 import '../data/sync_engine.dart';
@@ -25,7 +27,12 @@ import 'mobile_setup_modal.dart';
 const localProfileEstablishedKey = 'LOCAL_PROFILE_ESTABLISHED';
 
 class OfflineTerminalLoginScreen extends StatefulWidget {
-  const OfflineTerminalLoginScreen({super.key});
+  final bool showSoftLockBanner;
+
+  const OfflineTerminalLoginScreen({
+    super.key,
+    this.showSoftLockBanner = false,
+  });
 
   @override
   State<OfflineTerminalLoginScreen> createState() =>
@@ -489,167 +496,210 @@ class _OfflineTerminalLoginScreenState
       canPop: false,
       child: Scaffold(
         backgroundColor: const Color(0xFF0B1220),
-        body: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 460),
-            child: Container(
-              padding: const EdgeInsets.all(28),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.06),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: Colors.white.withValues(alpha: 0.16)),
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const Icon(
-                    Icons.lock_outline_rounded,
-                    color: Color(0xFF22C55E),
-                    size: 42,
-                  ),
-                  const SizedBox(height: 14),
-                  const Text(
-                    'Sign In to Terminal Dashboard',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 24,
-                      fontWeight: FontWeight.w700,
+        body: Column(
+          children: [
+            if (widget.showSoftLockBanner)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
+                color: const Color(0xFFEF4444).withOpacity(0.15),
+                child: Row(
+                  children: [
+                    const Icon(
+                      LucideIcons.alertTriangle,
+                      size: 16,
+                      color: Color(0xFFEF4444),
                     ),
-                  ),
-                  const SizedBox(height: 20),
-                  if (_error != null) ...[
-                    Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: Colors.red.withValues(alpha: 0.14),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(
-                          color: Colors.red.withValues(alpha: 0.32),
-                        ),
-                      ),
+                    const SizedBox(width: 10),
+                    const Expanded(
                       child: Text(
-                        _error!,
-                        style: const TextStyle(color: Colors.redAccent),
+                        'Your subscription has expired. You have up to 5 days of continued access. Upgrade your plan to avoid losing access.',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Color(0xFFEF4444),
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                     ),
-                    const SizedBox(height: 12),
+                    TextButton(
+                      onPressed: () async {
+                        final url = dotenv.env['WEB_APP_URL'] ?? '';
+                        if (url.isNotEmpty) {
+                          await launchUrl(
+                            Uri.parse('$url/dashboard/license-upgrade'),
+                          );
+                        }
+                      },
+                      child: const Text(
+                        'Upgrade Now',
+                        style: TextStyle(
+                          color: Color(0xFFEF4444),
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
                   ],
-                  TextField(
-                    controller: _usernameCtrl,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w700,
-                    ),
-                    cursorColor: Colors.white,
-                    decoration: InputDecoration(
-                      filled: true,
-                      fillColor: Colors.white.withValues(alpha: 0.08),
-                      labelText: 'Email, phone, or username',
-                      hintText: 'Owner username, phone, or email',
-                      labelStyle: const TextStyle(color: Color(0xFF22C55E)),
-                      hintStyle: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.7),
-                        fontWeight: FontWeight.w600,
-                      ),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(16),
-                        borderSide: BorderSide(
-                          color: Colors.white.withValues(alpha: 0.22),
-                        ),
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(16),
-                        borderSide: BorderSide(
-                          color: Colors.white.withValues(alpha: 0.22),
-                        ),
-                      ),
-                      focusedBorder: const OutlineInputBorder(
-                        borderRadius: BorderRadius.all(Radius.circular(16)),
-                        borderSide: BorderSide(
-                          color: Color(0xFF22C55E),
-                          width: 2,
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: _passwordCtrl,
-                    obscureText: _obscurePassword,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w700,
-                    ),
-                    cursorColor: Colors.white,
-                    onSubmitted: (_) => _signIn(),
-                    decoration: InputDecoration(
-                      filled: true,
-                      fillColor: Colors.white.withValues(alpha: 0.08),
-                      labelText: 'Password',
-                      labelStyle: const TextStyle(color: Color(0xFF9CA3AF)),
-                      hintStyle: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.7),
-                        fontWeight: FontWeight.w600,
-                      ),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(16),
-                        borderSide: BorderSide(
-                          color: Colors.white.withValues(alpha: 0.22),
-                        ),
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(16),
-                        borderSide: BorderSide(
-                          color: Colors.white.withValues(alpha: 0.22),
-                        ),
-                      ),
-                      focusedBorder: const OutlineInputBorder(
-                        borderRadius: BorderRadius.all(Radius.circular(16)),
-                        borderSide: BorderSide(
-                          color: Color(0xFF22C55E),
-                          width: 2,
-                        ),
-                      ),
-                      suffixIcon: IconButton(
-                        onPressed: () => setState(
-                          () => _obscurePassword = !_obscurePassword,
-                        ),
-                        icon: Icon(
-                          _obscurePassword
-                              ? Icons.visibility_off_outlined
-                              : Icons.visibility_outlined,
-                          color: Colors.white70,
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  SizedBox(
-                    height: 48,
-                    child: ElevatedButton(
-                      onPressed: _isLoading ? null : _signIn,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF16A34A),
-                        foregroundColor: Colors.white,
-                      ),
-                      child: _isLoading
-                          ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Text(
-                              'Sign In',
-                              style: TextStyle(fontWeight: FontWeight.w700),
-                            ),
-                    ),
-                  ),
-                ],
+                ),
+              ),
+            Expanded(child: Center(child: _buildLoginCard())),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLoginCard() {
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 460),
+      child: Container(
+        padding: const EdgeInsets.all(28),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.06),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.16)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Icon(
+              Icons.lock_outline_rounded,
+              color: Color(0xFF22C55E),
+              size: 42,
+            ),
+            const SizedBox(height: 14),
+            const Text(
+              'Sign In to Terminal Dashboard',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 24,
+                fontWeight: FontWeight.w700,
               ),
             ),
-          ),
+            const SizedBox(height: 20),
+            if (_error != null) ...[
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.red.withValues(alpha: 0.14),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: Colors.red.withValues(alpha: 0.32)),
+                ),
+                child: Text(
+                  _error!,
+                  style: const TextStyle(color: Colors.redAccent),
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
+            TextField(
+              controller: _usernameCtrl,
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+              ),
+              cursorColor: Colors.white,
+              decoration: InputDecoration(
+                filled: true,
+                fillColor: Colors.white.withValues(alpha: 0.08),
+                labelText: 'Email, phone, or username',
+                hintText: 'Owner username, phone, or email',
+                labelStyle: const TextStyle(color: Color(0xFF22C55E)),
+                hintStyle: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.7),
+                  fontWeight: FontWeight.w600,
+                ),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: BorderSide(
+                    color: Colors.white.withValues(alpha: 0.22),
+                  ),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: BorderSide(
+                    color: Colors.white.withValues(alpha: 0.22),
+                  ),
+                ),
+                focusedBorder: const OutlineInputBorder(
+                  borderRadius: BorderRadius.all(Radius.circular(16)),
+                  borderSide: BorderSide(color: Color(0xFF22C55E), width: 2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _passwordCtrl,
+              obscureText: _obscurePassword,
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+              ),
+              cursorColor: Colors.white,
+              onSubmitted: (_) => _signIn(),
+              decoration: InputDecoration(
+                filled: true,
+                fillColor: Colors.white.withValues(alpha: 0.08),
+                labelText: 'Password',
+                labelStyle: const TextStyle(color: Color(0xFF9CA3AF)),
+                hintStyle: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.7),
+                  fontWeight: FontWeight.w600,
+                ),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: BorderSide(
+                    color: Colors.white.withValues(alpha: 0.22),
+                  ),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: BorderSide(
+                    color: Colors.white.withValues(alpha: 0.22),
+                  ),
+                ),
+                focusedBorder: const OutlineInputBorder(
+                  borderRadius: BorderRadius.all(Radius.circular(16)),
+                  borderSide: BorderSide(color: Color(0xFF22C55E), width: 2),
+                ),
+                suffixIcon: IconButton(
+                  onPressed: () =>
+                      setState(() => _obscurePassword = !_obscurePassword),
+                  icon: Icon(
+                    _obscurePassword
+                        ? Icons.visibility_off_outlined
+                        : Icons.visibility_outlined,
+                    color: Colors.white70,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            SizedBox(
+              height: 48,
+              child: ElevatedButton(
+                onPressed: _isLoading ? null : _signIn,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF16A34A),
+                  foregroundColor: Colors.white,
+                ),
+                child: _isLoading
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Text(
+                        'Sign In',
+                        style: TextStyle(fontWeight: FontWeight.w700),
+                      ),
+              ),
+            ),
+          ],
         ),
       ),
     );

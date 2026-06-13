@@ -884,19 +884,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final svc = LicenseService(db);
     final config = await svc.getConfig();
 
-    if (config == null) {
-      await svc.initOfflineLicense();
-    } else {
+    if (config != null) {
       await svc.touchLastUsed();
     }
 
     if (!mounted) return;
     Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(
-        builder: (_) => const WelcomeOnboardingScreen(
-          entry: WelcomeOnboardingEntry.webKeyIngestion,
-        ),
-      ),
+      MaterialPageRoute(builder: (_) => const WelcomeOnboardingScreen()),
       (_) => false,
     );
   }
