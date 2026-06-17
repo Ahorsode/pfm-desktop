@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:bcrypt/bcrypt.dart';
@@ -43,15 +44,54 @@ class _OfflineTerminalLoginScreenState
     extends State<OfflineTerminalLoginScreen> {
   final _usernameCtrl = TextEditingController();
   final _passwordCtrl = TextEditingController();
+  final _desktopRegistrationService = DesktopRegistrationService();
   bool _isLoading = false;
+  bool _googleAuthPending = false;
+  bool _handlingGoogleLogin = false;
   bool _obscurePassword = true;
   String? _error;
+  String? _message;
+  StreamSubscription<AuthState>? _authSubscription;
+
+  @override
+  void initState() {
+    super.initState();
+    _authSubscription = Supabase.instance.client.auth.onAuthStateChange.listen(
+      (data) {
+        if (!_googleAuthPending) return;
+        if (data.event == AuthChangeEvent.signedIn && data.session != null) {
+          unawaited(_completeGoogleLogin());
+        }
+      },
+      onError: (error, stackTrace) {
+        if (!mounted) return;
+        setState(
+          () => _error = 'Google sign-in interrupted. Please try again.',
+        );
+      },
+    );
+
+    if (_isGoogleAuthUser(Supabase.instance.client.auth.currentUser)) {
+      _googleAuthPending = true;
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => _completeGoogleLogin(),
+      );
+    }
+  }
 
   @override
   void dispose() {
     _usernameCtrl.dispose();
     _passwordCtrl.dispose();
+    _authSubscription?.cancel();
     super.dispose();
+  }
+
+  bool _isGoogleAuthUser(dynamic user) {
+    if (user == null) return false;
+    final metadata = user.appMetadata;
+    if (metadata is! Map) return false;
+    return metadata['provider']?.toString().toLowerCase() == 'google';
   }
 
   Future<bool> _checkInternetConnection() async {
@@ -82,6 +122,7 @@ class _OfflineTerminalLoginScreenState
     setState(() {
       _isLoading = true;
       _error = null;
+      _message = null;
     });
 
     try {
@@ -245,6 +286,68 @@ class _OfflineTerminalLoginScreenState
     } catch (e) {
       setState(() => _error = e.toString().replaceAll('Exception: ', ''));
     } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _startGoogleLogin() async {
+    setState(() {
+      _isLoading = true;
+      _googleAuthPending = true;
+      _error = null;
+      _message = null;
+    });
+
+    try {
+      final hasSupabaseConnection = await _checkInternetConnection();
+      if (!hasSupabaseConnection) {
+        throw Exception('Google sign-in requires internet access.');
+      }
+
+      await _desktopRegistrationService.startGoogleRegistration();
+      if (!mounted) return;
+      setState(
+        () => _message =
+            'Complete Google sign-in in your browser, then return to HatchLog.',
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _googleAuthPending = false;
+        _error = e.toString().replaceAll('Exception: ', '');
+      });
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _completeGoogleLogin() async {
+    if (_handlingGoogleLogin || !mounted) return;
+    _handlingGoogleLogin = true;
+    setState(() {
+      _isLoading = true;
+      _error = null;
+      _message = 'Finalizing Google sign-in...';
+    });
+
+    try {
+      final db = context.read<AppDatabase>();
+      final syncEngine = context.read<SyncEngine>();
+      final result = await _desktopRegistrationService
+          .completeGoogleRegistration(db: db);
+      if (!mounted) return;
+      syncEngine.startPeriodicSync();
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(
+          builder: (_) => RoleDashboardRouter(role: result.role),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _error = e.toString().replaceAll('Exception: ', ''));
+    } finally {
+      _googleAuthPending = false;
+      _handlingGoogleLogin = false;
       if (mounted) setState(() => _isLoading = false);
     }
   }
@@ -596,6 +699,26 @@ class _OfflineTerminalLoginScreenState
               ),
               const SizedBox(height: 12),
             ],
+            if (_message != null) ...[
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF38BDF8).withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: const Color(0xFF38BDF8).withValues(alpha: 0.32),
+                  ),
+                ),
+                child: Text(
+                  _message!,
+                  style: const TextStyle(
+                    color: Color(0xFFBAE6FD),
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
             TextField(
               controller: _usernameCtrl,
               style: const TextStyle(
@@ -697,6 +820,31 @@ class _OfflineTerminalLoginScreenState
                         'Sign In',
                         style: TextStyle(fontWeight: FontWeight.w700),
                       ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              height: 48,
+              child: OutlinedButton.icon(
+                onPressed: _isLoading ? null : _startGoogleLogin,
+                icon: _isLoading && _googleAuthPending
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(LucideIcons.chrome, size: 18),
+                label: const Text(
+                  'Continue with Google',
+                  style: TextStyle(fontWeight: FontWeight.w800),
+                ),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.white,
+                  side: BorderSide(color: Colors.white.withValues(alpha: 0.24)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
               ),
             ),
           ],

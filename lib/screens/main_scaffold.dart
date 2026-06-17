@@ -29,6 +29,7 @@ import 'comprehensive_report_screen.dart';
 import 'egg_analytics_screen.dart';
 import 'feed_analytics_screen.dart';
 import 'sales_analytics_screen.dart';
+import 'user_profile_screen.dart';
 
 import 'mortality_screen.dart';
 import 'quarantine_screen.dart';
@@ -281,6 +282,7 @@ _RoleDashboardConfig _buildRoleConfig(String role) {
         FeedManagementScreen(),
         MortalityScreen(),
         ReportLogScreen(),
+        UserProfileScreen(),
       ],
       sections: const [
         SidebarMenuSection(
@@ -316,6 +318,11 @@ _RoleDashboardConfig _buildRoleConfig(String role) {
               icon: Icons.library_books_rounded,
               label: 'Operation Logs',
             ),
+            SidebarMenuItem(
+              index: 5,
+              icon: Icons.account_circle_rounded,
+              label: 'Profile',
+            ),
           ],
         ),
       ],
@@ -344,6 +351,7 @@ _RoleDashboardConfig _buildRoleConfig(String role) {
       EggAnalyticsScreen(),
       FeedAnalyticsScreen(),
       SalesAnalyticsScreen(),
+      UserProfileScreen(),
     ],
     sections: const [
       SidebarMenuSection(
@@ -435,6 +443,11 @@ _RoleDashboardConfig _buildRoleConfig(String role) {
             index: 16,
             icon: Icons.library_books_rounded,
             label: 'Reports & Logs',
+          ),
+          SidebarMenuItem(
+            index: 20,
+            icon: Icons.account_circle_rounded,
+            label: 'Profile',
           ),
         ],
       ),
