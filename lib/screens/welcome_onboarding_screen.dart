@@ -11,6 +11,7 @@ import '../data/sync_engine.dart';
 import '../services/desktop_registration_service.dart';
 import '../services/license_service.dart';
 import '../utils/id_utils.dart';
+import 'lockout_screen.dart';
 import 'role_dashboard_router.dart';
 
 class WelcomeOnboardingScreen extends StatefulWidget {
@@ -159,11 +160,12 @@ class _WelcomeOnboardingScreenState extends State<WelcomeOnboardingScreen>
       final syncEngine = context.read<SyncEngine>();
       final result = await _desktopRegistrationService
           .completeGoogleRegistration(db: db);
-      await _initTrialForRegistration(
+      final licenseReady = await _initTrialForRegistration(
         userId: result.userId,
         farmId: result.farmId,
         db: db,
       );
+      if (!licenseReady) return;
       if (!mounted) return;
       syncEngine.startPeriodicSync();
       Navigator.of(context).pushReplacement(
@@ -221,11 +223,12 @@ class _WelcomeOnboardingScreenState extends State<WelcomeOnboardingScreen>
         adminEmail: email,
         masterPassword: password,
       );
-      await _initTrialForRegistration(
+      final licenseReady = await _initTrialForRegistration(
         userId: result.userId,
         farmId: result.farmId,
         db: db,
       );
+      if (!licenseReady) return;
       if (!mounted) return;
       syncEngine.startPeriodicSync();
       Navigator.of(context).pushReplacement(
@@ -244,7 +247,7 @@ class _WelcomeOnboardingScreenState extends State<WelcomeOnboardingScreen>
     }
   }
 
-  Future<void> _initTrialForRegistration({
+  Future<bool> _initTrialForRegistration({
     required String userId,
     required String farmId,
     required AppDatabase db,
@@ -256,9 +259,24 @@ class _WelcomeOnboardingScreenState extends State<WelcomeOnboardingScreen>
       farmId: farmId,
       hardwareId: hardwareId,
     );
+
+    if (licErr == 'TRIAL_EXHAUSTED') {
+      if (mounted) {
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(
+            builder: (_) =>
+                const LockoutScreen(reason: LockoutReason.trialExpired),
+          ),
+          (_) => false,
+        );
+      }
+      return false;
+    }
+
     if (licErr != null) {
       debugPrint('[Onboarding] Trial init warning: $licErr');
     }
+    return true;
   }
 
   @override

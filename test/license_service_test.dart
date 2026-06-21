@@ -117,6 +117,16 @@ void main() {
     },
   );
 
+  test('checkLicense returns hardLocked when mode is HARD_LOCKED', () async {
+    await seedLicense(
+      mode: 'HARD_LOCKED',
+      expiresAt: DateTime.now().add(const Duration(days: 30)),
+    );
+
+    final status = await licenseService.checkLicense();
+    expect(status, LicenseStatus.hardLocked);
+  });
+
   test('runFarmIdCascade cascades farm_id update across tables', () async {
     const localFarmId = 'local_farm_id';
     await db

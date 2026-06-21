@@ -77,6 +77,10 @@ class LicenseService {
       return LicenseStatus.clockTampered;
     }
 
+    if (config.mode == 'HARD_LOCKED') {
+      return LicenseStatus.hardLocked;
+    }
+
     // Still within subscription period -> valid.
     if (now.isBefore(config.expiresAt)) {
       return LicenseStatus.valid;
@@ -134,6 +138,25 @@ class LicenseService {
       final data = Map<String, dynamic>.from(result as Map);
 
       if (data['success'] != true) {
+        final errorCode = data['error_code']?.toString() ?? '';
+
+        if (errorCode == 'TRIAL_EXHAUSTED') {
+          final now = DateTime.now();
+          await _upsertConfig(
+            mode: 'HARD_LOCKED',
+            farmId: farmId,
+            userId: userId,
+            hardwareId: hardwareId,
+            installedAt: now,
+            expiresAt: now.subtract(const Duration(days: 36)),
+            lastCloudCheckAt: now,
+          );
+          debugPrint(
+            '[License] TRIAL_EXHAUSTED - farm has no remaining trial.',
+          );
+          return 'TRIAL_EXHAUSTED';
+        }
+
         return data['error']?.toString() ?? 'Trial registration failed.';
       }
 
@@ -197,10 +220,23 @@ class LicenseService {
       final serverExpiry = rawExpiry != null
           ? DateTime.tryParse(rawExpiry.toString())
           : null;
+      final trialExhausted = data['trial_exhausted'] == true;
+      final serverMode = statusStr != null
+          ? _serverStatusToLocalMode(statusStr)
+          : null;
+      final isActive = serverMode == 'CLOUD_ACTIVE';
 
       final now = DateTime.now();
       final config = await _loadConfig();
       if (config == null) return;
+
+      if (trialExhausted && !isActive) {
+        await _setMode('HARD_LOCKED');
+        debugPrint(
+          '[License] Server reports trial exhausted - forcing hard lock.',
+        );
+        return;
+      }
 
       LicenseConfigsCompanion update = LicenseConfigsCompanion(
         lastUsed: Value(now),
@@ -212,9 +248,8 @@ class LicenseService {
         debugPrint('[License] Renewed expiry to $serverExpiry from cloud.');
       }
 
-      if (statusStr != null) {
-        final localMode = _serverStatusToLocalMode(statusStr);
-        update = update.copyWith(mode: Value(localMode));
+      if (serverMode != null) {
+        update = update.copyWith(mode: Value(serverMode));
       }
 
       await (_db.update(
@@ -228,12 +263,18 @@ class LicenseService {
   String _serverStatusToLocalMode(String serverStatus) {
     switch (serverStatus) {
       case 'ACTIVE':
+      case 'PAID_STANDARD':
+      case 'PAID_PREMIUM':
         return 'CLOUD_ACTIVE';
       case 'CLOUD_TRIAL':
         return 'CLOUD_TRIAL';
       case 'EXPIRED':
+      case 'TRIAL_EXPIRED':
         return 'EXPIRED';
+      case 'REVOKED':
+        return 'HARD_LOCKED';
       default:
+        debugPrint('[License] Unrecognised server status: $serverStatus');
         return 'CLOUD_TRIAL';
     }
   }
@@ -411,9 +452,14 @@ class LicenseService {
   }
 
   Future<void> _setMode(String mode) async {
-    await (_db.update(_db.licenseConfigs)
-          ..where((t) => t.id.equals('singleton')))
-        .write(LicenseConfigsCompanion(mode: Value(mode)));
+    await (_db.update(
+      _db.licenseConfigs,
+    )..where((t) => t.id.equals('singleton'))).write(
+      LicenseConfigsCompanion(
+        mode: Value(mode),
+        lastUsed: Value(DateTime.now()),
+      ),
+    );
   }
 
   /// Reads the persisted license config. Exposed for UI inspection.

@@ -319,7 +319,8 @@ class _LockoutScreenState extends State<LockoutScreen>
           ),
           const SizedBox(height: 10),
           Text(
-            'Your free trial or subscription has expired. Upgrade your plan to continue accessing your farm data.',
+            'Your farm\'s free trial has ended or your subscription has expired. '
+            'Upgrade to Standard or Premium to restore access for all devices on your farm.',
             style: TextStyle(
               fontSize: 14,
               color: Colors.white.withOpacity(0.6),
