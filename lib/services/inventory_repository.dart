@@ -41,6 +41,28 @@ class InventoryItemDetail {
   final bool isUsedUp;
 }
 
+class ActiveBatchEggRow {
+  const ActiveBatchEggRow({
+    required this.batchId,
+    required this.batchName,
+    required this.eggsRemaining,
+  });
+
+  final String batchId;
+  final String batchName;
+  final int eggsRemaining;
+}
+
+class ActiveBatchEggStock {
+  const ActiveBatchEggStock({
+    required this.totalEggs,
+    required this.batches,
+  });
+
+  final int totalEggs;
+  final List<ActiveBatchEggRow> batches;
+}
+
 class InventoryRepository {
   InventoryRepository(this._db);
 
@@ -79,6 +101,38 @@ class InventoryRepository {
       }
     }
     return count;
+  }
+
+  Future<ActiveBatchEggStock> getActiveBatchEggStock(String farmId) async {
+    final rows = await _db.customSelect(
+      '''
+      SELECT b.id AS batch_id, b.batch_name, SUM(ep.eggs_remaining) AS eggs_remaining
+      FROM egg_production ep
+      INNER JOIN batches b ON b.id = ep.batch_id
+      WHERE ep.farm_id = ?
+        AND lower(b.status) = 'active'
+        AND b.type = 'POULTRY_LAYER'
+        AND ep.eggs_remaining > 0
+      GROUP BY b.id, b.batch_name
+      ORDER BY b.batch_name ASC
+      ''',
+      variables: [Variable.withString(farmId)],
+    ).get();
+
+    final batches = rows
+        .map(
+          (row) => ActiveBatchEggRow(
+            batchId: row.read<String>('batch_id'),
+            batchName: row.read<String>('batch_name'),
+            eggsRemaining: row.read<int>('eggs_remaining'),
+          ),
+        )
+        .toList(growable: false);
+    final totalEggs = batches.fold<int>(
+      0,
+      (sum, row) => sum + row.eggsRemaining,
+    );
+    return ActiveBatchEggStock(totalEggs: totalEggs, batches: batches);
   }
 
   Future<List<InventoryItem>> getHealthInventory(String farmId) async {

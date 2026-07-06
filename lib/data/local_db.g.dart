@@ -2420,6 +2420,17 @@ class $InventoryTable extends Inventory
     type: DriftSqlType.double,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _eggCategoryIdMeta = const VerificationMeta(
+    'eggCategoryId',
+  );
+  @override
+  late final GeneratedColumn<String> eggCategoryId = GeneratedColumn<String>(
+    'egg_category_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _usageTypeMeta = const VerificationMeta(
     'usageType',
   );
@@ -2490,6 +2501,7 @@ class $InventoryTable extends Inventory
     unit,
     category,
     costPerUnit,
+    eggCategoryId,
     usageType,
     supplierId,
     createdAt,
@@ -2575,6 +2587,15 @@ class $InventoryTable extends Inventory
         ),
       );
     }
+    if (data.containsKey('egg_category_id')) {
+      context.handle(
+        _eggCategoryIdMeta,
+        eggCategoryId.isAcceptableOrUnknown(
+          data['egg_category_id']!,
+          _eggCategoryIdMeta,
+        ),
+      );
+    }
     if (data.containsKey('usage_type')) {
       context.handle(
         _usageTypeMeta,
@@ -2650,6 +2671,10 @@ class $InventoryTable extends Inventory
         DriftSqlType.double,
         data['${effectivePrefix}cost_per_unit'],
       ),
+      eggCategoryId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}egg_category_id'],
+      ),
       usageType: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}usage_type'],
@@ -2689,6 +2714,7 @@ class InventoryItem extends DataClass implements Insertable<InventoryItem> {
   final String unit;
   final String? category;
   final double? costPerUnit;
+  final String? eggCategoryId;
   final String? usageType;
   final String? supplierId;
   final DateTime createdAt;
@@ -2704,6 +2730,7 @@ class InventoryItem extends DataClass implements Insertable<InventoryItem> {
     required this.unit,
     this.category,
     this.costPerUnit,
+    this.eggCategoryId,
     this.usageType,
     this.supplierId,
     required this.createdAt,
@@ -2729,6 +2756,9 @@ class InventoryItem extends DataClass implements Insertable<InventoryItem> {
     }
     if (!nullToAbsent || costPerUnit != null) {
       map['cost_per_unit'] = Variable<double>(costPerUnit);
+    }
+    if (!nullToAbsent || eggCategoryId != null) {
+      map['egg_category_id'] = Variable<String>(eggCategoryId);
     }
     if (!nullToAbsent || usageType != null) {
       map['usage_type'] = Variable<String>(usageType);
@@ -2761,6 +2791,9 @@ class InventoryItem extends DataClass implements Insertable<InventoryItem> {
       costPerUnit: costPerUnit == null && nullToAbsent
           ? const Value.absent()
           : Value(costPerUnit),
+      eggCategoryId: eggCategoryId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(eggCategoryId),
       usageType: usageType == null && nullToAbsent
           ? const Value.absent()
           : Value(usageType),
@@ -2788,6 +2821,7 @@ class InventoryItem extends DataClass implements Insertable<InventoryItem> {
       unit: serializer.fromJson<String>(json['unit']),
       category: serializer.fromJson<String?>(json['category']),
       costPerUnit: serializer.fromJson<double?>(json['costPerUnit']),
+      eggCategoryId: serializer.fromJson<String?>(json['eggCategoryId']),
       usageType: serializer.fromJson<String?>(json['usageType']),
       supplierId: serializer.fromJson<String?>(json['supplierId']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
@@ -2808,6 +2842,7 @@ class InventoryItem extends DataClass implements Insertable<InventoryItem> {
       'unit': serializer.toJson<String>(unit),
       'category': serializer.toJson<String?>(category),
       'costPerUnit': serializer.toJson<double?>(costPerUnit),
+      'eggCategoryId': serializer.toJson<String?>(eggCategoryId),
       'usageType': serializer.toJson<String?>(usageType),
       'supplierId': serializer.toJson<String?>(supplierId),
       'createdAt': serializer.toJson<DateTime>(createdAt),
@@ -2826,6 +2861,7 @@ class InventoryItem extends DataClass implements Insertable<InventoryItem> {
     String? unit,
     Value<String?> category = const Value.absent(),
     Value<double?> costPerUnit = const Value.absent(),
+    Value<String?> eggCategoryId = const Value.absent(),
     Value<String?> usageType = const Value.absent(),
     Value<String?> supplierId = const Value.absent(),
     DateTime? createdAt,
@@ -2841,6 +2877,9 @@ class InventoryItem extends DataClass implements Insertable<InventoryItem> {
     unit: unit ?? this.unit,
     category: category.present ? category.value : this.category,
     costPerUnit: costPerUnit.present ? costPerUnit.value : this.costPerUnit,
+    eggCategoryId: eggCategoryId.present
+        ? eggCategoryId.value
+        : this.eggCategoryId,
     usageType: usageType.present ? usageType.value : this.usageType,
     supplierId: supplierId.present ? supplierId.value : this.supplierId,
     createdAt: createdAt ?? this.createdAt,
@@ -2864,6 +2903,9 @@ class InventoryItem extends DataClass implements Insertable<InventoryItem> {
       costPerUnit: data.costPerUnit.present
           ? data.costPerUnit.value
           : this.costPerUnit,
+      eggCategoryId: data.eggCategoryId.present
+          ? data.eggCategoryId.value
+          : this.eggCategoryId,
       usageType: data.usageType.present ? data.usageType.value : this.usageType,
       supplierId: data.supplierId.present
           ? data.supplierId.value
@@ -2886,6 +2928,7 @@ class InventoryItem extends DataClass implements Insertable<InventoryItem> {
           ..write('unit: $unit, ')
           ..write('category: $category, ')
           ..write('costPerUnit: $costPerUnit, ')
+          ..write('eggCategoryId: $eggCategoryId, ')
           ..write('usageType: $usageType, ')
           ..write('supplierId: $supplierId, ')
           ..write('createdAt: $createdAt, ')
@@ -2906,6 +2949,7 @@ class InventoryItem extends DataClass implements Insertable<InventoryItem> {
     unit,
     category,
     costPerUnit,
+    eggCategoryId,
     usageType,
     supplierId,
     createdAt,
@@ -2925,6 +2969,7 @@ class InventoryItem extends DataClass implements Insertable<InventoryItem> {
           other.unit == this.unit &&
           other.category == this.category &&
           other.costPerUnit == this.costPerUnit &&
+          other.eggCategoryId == this.eggCategoryId &&
           other.usageType == this.usageType &&
           other.supplierId == this.supplierId &&
           other.createdAt == this.createdAt &&
@@ -2942,6 +2987,7 @@ class InventoryCompanion extends UpdateCompanion<InventoryItem> {
   final Value<String> unit;
   final Value<String?> category;
   final Value<double?> costPerUnit;
+  final Value<String?> eggCategoryId;
   final Value<String?> usageType;
   final Value<String?> supplierId;
   final Value<DateTime> createdAt;
@@ -2958,6 +3004,7 @@ class InventoryCompanion extends UpdateCompanion<InventoryItem> {
     this.unit = const Value.absent(),
     this.category = const Value.absent(),
     this.costPerUnit = const Value.absent(),
+    this.eggCategoryId = const Value.absent(),
     this.usageType = const Value.absent(),
     this.supplierId = const Value.absent(),
     this.createdAt = const Value.absent(),
@@ -2975,6 +3022,7 @@ class InventoryCompanion extends UpdateCompanion<InventoryItem> {
     required String unit,
     this.category = const Value.absent(),
     this.costPerUnit = const Value.absent(),
+    this.eggCategoryId = const Value.absent(),
     this.usageType = const Value.absent(),
     this.supplierId = const Value.absent(),
     this.createdAt = const Value.absent(),
@@ -2996,6 +3044,7 @@ class InventoryCompanion extends UpdateCompanion<InventoryItem> {
     Expression<String>? unit,
     Expression<String>? category,
     Expression<double>? costPerUnit,
+    Expression<String>? eggCategoryId,
     Expression<String>? usageType,
     Expression<String>? supplierId,
     Expression<DateTime>? createdAt,
@@ -3013,6 +3062,7 @@ class InventoryCompanion extends UpdateCompanion<InventoryItem> {
       if (unit != null) 'unit': unit,
       if (category != null) 'category': category,
       if (costPerUnit != null) 'cost_per_unit': costPerUnit,
+      if (eggCategoryId != null) 'egg_category_id': eggCategoryId,
       if (usageType != null) 'usage_type': usageType,
       if (supplierId != null) 'supplier_id': supplierId,
       if (createdAt != null) 'created_at': createdAt,
@@ -3032,6 +3082,7 @@ class InventoryCompanion extends UpdateCompanion<InventoryItem> {
     Value<String>? unit,
     Value<String?>? category,
     Value<double?>? costPerUnit,
+    Value<String?>? eggCategoryId,
     Value<String?>? usageType,
     Value<String?>? supplierId,
     Value<DateTime>? createdAt,
@@ -3049,6 +3100,7 @@ class InventoryCompanion extends UpdateCompanion<InventoryItem> {
       unit: unit ?? this.unit,
       category: category ?? this.category,
       costPerUnit: costPerUnit ?? this.costPerUnit,
+      eggCategoryId: eggCategoryId ?? this.eggCategoryId,
       usageType: usageType ?? this.usageType,
       supplierId: supplierId ?? this.supplierId,
       createdAt: createdAt ?? this.createdAt,
@@ -3088,6 +3140,9 @@ class InventoryCompanion extends UpdateCompanion<InventoryItem> {
     if (costPerUnit.present) {
       map['cost_per_unit'] = Variable<double>(costPerUnit.value);
     }
+    if (eggCategoryId.present) {
+      map['egg_category_id'] = Variable<String>(eggCategoryId.value);
+    }
     if (usageType.present) {
       map['usage_type'] = Variable<String>(usageType.value);
     }
@@ -3121,6 +3176,7 @@ class InventoryCompanion extends UpdateCompanion<InventoryItem> {
           ..write('unit: $unit, ')
           ..write('category: $category, ')
           ..write('costPerUnit: $costPerUnit, ')
+          ..write('eggCategoryId: $eggCategoryId, ')
           ..write('usageType: $usageType, ')
           ..write('supplierId: $supplierId, ')
           ..write('createdAt: $createdAt, ')
@@ -17188,6 +17244,7 @@ typedef $$InventoryTableCreateCompanionBuilder =
       required String unit,
       Value<String?> category,
       Value<double?> costPerUnit,
+      Value<String?> eggCategoryId,
       Value<String?> usageType,
       Value<String?> supplierId,
       Value<DateTime> createdAt,
@@ -17206,6 +17263,7 @@ typedef $$InventoryTableUpdateCompanionBuilder =
       Value<String> unit,
       Value<String?> category,
       Value<double?> costPerUnit,
+      Value<String?> eggCategoryId,
       Value<String?> usageType,
       Value<String?> supplierId,
       Value<DateTime> createdAt,
@@ -17265,6 +17323,11 @@ class $$InventoryTableFilterComposer
 
   ColumnFilters<double> get costPerUnit => $composableBuilder(
     column: $table.costPerUnit,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get eggCategoryId => $composableBuilder(
+    column: $table.eggCategoryId,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -17348,6 +17411,11 @@ class $$InventoryTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get eggCategoryId => $composableBuilder(
+    column: $table.eggCategoryId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get usageType => $composableBuilder(
     column: $table.usageType,
     builder: (column) => ColumnOrderings(column),
@@ -17416,6 +17484,11 @@ class $$InventoryTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<String> get eggCategoryId => $composableBuilder(
+    column: $table.eggCategoryId,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<String> get usageType =>
       $composableBuilder(column: $table.usageType, builder: (column) => column);
 
@@ -17474,6 +17547,7 @@ class $$InventoryTableTableManager
                 Value<String> unit = const Value.absent(),
                 Value<String?> category = const Value.absent(),
                 Value<double?> costPerUnit = const Value.absent(),
+                Value<String?> eggCategoryId = const Value.absent(),
                 Value<String?> usageType = const Value.absent(),
                 Value<String?> supplierId = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
@@ -17490,6 +17564,7 @@ class $$InventoryTableTableManager
                 unit: unit,
                 category: category,
                 costPerUnit: costPerUnit,
+                eggCategoryId: eggCategoryId,
                 usageType: usageType,
                 supplierId: supplierId,
                 createdAt: createdAt,
@@ -17508,6 +17583,7 @@ class $$InventoryTableTableManager
                 required String unit,
                 Value<String?> category = const Value.absent(),
                 Value<double?> costPerUnit = const Value.absent(),
+                Value<String?> eggCategoryId = const Value.absent(),
                 Value<String?> usageType = const Value.absent(),
                 Value<String?> supplierId = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
@@ -17524,6 +17600,7 @@ class $$InventoryTableTableManager
                 unit: unit,
                 category: category,
                 costPerUnit: costPerUnit,
+                eggCategoryId: eggCategoryId,
                 usageType: usageType,
                 supplierId: supplierId,
                 createdAt: createdAt,

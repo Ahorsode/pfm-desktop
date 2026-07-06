@@ -500,14 +500,13 @@ class _SalesScreenState extends State<SalesScreen> {
     List<Batch> batches,
   ) async {
     final inventory = await (db.select(db.inventory)).get();
-    final activeInventory = inventoryItemsForSale(inventory);
     if (!mounted) return;
     final saved = await showSaleEntryDialog(
       context: context,
       db: db,
       customers: customers,
       batches: batches,
-      inventory: activeInventory,
+      inventory: inventory,
       canOverridePrices: !_isWorkerRole,
     );
     if (saved == true && mounted) {

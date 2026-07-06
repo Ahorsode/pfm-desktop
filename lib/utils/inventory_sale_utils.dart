@@ -26,6 +26,28 @@ List<InventoryItem> inventoryItemsForSale(List<InventoryItem> items) {
   return inStock;
 }
 
+/// Egg-only sellable rows for sales (no feed/medicine fallback).
+List<InventoryItem> sellableEggInventory(List<InventoryItem> items) {
+  return items
+      .where(isInStockForSale)
+      .where(isEggInventoryItem)
+      .toList(growable: false);
+}
+
+double inventoryItemSalePrice(
+  InventoryItem item, {
+  Map<String, double> eggCategoryPrices = const {},
+}) {
+  final categoryId = item.eggCategoryId?.trim() ?? '';
+  if (categoryId.isNotEmpty) {
+    final categoryPrice = eggCategoryPrices[categoryId] ?? 0;
+    if (categoryPrice > 0) {
+      return categoryPrice;
+    }
+  }
+  return item.costPerUnit ?? 0;
+}
+
 bool inventoryCatalogIsEggFocused(List<InventoryItem> saleRows) {
   return saleRows.isNotEmpty && saleRows.every(isEggInventoryItem);
 }

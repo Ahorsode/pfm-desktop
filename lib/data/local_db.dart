@@ -142,6 +142,7 @@ class Inventory extends Table {
   TextColumn get unit => text()();
   TextColumn get category => text().nullable()();
   RealColumn get costPerUnit => real().nullable()();
+  TextColumn get eggCategoryId => text().nullable()();
   TextColumn get usageType => text().nullable()();
   TextColumn get supplierId => text().nullable()();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
@@ -630,7 +631,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 27;
+  int get schemaVersion => 28;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -738,8 +739,24 @@ class AppDatabase extends _$AppDatabase {
       if (from < 27) {
         await _ensureSalesLedgerTables(m);
       }
+      if (from < 28) {
+        await _ensureEggCategoryTables(m);
+        await m.addColumn(inventory, inventory.eggCategoryId);
+      }
     },
   );
+}
+
+Future<void> _ensureEggCategoryTables(Migrator m) async {
+  await m.database.customStatement('''
+    CREATE TABLE IF NOT EXISTS egg_categories (
+      id TEXT NOT NULL PRIMARY KEY,
+      farm_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      selling_price REAL NOT NULL DEFAULT 0,
+      unit_size INTEGER NOT NULL DEFAULT 30
+    )
+  ''');
 }
 
 Future<void> _ensureSalesLedgerTables(Migrator m) async {

@@ -376,6 +376,9 @@ class SyncEngine extends ChangeNotifier {
                 costPerUnit: Value(
                   _safeDouble(item['cost_per_unit'] ?? item['costPerUnit']),
                 ),
+                eggCategoryId: Value(
+                  _safeStr(item['egg_category_id'] ?? item['eggCategoryId']),
+                ),
                 supplierId: Value(
                   _safeStr(item['supplier_id'] ?? item['supplierId']),
                 ),
@@ -1206,6 +1209,7 @@ class SyncEngine extends ChangeNotifier {
                 unit: i['unit'] as String,
                 category: Value(i['category'] as String?),
                 costPerUnit: Value(_safeDouble(i['costPerUnit'])),
+                eggCategoryId: Value(_safeStr(i['eggCategoryId'])),
                 synced: const Value(true),
               ),
             );
@@ -1327,6 +1331,27 @@ class SyncEngine extends ChangeNotifier {
             );
       }
       debugPrint('Pull: synced ${remoteEggs.length} egg production records');
+
+      final remoteEggCategories = await _supabase
+          .from('egg_categories')
+          .select()
+          .eq('farmId', farmIdFilter);
+      for (final category in remoteEggCategories) {
+        final id = safeIdString(category['id']);
+        await db.customInsert(
+          'INSERT OR REPLACE INTO egg_categories (id, farm_id, name, selling_price, unit_size) VALUES (?, ?, ?, ?, ?)',
+          variables: [
+            Variable.withString(id),
+            Variable.withString(farmIdFilter),
+            Variable.withString(category['name'] as String? ?? 'Eggs'),
+            Variable(_safeDouble(category['sellingPrice']) ?? 0),
+            Variable.withInt(category['unitSize'] as int? ?? 30),
+          ],
+        );
+      }
+      debugPrint(
+        'Pull: synced ${remoteEggCategories.length} egg categories',
+      );
 
       // 7. Pull Feeding Logs (direct table query)
       final remoteFeeds = await _supabase

@@ -69,7 +69,7 @@ class _InventoryManagerState extends State<InventoryManager> {
                 return const Center(child: CircularProgressIndicator());
               }
 
-              return FutureBuilder<(String, List<InventoryItem>, int)?>(
+              return FutureBuilder<(String, List<InventoryItem>, int, ActiveBatchEggStock)?>(
                 future: _loadInventoryView(repo),
                 builder: (context, dataSnapshot) {
                   if (dataSnapshot.connectionState != ConnectionState.done) {
@@ -84,6 +84,7 @@ class _InventoryManagerState extends State<InventoryManager> {
                   final farmId = payload.$1;
                   final allFiltered = payload.$2;
                   final usedUpCount = payload.$3;
+                  final eggStock = payload.$4;
                   final items = allFiltered
                       .where(
                         (item) => matchesInventoryCategoryFilter(
@@ -93,7 +94,7 @@ class _InventoryManagerState extends State<InventoryManager> {
                       )
                       .toList();
 
-                          if (items.isEmpty && !_showUsedUp && _categoryFilter == null) {
+                          if (items.isEmpty && eggStock.totalEggs == 0 && !_showUsedUp && _categoryFilter == null) {
                             return _buildEmptyState(context, db);
                           }
 
@@ -136,6 +137,18 @@ class _InventoryManagerState extends State<InventoryManager> {
                                   ),
                                 ),
                               ),
+                              if (!_showUsedUp && eggStock.totalEggs > 0)
+                                SliverPadding(
+                                  padding: EdgeInsets.fromLTRB(
+                                    isNarrow ? 16 : 32,
+                                    0,
+                                    isNarrow ? 16 : 32,
+                                    0,
+                                  ),
+                                  sliver: SliverToBoxAdapter(
+                                    child: _buildEggStockCard(context, eggStock),
+                                  ),
+                                ),
                               SliverPadding(
                                 padding: EdgeInsets.all(isNarrow ? 16 : 32),
                                 sliver: SliverToBoxAdapter(
@@ -172,7 +185,7 @@ class _InventoryManagerState extends State<InventoryManager> {
                                   ),
                                 ),
                               ),
-                              if (items.isEmpty)
+                              if (items.isEmpty && (_showUsedUp || eggStock.totalEggs == 0))
                                 SliverFillRemaining(
                                   hasScrollBody: false,
                                   child: Center(
@@ -217,7 +230,7 @@ class _InventoryManagerState extends State<InventoryManager> {
     );
   }
 
-  Future<(String, List<InventoryItem>, int)?> _loadInventoryView(
+  Future<(String, List<InventoryItem>, int, ActiveBatchEggStock)?> _loadInventoryView(
     InventoryRepository repo,
   ) async {
     final farmId = await FarmUtils.getBoundFarmId();
@@ -230,8 +243,65 @@ class _InventoryManagerState extends State<InventoryManager> {
         filter: _showUsedUp ? InventoryListFilter.usedUp : InventoryListFilter.active,
       ),
       repo.getUsedUpInventoryCount(farmId),
+      _showUsedUp
+          ? Future.value(const ActiveBatchEggStock(totalEggs: 0, batches: []))
+          : repo.getActiveBatchEggStock(farmId),
     ]);
-    return (farmId, results[0] as List<InventoryItem>, results[1] as int);
+    final items = (results[0] as List<InventoryItem>)
+        .where((item) => (item.category ?? '').toUpperCase() != 'EGGS')
+        .toList();
+    return (
+      farmId,
+      items,
+      results[1] as int,
+      results[2] as ActiveBatchEggStock,
+    );
+  }
+
+  Widget _buildEggStockCard(BuildContext context, ActiveBatchEggStock eggStock) {
+    final crates = eggStock.totalEggs ~/ 30;
+    final remainder = eggStock.totalEggs % 30;
+    return Card(
+      color: Colors.amber.shade50,
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Egg Inventory (Active Batches)',
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '$crates crates${remainder > 0 ? ' + $remainder remainder' : ''}',
+              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+            Text('${eggStock.totalEggs} eggs from active layer batches'),
+            const SizedBox(height: 12),
+            for (final batch in eggStock.batches)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        batch.batchName,
+                        style: const TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                    Text('${batch.eggsRemaining} eggs'),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _buildStockTabs(int usedUpCount) {

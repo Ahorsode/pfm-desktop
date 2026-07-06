@@ -1,3 +1,4 @@
+import 'package:drift/drift.dart' hide Column, Batch;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
@@ -92,31 +93,53 @@ class _SaleEntryDialogState extends State<_SaleEntryDialog> {
   DateTime _orderDate = DateTime.now();
   _DiscountMode _discountMode = _DiscountMode.percentage;
   bool _busy = false;
+  bool _loading = true;
   String? _error;
 
-  late final List<_ProductOption> _inventoryOptions;
-  late final List<_ProductOption> _livestockOptions;
-  late final bool _inventoryIsEggCatalog;
+  List<_ProductOption> _inventoryOptions = const [];
+  List<_ProductOption> _livestockOptions = const [];
+
+  bool get _isWalkIn => _customerId == null;
+
+  bool get _cashFieldEditable => _isWalkIn || widget.canOverridePrices;
 
   @override
   void initState() {
     super.initState();
     _salesService = LocalSalesService(widget.db);
-    final saleInventory = inventoryItemsForSale(widget.inventory);
-    _inventoryIsEggCatalog = inventoryCatalogIsEggFocused(saleInventory);
-    _inventoryOptions = saleInventory
+    _initCatalog();
+  }
+
+  Future<void> _initCatalog() async {
+    final farmId = await FarmUtils.getBoundFarmId();
+    final prices = <String, double>{};
+    if (farmId != null) {
+      final rows = await widget.db.customSelect(
+        'SELECT id, selling_price FROM egg_categories WHERE farm_id = ?',
+        variables: [Variable.withString(farmId)],
+      ).get();
+      for (final row in rows) {
+        prices[row.read<String>('id')] = row.read<double>('selling_price');
+      }
+    }
+
+    final saleInventory = sellableEggInventory(widget.inventory);
+    final inventoryOptions = saleInventory
         .map(
           (row) => _ProductOption(
             id: row.id,
             label: formatSaleInventoryLabel(row),
             description: formatSaleInventoryLabel(row),
-            unitPrice: (row.costPerUnit ?? 0) > 0 ? row.costPerUnit! : 0,
+            unitPrice: inventoryItemSalePrice(
+              row,
+              eggCategoryPrices: prices,
+            ),
             available: row.stockLevel,
             productType: SaleProductType.inventory,
           ),
         )
         .toList(growable: false);
-    _livestockOptions = widget.batches
+    final livestockOptions = widget.batches
         .where((batch) => batch.currentCount > 0)
         .map(
           (row) {
@@ -133,10 +156,19 @@ class _SaleEntryDialogState extends State<_SaleEntryDialog> {
           },
         )
         .toList(growable: false);
-    for (final line in _lines) {
-      _autoSelectProduct(line);
+
+    if (!mounted) {
+      return;
     }
-    _syncLockedCashTotal();
+    setState(() {
+      _inventoryOptions = inventoryOptions;
+      _livestockOptions = livestockOptions;
+      _loading = false;
+      for (final line in _lines) {
+        _autoSelectProduct(line);
+      }
+    });
+    _syncCashReceived();
   }
 
   List<_ProductOption> _optionsFor(SaleProductType type) {
@@ -155,13 +187,7 @@ class _SaleEntryDialogState extends State<_SaleEntryDialog> {
     if (options.isEmpty) {
       return false;
     }
-    if (options.length == 1) {
-      return true;
-    }
-    if (line.productType == SaleProductType.inventory && _inventoryIsEggCatalog) {
-      return true;
-    }
-    return false;
+    return options.length == 1;
   }
 
   void _autoSelectProduct(_SaleLineState line) {
@@ -175,9 +201,7 @@ class _SaleEntryDialogState extends State<_SaleEntryDialog> {
       line.unitPriceController.clear();
       return;
     }
-    final shouldAutoSelect = options.length == 1 ||
-        (line.productType == SaleProductType.inventory && _inventoryIsEggCatalog);
-    if (!shouldAutoSelect) {
+    if (options.length != 1) {
       return;
     }
     final selected = options.first;
@@ -217,9 +241,29 @@ class _SaleEntryDialogState extends State<_SaleEntryDialog> {
   double get _computedTotal =>
       LocalSalesService.roundMoney((_subtotal - _discountAmount).clamp(0, double.infinity));
 
-  void _syncLockedCashTotal() {
-    if (widget.canOverridePrices) return;
+  void _syncCashReceived() {
+    if (!_isWalkIn && widget.canOverridePrices) {
+      return;
+    }
     _cashController.text = _computedTotal.toStringAsFixed(2);
+  }
+
+  bool get _canSubmit {
+    if (_busy || _loading) {
+      return false;
+    }
+    for (final line in _lines) {
+      if (line.productType == SaleProductType.inventory &&
+          _inventoryOptions.isEmpty) {
+        return false;
+      }
+      if (line.productId == null || line.productId!.isEmpty) {
+        if (line.productType != SaleProductType.custom) {
+          return false;
+        }
+      }
+    }
+    return true;
   }
 
   List<SaleLineDraft> _buildDrafts() {
@@ -241,6 +285,10 @@ class _SaleEntryDialogState extends State<_SaleEntryDialog> {
   }
 
   Future<void> _submit() async {
+    if (!_canSubmit) {
+      setState(() => _error = 'Complete every line item before saving.');
+      return;
+    }
     setState(() {
       _busy = true;
       _error = null;
@@ -262,7 +310,7 @@ class _SaleEntryDialogState extends State<_SaleEntryDialog> {
             ? 'Walk-in Customer'
             : widget.customers.firstWhere((c) => c.id == _customerId).name,
         discountAmount: widget.canOverridePrices ? _discountAmount : 0,
-        requireExactCashTotal: !widget.canOverridePrices,
+        requireExactCashTotal: !_isWalkIn && !widget.canOverridePrices,
       );
       if (mounted) Navigator.of(context).pop(true);
     } catch (error) {
@@ -278,8 +326,13 @@ class _SaleEntryDialogState extends State<_SaleEntryDialog> {
       title: const Text('Record Multi-Line Sale'),
       content: SizedBox(
         width: 520,
-        child: SingleChildScrollView(
-          child: Column(
+        child: _loading
+            ? const Padding(
+                padding: EdgeInsets.all(24),
+                child: Center(child: CircularProgressIndicator()),
+              )
+            : SingleChildScrollView(
+        child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               DropdownButtonFormField<String?>(
@@ -294,7 +347,10 @@ class _SaleEntryDialogState extends State<_SaleEntryDialog> {
                     ),
                   ),
                 ],
-                onChanged: (value) => setState(() => _customerId = value),
+                onChanged: (value) => setState(() {
+                  _customerId = value;
+                  _syncCashReceived();
+                }),
               ),
               ListTile(
                 contentPadding: EdgeInsets.zero,
@@ -331,11 +387,13 @@ class _SaleEntryDialogState extends State<_SaleEntryDialog> {
                 _LineEditor(
                   line: _lines[index],
                   canOverridePrices: widget.canOverridePrices,
-                  inventoryTypeLabel:
-                      _inventoryIsEggCatalog ? 'Eggs' : 'Inventory',
+                  inventoryTypeLabel: 'Eggs',
                   inventoryOptions: _inventoryOptions,
                   livestockOptions: _livestockOptions,
                   hideProductPicker: _shouldHideProductPicker(_lines[index]),
+                  inventoryEmpty: _lines[index].productType ==
+                          SaleProductType.inventory &&
+                      _inventoryOptions.isEmpty,
                   onProductTypeChanged: (type) {
                     setState(() {
                       final line = _lines[index];
@@ -344,17 +402,17 @@ class _SaleEntryDialogState extends State<_SaleEntryDialog> {
                       line.description = '';
                       line.unitPriceController.clear();
                       _autoSelectProduct(line);
-                      _syncLockedCashTotal();
+                      _syncCashReceived();
                     });
                   },
-                  onChanged: () => setState(_syncLockedCashTotal),
+                  onChanged: () => setState(_syncCashReceived),
                   onRemove: _lines.length == 1
                       ? null
                       : () {
                           setState(() {
                             _lines[index].dispose();
                             _lines.removeAt(index);
-                            _syncLockedCashTotal();
+                            _syncCashReceived();
                           });
                         },
                 ),
@@ -365,7 +423,7 @@ class _SaleEntryDialogState extends State<_SaleEntryDialog> {
                     final line = _SaleLineState();
                     _lines.add(line);
                     _autoSelectProduct(line);
-                    _syncLockedCashTotal();
+                    _syncCashReceived();
                   }),
                   icon: const Icon(Icons.add),
                   label: const Text('Add Line'),
@@ -380,14 +438,14 @@ class _SaleEntryDialogState extends State<_SaleEntryDialog> {
                   selected: {_discountMode},
                   onSelectionChanged: (value) => setState(() {
                     _discountMode = value.first;
-                    _syncLockedCashTotal();
+                    _syncCashReceived();
                   }),
                 ),
                 TextField(
                   controller: _discountController,
                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
                   decoration: const InputDecoration(labelText: 'Discount'),
-                  onChanged: (_) => setState(_syncLockedCashTotal),
+                  onChanged: (_) => setState(_syncCashReceived),
                 ),
               ],
               ListTile(
@@ -405,11 +463,17 @@ class _SaleEntryDialogState extends State<_SaleEntryDialog> {
               ),
               TextField(
                 controller: _cashController,
-                readOnly: !widget.canOverridePrices,
+                readOnly: !_cashFieldEditable,
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
                 decoration: InputDecoration(
                   labelText: 'Total Cash Received (GH₵)',
-                  errorText: !widget.canOverridePrices &&
+                  helperText: _isWalkIn
+                      ? 'Walk-in sale: cash defaults to total and can be adjusted.'
+                      : widget.canOverridePrices
+                          ? 'Credit sale: cash can differ from total.'
+                          : 'Cash must equal the locked sale total.',
+                  errorText: !_isWalkIn &&
+                          !widget.canOverridePrices &&
                           (_cashController.text.isNotEmpty) &&
                           ((double.tryParse(_cashController.text) ?? 0) - _computedTotal)
                                   .abs() >
@@ -417,7 +481,7 @@ class _SaleEntryDialogState extends State<_SaleEntryDialog> {
                       ? 'Cash received must equal the locked sale total'
                       : null,
                 ),
-                onChanged: widget.canOverridePrices ? (_) => setState(() {}) : null,
+                onChanged: _cashFieldEditable ? (_) => setState(() {}) : null,
               ),
               if (_error != null)
                 Padding(
@@ -431,7 +495,7 @@ class _SaleEntryDialogState extends State<_SaleEntryDialog> {
       actions: [
         TextButton(onPressed: _busy ? null : () => Navigator.pop(context), child: const Text('Cancel')),
         FilledButton(
-          onPressed: _busy ? null : _submit,
+          onPressed: _busy || !_canSubmit ? null : _submit,
           child: Text(_busy ? 'Saving...' : 'Record Sale'),
         ),
       ],
@@ -447,6 +511,7 @@ class _LineEditor extends StatelessWidget {
     required this.inventoryOptions,
     required this.livestockOptions,
     required this.hideProductPicker,
+    required this.inventoryEmpty,
     required this.onProductTypeChanged,
     required this.onChanged,
     this.onRemove,
@@ -458,6 +523,7 @@ class _LineEditor extends StatelessWidget {
   final List<_ProductOption> inventoryOptions;
   final List<_ProductOption> livestockOptions;
   final bool hideProductPicker;
+  final bool inventoryEmpty;
   final ValueChanged<SaleProductType> onProductTypeChanged;
   final VoidCallback onChanged;
   final VoidCallback? onRemove;
@@ -520,6 +586,17 @@ class _LineEditor extends StatelessWidget {
                 controller: line.customDescriptionController,
                 decoration: const InputDecoration(labelText: 'Description'),
                 onChanged: (_) => onChanged(),
+              )
+            else if (inventoryEmpty && line.productType == SaleProductType.inventory)
+              InputDecorator(
+                decoration: const InputDecoration(labelText: 'Eggs Product'),
+                child: Text(
+                  'No eggs in stock — log egg production first',
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.error,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
               )
             else if (hideProductPicker && _selectedOption != null)
               InputDecorator(
