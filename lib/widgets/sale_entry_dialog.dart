@@ -133,7 +133,57 @@ class _SaleEntryDialogState extends State<_SaleEntryDialog> {
           },
         )
         .toList(growable: false);
+    for (final line in _lines) {
+      _autoSelectProduct(line);
+    }
     _syncLockedCashTotal();
+  }
+
+  List<_ProductOption> _optionsFor(SaleProductType type) {
+    return switch (type) {
+      SaleProductType.inventory => _inventoryOptions,
+      SaleProductType.livestock => _livestockOptions,
+      SaleProductType.custom => const [],
+    };
+  }
+
+  bool _shouldHideProductPicker(_SaleLineState line) {
+    if (line.productType == SaleProductType.custom) {
+      return false;
+    }
+    final options = _optionsFor(line.productType);
+    if (options.isEmpty) {
+      return false;
+    }
+    if (options.length == 1) {
+      return true;
+    }
+    if (line.productType == SaleProductType.inventory && _inventoryIsEggCatalog) {
+      return true;
+    }
+    return false;
+  }
+
+  void _autoSelectProduct(_SaleLineState line) {
+    if (line.productType == SaleProductType.custom) {
+      return;
+    }
+    final options = _optionsFor(line.productType);
+    if (options.isEmpty) {
+      line.productId = null;
+      line.description = '';
+      line.unitPriceController.clear();
+      return;
+    }
+    final shouldAutoSelect = options.length == 1 ||
+        (line.productType == SaleProductType.inventory && _inventoryIsEggCatalog);
+    if (!shouldAutoSelect) {
+      return;
+    }
+    final selected = options.first;
+    line.productId = selected.id;
+    line.description = selected.description;
+    line.unitPriceController.text = selected.unitPrice.toStringAsFixed(2);
   }
 
   @override
@@ -285,6 +335,18 @@ class _SaleEntryDialogState extends State<_SaleEntryDialog> {
                       _inventoryIsEggCatalog ? 'Eggs' : 'Inventory',
                   inventoryOptions: _inventoryOptions,
                   livestockOptions: _livestockOptions,
+                  hideProductPicker: _shouldHideProductPicker(_lines[index]),
+                  onProductTypeChanged: (type) {
+                    setState(() {
+                      final line = _lines[index];
+                      line.productType = type;
+                      line.productId = null;
+                      line.description = '';
+                      line.unitPriceController.clear();
+                      _autoSelectProduct(line);
+                      _syncLockedCashTotal();
+                    });
+                  },
                   onChanged: () => setState(_syncLockedCashTotal),
                   onRemove: _lines.length == 1
                       ? null
@@ -300,7 +362,9 @@ class _SaleEntryDialogState extends State<_SaleEntryDialog> {
                 alignment: Alignment.centerLeft,
                 child: TextButton.icon(
                   onPressed: () => setState(() {
-                    _lines.add(_SaleLineState());
+                    final line = _SaleLineState();
+                    _lines.add(line);
+                    _autoSelectProduct(line);
                     _syncLockedCashTotal();
                   }),
                   icon: const Icon(Icons.add),
@@ -382,6 +446,8 @@ class _LineEditor extends StatelessWidget {
     required this.inventoryTypeLabel,
     required this.inventoryOptions,
     required this.livestockOptions,
+    required this.hideProductPicker,
+    required this.onProductTypeChanged,
     required this.onChanged,
     this.onRemove,
   });
@@ -391,6 +457,8 @@ class _LineEditor extends StatelessWidget {
   final String inventoryTypeLabel;
   final List<_ProductOption> inventoryOptions;
   final List<_ProductOption> livestockOptions;
+  final bool hideProductPicker;
+  final ValueChanged<SaleProductType> onProductTypeChanged;
   final VoidCallback onChanged;
   final VoidCallback? onRemove;
 
@@ -399,6 +467,15 @@ class _LineEditor extends StatelessWidget {
     SaleProductType.livestock => livestockOptions,
     SaleProductType.custom => const [],
   };
+
+  _ProductOption? get _selectedOption {
+    for (final option in _options) {
+      if (option.id == line.productId) {
+        return option;
+      }
+    }
+    return _options.isNotEmpty ? _options.first : null;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -429,11 +506,7 @@ class _LineEditor extends StatelessWidget {
                     ],
                     selected: {line.productType},
                     onSelectionChanged: (value) {
-                      line.productType = value.first;
-                      line.productId = null;
-                      line.description = '';
-                      line.unitPriceController.clear();
-                      onChanged();
+                      onProductTypeChanged(value.first);
                     },
                   ),
                 ),
@@ -447,6 +520,18 @@ class _LineEditor extends StatelessWidget {
                 controller: line.customDescriptionController,
                 decoration: const InputDecoration(labelText: 'Description'),
                 onChanged: (_) => onChanged(),
+              )
+            else if (hideProductPicker && _selectedOption != null)
+              InputDecorator(
+                decoration: InputDecoration(
+                  labelText: line.productType == SaleProductType.inventory
+                      ? inventoryTypeLabel
+                      : 'Livestock Batch',
+                ),
+                child: Text(
+                  _selectedOption!.label,
+                  style: const TextStyle(fontWeight: FontWeight.w800),
+                ),
               )
             else
               DropdownButtonFormField<String?>(
