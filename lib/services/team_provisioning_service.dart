@@ -2,6 +2,16 @@ import 'dart:convert';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../utils/staff_permission_defaults.dart';
+
+export '../utils/staff_permission_defaults.dart'
+    show
+        assignableStaffRoles,
+        applyPermissionToggle,
+        defaultPermissionsForRole,
+        formatRoleLabel,
+        normalizeStaffRole;
+
 const workerPlaceholderPassword = '123456';
 
 class PermissionDefinition {
@@ -18,23 +28,8 @@ class PermissionDefinition {
 
 const teamPermissionDefinitions = <PermissionDefinition>[
   PermissionDefinition(
-    key: 'can_view_eggs',
-    label: 'View Egg Logs',
-    group: 'View',
-  ),
-  PermissionDefinition(
-    key: 'can_view_feeding',
-    label: 'View Feed Logs',
-    group: 'View',
-  ),
-  PermissionDefinition(
-    key: 'can_view_mortality',
-    label: 'View Mortality Logs',
-    group: 'View',
-  ),
-  PermissionDefinition(
-    key: 'can_view_batches',
-    label: 'View Batches',
+    key: 'can_view_finance',
+    label: 'View Finance',
     group: 'View',
   ),
   PermissionDefinition(
@@ -43,13 +38,8 @@ const teamPermissionDefinitions = <PermissionDefinition>[
     group: 'View',
   ),
   PermissionDefinition(
-    key: 'can_view_houses',
-    label: 'View Houses',
-    group: 'View',
-  ),
-  PermissionDefinition(
-    key: 'can_view_finance',
-    label: 'View Finances',
+    key: 'can_view_batches',
+    label: 'View Livestock / Batches',
     group: 'View',
   ),
   PermissionDefinition(
@@ -57,25 +47,44 @@ const teamPermissionDefinitions = <PermissionDefinition>[
     label: 'View Sales',
     group: 'View',
   ),
-  PermissionDefinition(key: 'can_view_team', label: 'View Team', group: 'View'),
   PermissionDefinition(
-    key: 'can_edit_eggs',
-    label: 'Edit Egg Logs',
-    group: 'Edit',
+    key: 'can_view_eggs',
+    label: 'View Eggs',
+    group: 'View',
   ),
   PermissionDefinition(
-    key: 'can_edit_feeding',
-    label: 'Edit Feed Logs',
-    group: 'Edit',
+    key: 'can_view_feeding',
+    label: 'View Feeding',
+    group: 'View',
   ),
   PermissionDefinition(
-    key: 'can_edit_mortality',
-    label: 'Edit Mortality Logs',
-    group: 'Edit',
+    key: 'can_view_houses',
+    label: 'View Houses',
+    group: 'View',
   ),
   PermissionDefinition(
-    key: 'can_edit_batches',
-    label: 'Manage Batches',
+    key: 'can_view_mortality',
+    label: 'View Mortality / Quarantine',
+    group: 'View',
+  ),
+  PermissionDefinition(
+    key: 'can_view_health',
+    label: 'View Health Schedules',
+    group: 'View',
+  ),
+  PermissionDefinition(
+    key: 'can_view_customers',
+    label: 'View Customers / Suppliers',
+    group: 'View',
+  ),
+  PermissionDefinition(
+    key: 'can_view_team',
+    label: 'View Team',
+    group: 'View',
+  ),
+  PermissionDefinition(
+    key: 'can_edit_finance',
+    label: 'Edit Finance',
     group: 'Edit',
   ),
   PermissionDefinition(
@@ -84,18 +93,43 @@ const teamPermissionDefinitions = <PermissionDefinition>[
     group: 'Edit',
   ),
   PermissionDefinition(
-    key: 'can_edit_houses',
-    label: 'Edit Houses',
-    group: 'Edit',
-  ),
-  PermissionDefinition(
-    key: 'can_edit_finance',
-    label: 'Edit Finances',
+    key: 'can_edit_batches',
+    label: 'Edit Livestock / Batches',
     group: 'Edit',
   ),
   PermissionDefinition(
     key: 'can_edit_sales',
     label: 'Edit Sales',
+    group: 'Edit',
+  ),
+  PermissionDefinition(
+    key: 'can_edit_eggs',
+    label: 'Edit Eggs',
+    group: 'Edit',
+  ),
+  PermissionDefinition(
+    key: 'can_edit_feeding',
+    label: 'Edit Feeding',
+    group: 'Edit',
+  ),
+  PermissionDefinition(
+    key: 'can_edit_houses',
+    label: 'Edit Houses',
+    group: 'Edit',
+  ),
+  PermissionDefinition(
+    key: 'can_edit_mortality',
+    label: 'Edit Mortality / Quarantine',
+    group: 'Edit',
+  ),
+  PermissionDefinition(
+    key: 'can_edit_health',
+    label: 'Edit Health Schedules',
+    group: 'Edit',
+  ),
+  PermissionDefinition(
+    key: 'can_edit_customers',
+    label: 'Edit Customers / Suppliers',
     group: 'Edit',
   ),
   PermissionDefinition(
@@ -105,66 +139,7 @@ const teamPermissionDefinitions = <PermissionDefinition>[
   ),
 ];
 
-const _workerPreset = <String>{
-  'can_view_eggs',
-  'can_edit_eggs',
-  'can_view_feeding',
-  'can_edit_feeding',
-  'can_view_mortality',
-  'can_edit_mortality',
-  'can_view_batches',
-  'can_view_houses',
-};
-
-const _managerPreset = <String>{
-  'can_view_eggs',
-  'can_edit_eggs',
-  'can_view_feeding',
-  'can_edit_feeding',
-  'can_view_mortality',
-  'can_edit_mortality',
-  'can_view_batches',
-  'can_edit_batches',
-  'can_view_inventory',
-  'can_edit_inventory',
-  'can_view_finance',
-  'can_view_sales',
-  'can_edit_sales',
-  'can_view_team',
-};
-
-const _accountantPreset = <String>{
-  'can_view_finance',
-  'can_edit_finance',
-  'can_view_sales',
-  'can_edit_sales',
-  'can_view_inventory',
-  'can_view_batches',
-};
-
-String normalizeProvisioningRole(String role) {
-  final cleaned = role.trim().toUpperCase();
-  switch (cleaned) {
-    case 'MANAGER':
-    case 'ACCOUNTANT':
-    case 'WORKER':
-      return cleaned;
-    default:
-      return 'WORKER';
-  }
-}
-
-Set<String> defaultPermissionsForRole(String role) {
-  switch (normalizeProvisioningRole(role)) {
-    case 'MANAGER':
-      return {..._managerPreset};
-    case 'ACCOUNTANT':
-      return {..._accountantPreset};
-    case 'WORKER':
-    default:
-      return {..._workerPreset};
-  }
-}
+String normalizeProvisioningRole(String role) => normalizeStaffRole(role);
 
 List<String> sortedPermissions(Iterable<String> permissions) {
   final validKeys = teamPermissionDefinitions.map((it) => it.key).toSet();

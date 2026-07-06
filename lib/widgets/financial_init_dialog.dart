@@ -1,9 +1,26 @@
+import 'package:drift/drift.dart' hide Column, Batch;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
-import 'package:drift/drift.dart' hide Column, Batch;
 import '../data/local_db.dart';
+import '../data/sync_engine.dart';
+import '../utils/farm_utils.dart';
+import '../utils/id_utils.dart';
+
+class _OtherExpenseRow {
+  _OtherExpenseRow({String label = '', String amount = ''})
+      : labelController = TextEditingController(text: label),
+        amountController = TextEditingController(text: amount);
+
+  final TextEditingController labelController;
+  final TextEditingController amountController;
+
+  void dispose() {
+    labelController.dispose();
+    amountController.dispose();
+  }
+}
 
 class FinancialInitDialog extends StatefulWidget {
   final Batch batch;
@@ -16,8 +33,8 @@ class FinancialInitDialog extends StatefulWidget {
 class _FinancialInitDialogState extends State<FinancialInitDialog> {
   final _costPerUnitController = TextEditingController();
   final _carriageController = TextEditingController();
-  final _otherExpensesController = TextEditingController();
-  
+  final _otherExpenses = <_OtherExpenseRow>[];
+
   double _totalCost = 0.0;
 
   @override
@@ -25,23 +42,93 @@ class _FinancialInitDialogState extends State<FinancialInitDialog> {
     super.initState();
     _costPerUnitController.addListener(_calculateTotal);
     _carriageController.addListener(_calculateTotal);
-    _otherExpensesController.addListener(_calculateTotal);
+  }
+
+  @override
+  void dispose() {
+    _costPerUnitController.dispose();
+    _carriageController.dispose();
+    for (final row in _otherExpenses) {
+      row.dispose();
+    }
+    super.dispose();
   }
 
   void _calculateTotal() {
     final qty = widget.batch.initialCount;
     final cpu = double.tryParse(_costPerUnitController.text) ?? 0.0;
     final carriage = double.tryParse(_carriageController.text) ?? 0.0;
-    final other = double.tryParse(_otherExpensesController.text) ?? 0.0;
-    
+    final other = _otherExpenses.fold<double>(
+      0,
+      (sum, row) => sum + (double.tryParse(row.amountController.text) ?? 0),
+    );
+
     setState(() {
       _totalCost = (qty * cpu) + carriage + other;
     });
   }
 
+  bool get _canSave {
+    final cpu = double.tryParse(_costPerUnitController.text) ?? 0.0;
+    return cpu > 0;
+  }
+
+  Future<bool> _saveCosts(BuildContext context) async {
+    if (!_canSave) return false;
+    final db = Provider.of<AppDatabase>(context, listen: false);
+
+    try {
+      final farmId = await FarmUtils.getBoundFarmId();
+      final workerId = await FarmUtils.getRequiredUserId();
+      if (farmId == null) return false;
+
+      await (db.update(db.batches)..where((t) => t.id.equals(widget.batch.id)))
+          .write(
+        BatchesCompanion(
+          initialActualCost: Value(_totalCost),
+          updatedAt: Value(DateTime.now()),
+          synced: const Value(false),
+        ),
+      );
+
+      await db.into(db.expenses).insert(
+        ExpensesCompanion.insert(
+          id: newLocalId(),
+          farmId: farmId,
+          batchId: Value(widget.batch.id),
+          category: 'LIVESTOCK_PURCHASE',
+          amount: _totalCost,
+          date: Value(DateTime.now()),
+          description: Value(
+            'Initial batch cost — ${widget.batch.batchName}',
+          ),
+          userId: Value(workerId),
+          synced: const Value(false),
+        ),
+      );
+
+      if (!context.mounted) return true;
+      context.read<SyncEngine>().syncNow();
+      Navigator.pop(context, true);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Financial data initialized successfully'),
+          backgroundColor: Color(0xFF10B981),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return true;
+    } catch (e) {
+      if (!context.mounted) return false;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: $e')),
+      );
+      return false;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    
     return Dialog(
       backgroundColor: Colors.transparent,
       insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
@@ -56,7 +143,7 @@ class _FinancialInitDialogState extends State<FinancialInitDialog> {
               color: Colors.black.withValues(alpha: 0.5),
               blurRadius: 40,
               offset: const Offset(0, 20),
-            )
+            ),
           ],
         ),
         child: ClipRRect(
@@ -65,71 +152,150 @@ class _FinancialInitDialogState extends State<FinancialInitDialog> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // Header
                 _buildHeader(),
-  
                 Padding(
                   padding: const EdgeInsets.all(32),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Batch Summary Card
                       _buildBatchSummary(),
                       const SizedBox(height: 32),
-  
-                      // Form Fields
-                      _buildInputField('Cost Per Unit (Bird)', _costPerUnitController, Icons.payments_outlined),
+                      _buildInputField(
+                        'Cost Per Unit (Bird)',
+                        _costPerUnitController,
+                        Icons.payments_outlined,
+                      ),
                       const SizedBox(height: 24),
-                      _buildInputField('Carriage / Transport', _carriageController, Icons.local_shipping_outlined),
+                      _buildInputField(
+                        'Carriage / Transport',
+                        _carriageController,
+                        Icons.local_shipping_outlined,
+                      ),
                       const SizedBox(height: 24),
-                      _buildInputField('Other Direct Expenses', _otherExpensesController, Icons.more_horiz_rounded),
-                      
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text(
+                            'OTHER EXPENSES',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w900,
+                              fontSize: 10,
+                              color: Color(0xFF10B981),
+                              letterSpacing: 1,
+                            ),
+                          ),
+                          TextButton.icon(
+                            onPressed: () {
+                              setState(() {
+                                final row = _OtherExpenseRow();
+                                row.amountController.addListener(_calculateTotal);
+                                _otherExpenses.add(row);
+                              });
+                            },
+                            icon: const Icon(Icons.add, size: 16),
+                            label: const Text('Add row'),
+                          ),
+                        ],
+                      ),
+                      ..._otherExpenses.map(
+                        (row) => Padding(
+                          padding: const EdgeInsets.only(bottom: 10),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: TextField(
+                                  controller: row.labelController,
+                                  style: const TextStyle(color: Colors.white),
+                                  decoration: const InputDecoration(
+                                    hintText: 'Label',
+                                    filled: true,
+                                    fillColor: Color(0xFF1E293B),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: TextField(
+                                  controller: row.amountController,
+                                  keyboardType:
+                                      const TextInputType.numberWithOptions(
+                                    decimal: true,
+                                  ),
+                                  inputFormatters: [
+                                    FilteringTextInputFormatter.allow(
+                                      RegExp(r'^\d*\.?\d*'),
+                                    ),
+                                  ],
+                                  style: const TextStyle(color: Colors.white),
+                                  decoration: const InputDecoration(
+                                    prefixText: 'GH₵ ',
+                                    filled: true,
+                                    fillColor: Color(0xFF1E293B),
+                                  ),
+                                ),
+                              ),
+                              IconButton(
+                                onPressed: () {
+                                  setState(() {
+                                    row.dispose();
+                                    _otherExpenses.remove(row);
+                                    _calculateTotal();
+                                  });
+                                },
+                                icon: const Icon(Icons.close, color: Colors.white54),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
                       const SizedBox(height: 32),
                       Divider(color: Colors.white.withValues(alpha: 0.1)),
                       const SizedBox(height: 24),
-  
-                      // Total Summary
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           const Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text('TOTAL ACTUAL COST', 
-                                style: TextStyle(fontWeight: FontWeight.w900, fontSize: 12, color: Color(0xFF94A3B8), letterSpacing: 1)),
-                              SizedBox(height: 4),
-                              Text('COMBINED BATCH VALUATION', 
-                                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 9, color: Color(0xFF64748B), letterSpacing: 0.5)),
+                              Text(
+                                'TOTAL ACTUAL COST',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w900,
+                                  fontSize: 12,
+                                  color: Color(0xFF94A3B8),
+                                  letterSpacing: 1,
+                                ),
+                              ),
                             ],
                           ),
-                          Text(NumberFormat.currency(symbol: 'GH₵ ').format(_totalCost), 
-                            style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 32, color: Color(0xFF10B981), letterSpacing: -1)),
+                          Text(
+                            NumberFormat.currency(symbol: 'GH₵ ').format(_totalCost),
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w900,
+                              fontSize: 32,
+                              color: Color(0xFF10B981),
+                            ),
+                          ),
                         ],
                       ),
-  
                       const SizedBox(height: 40),
-  
-                      // Buttons
                       Row(
                         children: [
                           Expanded(
                             child: TextButton(
-                              onPressed: () => Navigator.pop(context),
-                              style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 20)),
-                              child: const Text('SKIP FOR NOW', style: TextStyle(fontWeight: FontWeight.w800, color: Color(0xFF94A3B8), letterSpacing: 1, fontSize: 13)),
+                              onPressed: () => Navigator.pop(context, false),
+                              child: const Text('SKIP FOR NOW'),
                             ),
                           ),
                           const SizedBox(width: 20),
                           Expanded(
                             flex: 2,
                             child: FilledButton(
-                              onPressed: () => _saveCosts(context),
+                              onPressed: _canSave ? () => _saveCosts(context) : null,
                               style: FilledButton.styleFrom(
                                 backgroundColor: const Color(0xFF10B981),
-                                padding: const EdgeInsets.symmetric(vertical: 20),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                               ),
-                              child: const Text('SAVE INITIAL COSTS', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14, letterSpacing: 0.5)),
+                              child: const Text('SAVE INITIAL COSTS'),
                             ),
                           ),
                         ],
@@ -150,20 +316,15 @@ class _FinancialInitDialogState extends State<FinancialInitDialog> {
       padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
       decoration: BoxDecoration(
         color: const Color(0xFF1E293B).withValues(alpha: 0.5),
-        border: Border(bottom: BorderSide(color: Colors.white.withValues(alpha: 0.05))),
+        border: Border(
+          bottom: BorderSide(color: Colors.white.withValues(alpha: 0.05)),
+        ),
       ),
-      child: Row(
+      child: const Row(
         children: [
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.amber.withValues(alpha: 0.15),
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: const Icon(Icons.account_balance_wallet_rounded, color: Colors.amber, size: 28),
-          ),
-          const SizedBox(width: 20),
-          const Column(
+          Icon(Icons.account_balance_wallet_rounded, color: Colors.amber, size: 28),
+          SizedBox(width: 20),
+          Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
@@ -172,18 +333,11 @@ class _FinancialInitDialogState extends State<FinancialInitDialog> {
                   color: Colors.white,
                   fontSize: 18,
                   fontWeight: FontWeight.w900,
-                  letterSpacing: 0.5,
                 ),
               ),
-              SizedBox(height: 4),
               Text(
                 'SET UP INITIAL BATCH COSTS',
-                style: TextStyle(
-                  color: Color(0xFF94A3B8),
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 1.2,
-                ),
+                style: TextStyle(color: Color(0xFF94A3B8), fontSize: 11),
               ),
             ],
           ),
@@ -198,31 +352,36 @@ class _FinancialInitDialogState extends State<FinancialInitDialog> {
       decoration: BoxDecoration(
         color: const Color(0xFF1E293B),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
       ),
       child: Row(
         children: [
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('BATCH NAME', style: TextStyle(color: Color(0xFF64748B), fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 1)),
-              const SizedBox(height: 4),
-              Text(widget.batch.batchName, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: Colors.white)),
+              const Text('BATCH NAME', style: TextStyle(color: Color(0xFF64748B), fontSize: 10)),
+              Text(
+                widget.batch.batchName,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w900,
+                  fontSize: 16,
+                  color: Colors.white,
+                ),
+              ),
             ],
-          ),
-          const Spacer(),
-          Container(
-            width: 1,
-            height: 40,
-            color: Colors.white.withValues(alpha: 0.05),
           ),
           const Spacer(),
           Column(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              const Text('INITIAL QUANTITY', style: TextStyle(color: Color(0xFF64748B), fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 1)),
-              const SizedBox(height: 4),
-              Text('${widget.batch.initialCount} birds', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: Color(0xFF10B981))),
+              const Text('INITIAL QUANTITY', style: TextStyle(color: Color(0xFF64748B), fontSize: 10)),
+              Text(
+                '${widget.batch.initialCount} birds',
+                style: const TextStyle(
+                  fontWeight: FontWeight.w900,
+                  fontSize: 16,
+                  color: Color(0xFF10B981),
+                ),
+              ),
             ],
           ),
         ],
@@ -230,65 +389,40 @@ class _FinancialInitDialogState extends State<FinancialInitDialog> {
     );
   }
 
-  Widget _buildInputField(String label, TextEditingController controller, IconData icon) {
+  Widget _buildInputField(
+    String label,
+    TextEditingController controller,
+    IconData icon,
+  ) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label.toUpperCase(), 
-          style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 10, color: Color(0xFF10B981), letterSpacing: 1)),
+        Text(
+          label.toUpperCase(),
+          style: const TextStyle(
+            fontWeight: FontWeight.w900,
+            fontSize: 10,
+            color: Color(0xFF10B981),
+            letterSpacing: 1,
+          ),
+        ),
         const SizedBox(height: 10),
         TextField(
           controller: controller,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*'))],
-          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 15),
+          inputFormatters: [
+            FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*')),
+          ],
+          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
           decoration: InputDecoration(
             prefixIcon: Icon(icon, size: 20, color: const Color(0xFF94A3B8)),
             prefixText: 'GH₵ ',
-            prefixStyle: const TextStyle(fontWeight: FontWeight.w900, color: Colors.white),
             filled: true,
             fillColor: const Color(0xFF1E293B),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.08)),
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.08)),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: Color(0xFF10B981), width: 1.5),
-            ),
-            contentPadding: const EdgeInsets.all(18),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
           ),
         ),
       ],
     );
-  }
-
-  Future<void> _saveCosts(BuildContext context) async {
-    final db = Provider.of<AppDatabase>(context, listen: false);
-    
-    try {
-      await (db.update(db.batches)..where((t) => t.id.equals(widget.batch.id)))
-        .write(BatchesCompanion(
-          initialActualCost: Value(_totalCost),
-          updatedAt: Value(DateTime.now()),
-        ));
-      
-      if (!context.mounted) return;
-      final messenger = ScaffoldMessenger.of(context);
-      Navigator.pop(context);
-      
-      messenger.showSnackBar(const SnackBar(
-        content: Text('Financial data initialized successfully'),
-        backgroundColor: Color(0xFF10B981),
-        behavior: SnackBarBehavior.floating,
-      ));
-    } catch (e) {
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
-    }
   }
 }

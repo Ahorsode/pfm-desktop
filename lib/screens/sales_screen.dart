@@ -18,6 +18,8 @@ import '../services/auth_service.dart';
 import '../utils/farm_utils.dart';
 import '../utils/id_utils.dart';
 import '../utils/user_role.dart';
+import '../utils/inventory_sale_utils.dart';
+import '../widgets/sale_entry_dialog.dart';
 import 'sales_analytics_screen.dart';
 
 class SalesScreen extends StatefulWidget {
@@ -493,252 +495,25 @@ class _SalesScreenState extends State<SalesScreen> {
 
   Future<String?> _getFarmId() async => FarmUtils.getBoundFarmId();
 
-  Future<void> _showSaleDialog(
+  Future<void> _showMultiLineSaleDialog(
     List<Customer> customers,
     List<Batch> batches,
   ) async {
-    if (!context.mounted) return;
-    Customer? selectedCustomer;
-    Batch? selectedBatch;
-    final qtyCtrl = TextEditingController();
-    final priceCtrl = TextEditingController();
-    final noteCtrl = TextEditingController();
-    final formKey = GlobalKey<FormState>();
-    DateTime selectedSaleDate = DateTime.now();
-
-    if (!context.mounted) return;
-    await showDialog(
+    final inventory = await (db.select(db.inventory)).get();
+    final activeInventory = inventoryItemsForSale(inventory);
+    if (!mounted) return;
+    final saved = await showSaleEntryDialog(
       context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDlgState) => AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-          ),
-          title: const Text(
-            'Record Sale',
-            style: TextStyle(fontWeight: FontWeight.w800),
-          ),
-          content: SizedBox(
-            width: 440,
-            child: Form(
-              key: formKey,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  DropdownButtonFormField<Customer>(
-                    decoration: InputDecoration(
-                      labelText: 'Customer',
-                      prefixIcon: const Icon(Icons.person_rounded, size: 20),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    items: customers
-                        .map(
-                          (c) => DropdownMenuItem<Customer>(
-                            value: c,
-                            child: Text(c.name),
-                          ),
-                        )
-                        .toList(),
-                    onChanged: (v) => setDlgState(() => selectedCustomer = v),
-                    validator: (v) =>
-                        v == null ? 'Please select a customer' : null,
-                  ),
-                  const SizedBox(height: 12),
-                  DropdownButtonFormField<Batch>(
-                    decoration: InputDecoration(
-                      labelText: 'Batch',
-                      prefixIcon: const Icon(
-                        Icons.inventory_2_rounded,
-                        size: 20,
-                      ),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    items: batches
-                        .map(
-                          (b) => DropdownMenuItem<Batch>(
-                            value: b,
-                            child: Text(b.batchName),
-                          ),
-                        )
-                        .toList(),
-                    onChanged: (v) => setDlgState(() => selectedBatch = v),
-                    validator: (v) =>
-                        v == null ? 'Please select a batch' : null,
-                  ),
-                  const SizedBox(height: 12),
-                  InkWell(
-                    onTap: () async {
-                      final date = await showDatePicker(
-                        context: ctx,
-                        initialDate: selectedSaleDate,
-                        firstDate: DateTime(2000),
-                        lastDate: DateTime.now().add(const Duration(days: 1)),
-                      );
-                      if (date == null || !ctx.mounted) return;
-                      final time = await showTimePicker(
-                        context: ctx,
-                        initialTime: TimeOfDay.fromDateTime(selectedSaleDate),
-                      );
-                      if (time == null) return;
-                      setDlgState(() {
-                        selectedSaleDate = DateTime(
-                          date.year,
-                          date.month,
-                          date.day,
-                          time.hour,
-                          time.minute,
-                        );
-                      });
-                    },
-                    borderRadius: BorderRadius.circular(12),
-                    child: InputDecorator(
-                      decoration: InputDecoration(
-                        labelText: 'Sale date',
-                        prefixIcon: const Icon(Icons.event_rounded, size: 20),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      child: Text(
-                        DateFormat(
-                          'dd MMM yyyy, HH:mm',
-                        ).format(selectedSaleDate),
-                        style: const TextStyle(fontWeight: FontWeight.w800),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextFormField(
-                          controller: qtyCtrl,
-                          keyboardType: TextInputType.number,
-                          inputFormatters: [
-                            FilteringTextInputFormatter.digitsOnly,
-                          ],
-                          validator: (v) =>
-                              (v == null || v.isEmpty) ? 'Required' : null,
-                          decoration: InputDecoration(
-                            labelText: 'Quantity',
-                            prefixIcon: const Icon(
-                              Icons.numbers_rounded,
-                              size: 20,
-                            ),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: TextFormField(
-                          controller: priceCtrl,
-                          keyboardType: TextInputType.number,
-                          inputFormatters: [
-                            FilteringTextInputFormatter.allow(
-                              RegExp(r'^\d*\.?\d*'),
-                            ),
-                          ],
-                          validator: (v) =>
-                              (v == null || v.isEmpty) ? 'Required' : null,
-                          decoration: InputDecoration(
-                            labelText: 'Unit Price (GHS)',
-                            prefixIcon: const Icon(
-                              Icons.attach_money_rounded,
-                              size: 20,
-                            ),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  TextFormField(
-                    controller: noteCtrl,
-                    maxLines: 2,
-                    decoration: InputDecoration(
-                      labelText: 'Note (optional)',
-                      prefixIcon: const Icon(Icons.notes_rounded, size: 20),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () async {
-                if (!formKey.currentState!.validate()) return;
-                final qty = int.tryParse(qtyCtrl.text) ?? 0;
-                final price = double.tryParse(priceCtrl.text) ?? 0.0;
-                final total = qty * price;
-
-                final syncEngine = Provider.of<SyncEngine>(
-                  context,
-                  listen: false,
-                );
-                final farmId = await _getFarmId();
-                final workerId = await FarmUtils.getRequiredUserId();
-                if (farmId == null) return;
-
-                // 1. Insert sale record
-                await db
-                    .into(db.sales)
-                    .insert(
-                      SalesCompanion.insert(
-                        id: newLocalId(),
-                        farmId: farmId,
-                        batchId: Value(selectedBatch!.id),
-                        customerId: Value(selectedCustomer!.id),
-                        quantity: qty,
-                        unitPrice: price,
-                        totalAmount: total,
-                        saleDate: Value(selectedSaleDate),
-                        userId: Value(workerId),
-                        synced: const Value(false),
-                      ),
-                    );
-
-                // 2. Update customer's balance
-                if (selectedCustomer != null) {
-                  await (db.update(
-                    db.customers,
-                  )..where((t) => t.id.equals(selectedCustomer!.id))).write(
-                    CustomersCompanion(
-                      balanceOwed: Value(selectedCustomer!.balanceOwed + total),
-                      synced: const Value(false),
-                    ),
-                  );
-                }
-                if (ctx.mounted) Navigator.pop(ctx);
-                setState(() {});
-                syncEngine.syncNow();
-              },
-              style: FilledButton.styleFrom(
-                backgroundColor: const Color(0xFF16A34A),
-              ),
-              child: const Text('Record Sale'),
-            ),
-          ],
-        ),
-      ),
+      db: db,
+      customers: customers,
+      batches: batches,
+      inventory: activeInventory,
+      canOverridePrices: !_isWorkerRole,
     );
+    if (saved == true && mounted) {
+      context.read<SyncEngine>().syncNow();
+      setState(() {});
+    }
   }
 
   Future<void> _showSettleDialog(Customer customer) async {
@@ -1067,8 +842,10 @@ class _SalesScreenState extends State<SalesScreen> {
                                 child: FilledButton.icon(
                                   onPressed: customers.isEmpty
                                       ? null
-                                      : () =>
-                                            _showSaleDialog(customers, batches),
+                                      : () => _showMultiLineSaleDialog(
+                                          customers,
+                                          batches,
+                                        ),
                                   icon: const Icon(Icons.add),
                                   label: const Text('Record Sale'),
                                   style: FilledButton.styleFrom(
@@ -1136,8 +913,10 @@ class _SalesScreenState extends State<SalesScreen> {
                                 FilledButton.icon(
                                   onPressed: customers.isEmpty
                                       ? null
-                                      : () =>
-                                            _showSaleDialog(customers, batches),
+                                      : () => _showMultiLineSaleDialog(
+                                          customers,
+                                          batches,
+                                        ),
                                   icon: const Icon(Icons.add),
                                   label: const Text('Record Sale'),
                                   style: FilledButton.styleFrom(

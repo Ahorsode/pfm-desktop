@@ -7,7 +7,10 @@ import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
 
 import '../data/local_db.dart';
+import '../services/comprehensive_farm_report_service.dart';
 import '../utils/farm_utils.dart';
+import '../utils/staff_permission_defaults.dart';
+import '../utils/worker_permissions_loader.dart';
 import 'report_log_screen.dart';
 
 class ComprehensiveReportScreen extends StatefulWidget {
@@ -23,13 +26,38 @@ class _ComprehensiveReportScreenState extends State<ComprehensiveReportScreen>
   late final TabController _tabController;
   DateTime _startDate = DateTime.now().subtract(const Duration(days: 30));
   DateTime _endDate = DateTime.now();
-  _FarmReport? _report;
+  ComprehensiveFarmReport? _report;
   bool _loading = false;
+  bool _canViewReports = true;
+  Set<String> _permissions = const {};
+  String? _role;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadAccess());
+  }
+
+  Future<void> _loadAccess() async {
+    try {
+      final db = context.read<AppDatabase>();
+      final permissions = await loadWorkerPermissions(db);
+      final role = await FarmUtils.getUserRole();
+      if (!mounted) return;
+      setState(() {
+        _permissions = permissions;
+        _role = role;
+        _canViewReports = canViewReports(role: role, permissions: permissions);
+      });
+      if (_canViewReports) {
+        await _generateReport();
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() => _canViewReports = false);
+      }
+    }
   }
 
   @override
@@ -106,6 +134,16 @@ class _ComprehensiveReportScreenState extends State<ComprehensiveReportScreen>
 
   Widget _buildReportTab(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    if (!_canViewReports) {
+      return Center(
+        child: Text(
+          'Finance view permission is required to access farm intelligence reports.',
+          style: TextStyle(color: cs.onSurfaceVariant, fontWeight: FontWeight.w700),
+          textAlign: TextAlign.center,
+        ),
+      );
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -135,6 +173,16 @@ class _ComprehensiveReportScreenState extends State<ComprehensiveReportScreen>
                   : const Icon(Icons.analytics_rounded, size: 18),
               label: const Text('Generate Report'),
             ),
+            OutlinedButton.icon(
+              onPressed: _loading ? null : () => _applyPreset(7),
+              icon: const Icon(Icons.date_range_rounded, size: 18),
+              label: const Text('Last 7 Days'),
+            ),
+            OutlinedButton.icon(
+              onPressed: _loading ? null : () => _applyPreset(30),
+              icon: const Icon(Icons.calendar_month_rounded, size: 18),
+              label: const Text('Last 30 Days'),
+            ),
           ],
         ),
         const SizedBox(height: 18),
@@ -155,136 +203,35 @@ class _ComprehensiveReportScreenState extends State<ComprehensiveReportScreen>
     );
   }
 
+  Future<void> _applyPreset(int days) async {
+    final end = DateTime.now();
+    setState(() {
+      _endDate = end;
+      _startDate = DateTime(end.year, end.month, end.day).subtract(
+        Duration(days: days - 1),
+      );
+    });
+    await _generateReport();
+  }
+
   Future<void> _generateReport() async {
+    if (!_canViewReports) return;
     setState(() => _loading = true);
     try {
       final db = context.read<AppDatabase>();
       final farmId = await FarmUtils.getBoundFarmId();
       if (farmId == null) throw Exception('No bound farm found.');
 
-      final start = DateTime(_startDate.year, _startDate.month, _startDate.day);
-      final end = DateTime(
-        _endDate.year,
-        _endDate.month,
-        _endDate.day,
-        23,
-        59,
-        59,
+      final report = await ComprehensiveFarmReportService(db).generate(
+        farmId: farmId,
+        startDate: _startDate,
+        endDate: _endDate,
+        role: _role,
+        permissions: _permissions,
+        assignableRoles: assignableStaffRoles,
       );
 
-      final sales = await (db.select(
-        db.sales,
-      )..where((s) => s.farmId.equals(farmId))).get();
-      final expenses = await (db.select(
-        db.expenses,
-      )..where((e) => e.farmId.equals(farmId))).get();
-      final eggs = await (db.select(
-        db.eggProductions,
-      )..where((e) => e.farmId.equals(farmId))).get();
-      final feeding = await (db.select(
-        db.feedingLogs,
-      )..where((f) => f.farmId.equals(farmId))).get();
-      final mortalities = await (db.select(
-        db.mortalities,
-      )..where((m) => m.farmId.equals(farmId))).get();
-      final batches = await (db.select(
-        db.batches,
-      )..where((b) => b.farmId.equals(farmId))).get();
-
-      final periodSales = sales
-          .where((s) => !s.saleDate.isBefore(start) && !s.saleDate.isAfter(end))
-          .toList();
-      final periodExpenses = expenses
-          .where((e) => !e.date.isBefore(start) && !e.date.isAfter(end))
-          .toList();
-      final periodEggs = eggs
-          .where((e) => !e.logDate.isBefore(start) && !e.logDate.isAfter(end))
-          .toList();
-      final periodFeeding = feeding
-          .where((f) => !f.logDate.isBefore(start) && !f.logDate.isAfter(end))
-          .toList();
-      final periodMortalities = mortalities
-          .where((m) => !m.logDate.isBefore(start) && !m.logDate.isAfter(end))
-          .toList();
-
-      final totalRevenue = periodSales.fold(
-        0.0,
-        (sum, s) => sum + s.totalAmount,
-      );
-      final totalExpenses = periodExpenses.fold(
-        0.0,
-        (sum, e) => sum + e.amount,
-      );
-      final totalEggs = periodEggs.fold(0, (sum, e) => sum + e.eggsCollected);
-      final totalFeed = periodFeeding.fold(
-        0.0,
-        (sum, f) => sum + f.amountConsumed,
-      );
-      final totalMortality = periodMortalities.fold(
-        0,
-        (sum, m) => sum + m.count,
-      );
-      final startingBirds = batches.fold(0, (sum, b) => sum + b.initialCount);
-
-      final expenseCategories = <String, double>{};
-      for (final expense in periodExpenses) {
-        expenseCategories[expense.category] =
-            (expenseCategories[expense.category] ?? 0) + expense.amount;
-      }
-
-      final batchRows = <_BatchReportRow>[];
-      for (final batch in batches) {
-        final batchEggs = periodEggs
-            .where((e) => e.batchId == batch.id)
-            .fold(0, (sum, e) => sum + e.eggsCollected);
-        final batchFeed = periodFeeding
-            .where((f) => f.batchId == batch.id)
-            .fold(0.0, (sum, f) => sum + f.amountConsumed);
-        final batchMortality = periodMortalities
-            .where((m) => m.batchId == batch.id)
-            .fold(0, (sum, m) => sum + m.count);
-        batchRows.add(
-          _BatchReportRow(
-            batchName: batch.batchName,
-            birds: batch.currentCount,
-            eggs: batchEggs,
-            feedKg: batchFeed,
-            mortality: batchMortality,
-            mortalityRate: batch.initialCount == 0
-                ? 0
-                : batchMortality / batch.initialCount * 100,
-          ),
-        );
-      }
-
-      final dailyEggs = <DateTime, double>{};
-      for (final entry in periodEggs) {
-        final day = DateTime(
-          entry.logDate.year,
-          entry.logDate.month,
-          entry.logDate.day,
-        );
-        dailyEggs[day] = (dailyEggs[day] ?? 0) + entry.eggsCollected;
-      }
-
-      setState(() {
-        _report = _FarmReport(
-          startDate: start,
-          endDate: end,
-          totalRevenue: totalRevenue,
-          totalExpenses: totalExpenses,
-          totalEggs: totalEggs,
-          totalFeed: totalFeed,
-          totalMortality: totalMortality,
-          mortalityRate: startingBirds == 0
-              ? 0
-              : totalMortality / startingBirds * 100,
-          revenueCategories: {'Sales': totalRevenue},
-          expenseCategories: expenseCategories,
-          batches: batchRows,
-          dailyEggs: dailyEggs,
-        );
-      });
+      setState(() => _report = report);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(
@@ -301,17 +248,19 @@ class _ComprehensiveReportScreenState extends State<ComprehensiveReportScreen>
     if (report == null) return;
     final buffer = StringBuffer()
       ..writeln('Metric,Value')
-      ..writeln('Total Revenue,${report.totalRevenue.toStringAsFixed(2)}')
-      ..writeln('Total Expenses,${report.totalExpenses.toStringAsFixed(2)}')
-      ..writeln('Net Income,${report.netIncome.toStringAsFixed(2)}')
-      ..writeln('Total Eggs,${report.totalEggs}')
-      ..writeln('Feed Consumed Kg,${report.totalFeed.toStringAsFixed(2)}')
-      ..writeln('Mortality,${report.totalMortality}')
+      ..writeln('Total Revenue,${report.kpis.totalRevenue.toStringAsFixed(2)}')
+      ..writeln('Total Expenses,${report.kpis.totalExpense.toStringAsFixed(2)}')
+      ..writeln('Net Income,${report.kpis.netIncome.toStringAsFixed(2)}')
+      ..writeln('Total Eggs,${report.kpis.totalEggsCollected}')
+      ..writeln('Feed Consumed Kg,${report.kpis.totalFeedConsumed.toStringAsFixed(2)}')
+      ..writeln('Mortality,${report.kpis.totalMortality}')
+      ..writeln('Mortality Rate,${report.kpis.mortalityRate.toStringAsFixed(2)}')
+      ..writeln('Average FCR,${report.kpis.averageFcr.toStringAsFixed(2)}')
       ..writeln()
-      ..writeln('Batch,Birds,Eggs,Feed Kg,Mortality,Mortality Rate');
+      ..writeln('Batch,Status,Initial,Current,Mortality,Feed Kg');
     for (final row in report.batches) {
       buffer.writeln(
-        '"${row.batchName}",${row.birds},${row.eggs},${row.feedKg.toStringAsFixed(2)},${row.mortality},${row.mortalityRate.toStringAsFixed(2)}%',
+        '"${row.batchName}",${row.status},${row.initialCount},${row.currentCount},${row.mortalityCount},${row.feedConsumed.toStringAsFixed(2)}',
       );
     }
 
@@ -332,13 +281,14 @@ class _ComprehensiveReportScreenState extends State<ComprehensiveReportScreen>
 }
 
 class _ReportView extends StatelessWidget {
-  final _FarmReport report;
+  final ComprehensiveFarmReport report;
 
   const _ReportView({required this.report});
 
   @override
   Widget build(BuildContext context) {
     final money = NumberFormat.currency(symbol: 'GHc ', decimalDigits: 2);
+    final kpis = report.kpis;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -346,23 +296,25 @@ class _ReportView extends StatelessWidget {
           spacing: 14,
           runSpacing: 14,
           children: [
-            _SummaryCard('Total Revenue', money.format(report.totalRevenue)),
-            _SummaryCard('Total Expenses', money.format(report.totalExpenses)),
+            _SummaryCard('Net Income', money.format(kpis.netIncome),
+                accent: kpis.netIncome >= 0
+                    ? const Color(0xFF22C55E)
+                    : const Color(0xFFEF4444)),
+            _SummaryCard('Feed Conversion Ratio', kpis.averageFcr.toStringAsFixed(2)),
+            _SummaryCard('Total Eggs', '${kpis.totalEggsCollected}'),
             _SummaryCard(
-              'Net Income',
-              money.format(report.netIncome),
-              accent: report.netIncome >= 0
+              'Mortality Rate',
+              '${kpis.mortalityRate.toStringAsFixed(2)}%',
+              subtitle: '${kpis.totalMortality} deaths logged',
+              accent: kpis.mortalityRate < 5
                   ? const Color(0xFF22C55E)
                   : const Color(0xFFEF4444),
             ),
-            _SummaryCard('Total Eggs', '${report.totalEggs}'),
+            _SummaryCard('Total Revenue', money.format(kpis.totalRevenue)),
+            _SummaryCard('Total Expenses', money.format(kpis.totalExpense)),
             _SummaryCard(
               'Feed Consumed',
-              '${report.totalFeed.toStringAsFixed(1)} kg',
-            ),
-            _SummaryCard(
-              'Mortality',
-              '${report.totalMortality} (${report.mortalityRate.toStringAsFixed(1)}%)',
+              '${kpis.totalFeedConsumed.toStringAsFixed(1)} kg',
             ),
           ],
         ),
@@ -380,7 +332,7 @@ class _ReportView extends StatelessWidget {
                       : (constraints.maxWidth - 18) / 2,
                   child: _BreakdownCard(
                     title: 'Revenue by Category',
-                    values: report.revenueCategories,
+                    values: report.revenueByCategory,
                     currency: money,
                   ),
                 ),
@@ -390,7 +342,7 @@ class _ReportView extends StatelessWidget {
                       : (constraints.maxWidth - 18) / 2,
                   child: _BreakdownCard(
                     title: 'Expenses by Category',
-                    values: report.expenseCategories,
+                    values: report.expenseByCategory,
                     currency: money,
                   ),
                 ),
@@ -399,9 +351,11 @@ class _ReportView extends StatelessWidget {
           },
         ),
         const SizedBox(height: 18),
+        _LedgerTrendCard(trends: report.dailyTrends),
+        const SizedBox(height: 18),
         _BatchTable(rows: report.batches),
         const SizedBox(height: 18),
-        _TrendCard(values: report.dailyEggs),
+        _FinancialLedgerTable(rows: report.financials, currency: money),
       ],
     );
   }
@@ -439,9 +393,10 @@ class _DatePickerButton extends StatelessWidget {
 class _SummaryCard extends StatelessWidget {
   final String label;
   final String value;
+  final String? subtitle;
   final Color? accent;
 
-  const _SummaryCard(this.label, this.value, {this.accent});
+  const _SummaryCard(this.label, this.value, {this.subtitle, this.accent});
 
   @override
   Widget build(BuildContext context) {
@@ -484,6 +439,13 @@ class _SummaryCard extends StatelessWidget {
               fontWeight: FontWeight.w900,
             ),
           ),
+          if (subtitle != null) ...[
+            const SizedBox(height: 4),
+            Text(
+              subtitle!,
+              style: TextStyle(color: cs.onSurfaceVariant, fontSize: 11),
+            ),
+          ],
         ],
       ),
     );
@@ -559,7 +521,7 @@ class _BreakdownCard extends StatelessWidget {
 }
 
 class _BatchTable extends StatelessWidget {
-  final List<_BatchReportRow> rows;
+  final List<ReportBatchRow> rows;
 
   const _BatchTable({required this.rows});
 
@@ -575,22 +537,22 @@ class _BatchTable extends StatelessWidget {
         child: DataTable(
           columns: const [
             DataColumn(label: Text('Batch Name')),
-            DataColumn(label: Text('Birds')),
-            DataColumn(label: Text('Eggs')),
-            DataColumn(label: Text('Feed (kg)')),
+            DataColumn(label: Text('Status')),
+            DataColumn(label: Text('Initial')),
+            DataColumn(label: Text('Current')),
             DataColumn(label: Text('Mortality')),
-            DataColumn(label: Text('Mortality Rate')),
+            DataColumn(label: Text('Feed (kg)')),
           ],
           rows: rows
               .map(
                 (row) => DataRow(
                   cells: [
                     DataCell(Text(row.batchName)),
-                    DataCell(Text('${row.birds}')),
-                    DataCell(Text('${row.eggs}')),
-                    DataCell(Text(row.feedKg.toStringAsFixed(1))),
-                    DataCell(Text('${row.mortality}')),
-                    DataCell(Text('${row.mortalityRate.toStringAsFixed(1)}%')),
+                    DataCell(Text(row.status)),
+                    DataCell(Text('${row.initialCount}')),
+                    DataCell(Text('${row.currentCount}')),
+                    DataCell(Text('${row.mortalityCount}')),
+                    DataCell(Text(row.feedConsumed.toStringAsFixed(1))),
                   ],
                 ),
               )
@@ -607,16 +569,14 @@ class _BatchTable extends StatelessWidget {
   }
 }
 
-class _TrendCard extends StatelessWidget {
-  final Map<DateTime, double> values;
+class _LedgerTrendCard extends StatelessWidget {
+  final List<DailyReportTrend> trends;
 
-  const _TrendCard({required this.values});
+  const _LedgerTrendCard({required this.trends});
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final entries = values.entries.toList()
-      ..sort((a, b) => a.key.compareTo(b.key));
     return Container(
       height: 280,
       width: double.infinity,
@@ -626,7 +586,7 @@ class _TrendCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Date-range Egg Trend',
+            'Ledger Inflow / Outflow Trends',
             style: TextStyle(
               color: cs.onSurface,
               fontWeight: FontWeight.w900,
@@ -635,25 +595,77 @@ class _TrendCard extends StatelessWidget {
           ),
           const SizedBox(height: 16),
           Expanded(
-            child: entries.isEmpty
+            child: trends.length < 2
                 ? Center(
                     child: Text(
-                      'No egg production in this period',
+                      'Insufficient data points to plot trend line.',
                       style: TextStyle(color: cs.onSurfaceVariant),
                     ),
                   )
                 : CustomPaint(
-                    painter: _BarChartPainter(
-                      values: entries.map((e) => e.value).toList(),
-                      labels: entries
-                          .map((e) => DateFormat('MMM d').format(e.key))
-                          .toList(),
-                      color: cs.primary,
-                      labelColor: cs.onSurfaceVariant,
-                    ),
+                    painter: _LedgerTrendPainter(trends: trends),
                     size: Size.infinite,
                   ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FinancialLedgerTable extends StatelessWidget {
+  final List<ReportFinancialRow> rows;
+  final NumberFormat currency;
+
+  const _FinancialLedgerTable({
+    required this.rows,
+    required this.currency,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: _cardDecoration(context),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Financial Ledger',
+            style: TextStyle(
+              color: cs.onSurface,
+              fontWeight: FontWeight.w900,
+              fontSize: 16,
+            ),
+          ),
+          const SizedBox(height: 12),
+          if (rows.isEmpty)
+            Text('No financial transactions in this period.',
+                style: TextStyle(color: cs.onSurfaceVariant))
+          else
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: DataTable(
+                columns: const [
+                  DataColumn(label: Text('Date')),
+                  DataColumn(label: Text('Type')),
+                  DataColumn(label: Text('Category')),
+                  DataColumn(label: Text('Amount')),
+                  DataColumn(label: Text('Status')),
+                ],
+                rows: rows.take(30).map((row) {
+                  return DataRow(cells: [
+                    DataCell(Text(DateFormat('yyyy-MM-dd').format(row.transactionDate))),
+                    DataCell(Text(row.type)),
+                    DataCell(Text(row.category)),
+                    DataCell(Text(currency.format(row.amount))),
+                    DataCell(Text(row.paymentStatus)),
+                  ]);
+                }).toList(),
+              ),
+            ),
         ],
       ),
     );
@@ -672,101 +684,46 @@ BoxDecoration _cardDecoration(BuildContext context) {
   );
 }
 
-class _BarChartPainter extends CustomPainter {
-  final List<double> values;
-  final List<String> labels;
-  final Color color;
-  final Color labelColor;
+class _LedgerTrendPainter extends CustomPainter {
+  final List<DailyReportTrend> trends;
 
-  const _BarChartPainter({
-    required this.values,
-    required this.labels,
-    required this.color,
-    required this.labelColor,
-  });
+  const _LedgerTrendPainter({required this.trends});
 
   @override
   void paint(Canvas canvas, Size size) {
-    if (values.isEmpty) return;
-    final maxValue = values.reduce((a, b) => a > b ? a : b);
-    final paint = Paint()..color = color;
-    final textPainter = TextPainter(textDirection: TextDirection.ltr);
-    final chartHeight = size.height - 30;
-    final gap = 5.0;
-    final barWidth = (size.width - gap * (values.length - 1)) / values.length;
+    if (trends.length < 2) return;
+    final maxVal = trends
+        .map((t) => [t.revenue, t.expense, 100.0].reduce((a, b) => a > b ? a : b))
+        .reduce((a, b) => a > b ? a : b);
+    final padding = 12.0;
+    final chartWidth = size.width - padding * 2;
+    final chartHeight = size.height - padding * 2;
 
-    for (var i = 0; i < values.length; i++) {
-      final ratio = maxValue == 0 ? 0.0 : values[i] / maxValue;
-      final height = chartHeight * ratio;
-      final x = i * (barWidth + gap);
-      final rect = RRect.fromRectAndRadius(
-        Rect.fromLTWH(x, chartHeight - height, barWidth.clamp(3, 34), height),
-        const Radius.circular(5),
-      );
-      canvas.drawRRect(rect, paint);
-
-      if (values.length <= 14 || i % (values.length / 7).ceil() == 0) {
-        textPainter.text = TextSpan(
-          text: labels[i],
-          style: TextStyle(color: labelColor, fontSize: 10),
-        );
-        textPainter.layout(maxWidth: barWidth * 2);
-        textPainter.paint(canvas, Offset(x, chartHeight + 8));
+    void drawLine(Color color, double Function(DailyReportTrend) value) {
+      final paint = Paint()
+        ..color = color
+        ..strokeWidth = 2.5
+        ..style = PaintingStyle.stroke;
+      final path = Path();
+      for (var i = 0; i < trends.length; i++) {
+        final x = padding + (i / (trends.length - 1)) * chartWidth;
+        final y = padding +
+            chartHeight -
+            (value(trends[i]) / maxVal) * chartHeight;
+        if (i == 0) {
+          path.moveTo(x, y);
+        } else {
+          path.lineTo(x, y);
+        }
       }
+      canvas.drawPath(path, paint);
     }
+
+    drawLine(const Color(0xFF22C55E), (t) => t.revenue);
+    drawLine(const Color(0xFFEF4444), (t) => t.expense);
   }
 
   @override
-  bool shouldRepaint(covariant _BarChartPainter oldDelegate) =>
-      oldDelegate.values != values || oldDelegate.color != color;
-}
-
-class _FarmReport {
-  final DateTime startDate;
-  final DateTime endDate;
-  final double totalRevenue;
-  final double totalExpenses;
-  final int totalEggs;
-  final double totalFeed;
-  final int totalMortality;
-  final double mortalityRate;
-  final Map<String, double> revenueCategories;
-  final Map<String, double> expenseCategories;
-  final List<_BatchReportRow> batches;
-  final Map<DateTime, double> dailyEggs;
-
-  const _FarmReport({
-    required this.startDate,
-    required this.endDate,
-    required this.totalRevenue,
-    required this.totalExpenses,
-    required this.totalEggs,
-    required this.totalFeed,
-    required this.totalMortality,
-    required this.mortalityRate,
-    required this.revenueCategories,
-    required this.expenseCategories,
-    required this.batches,
-    required this.dailyEggs,
-  });
-
-  double get netIncome => totalRevenue - totalExpenses;
-}
-
-class _BatchReportRow {
-  final String batchName;
-  final int birds;
-  final int eggs;
-  final double feedKg;
-  final int mortality;
-  final double mortalityRate;
-
-  const _BatchReportRow({
-    required this.batchName,
-    required this.birds,
-    required this.eggs,
-    required this.feedKg,
-    required this.mortality,
-    required this.mortalityRate,
-  });
+  bool shouldRepaint(covariant _LedgerTrendPainter oldDelegate) =>
+      oldDelegate.trends != trends;
 }

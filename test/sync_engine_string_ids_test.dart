@@ -20,7 +20,7 @@ void main() {
   });
 
   test('local schema version is 22 with text primary keys', () {
-    expect(db.schemaVersion, 22);
+    expect(db.schemaVersion, 27);
     expect(db.houses.id, isA<GeneratedColumn<String>>());
     expect(db.batches.id, isA<GeneratedColumn<String>>());
     expect(db.batches.farmId, isA<GeneratedColumn<String>>());
@@ -167,7 +167,7 @@ void main() {
   });
 
   test('onCreate builds all drift tables', () async {
-    expect(db.allTables.length, 25);
+    expect(db.allTables.length, 26);
 
     for (final table in db.allTables) {
       final rows = await db

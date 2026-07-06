@@ -299,10 +299,16 @@ List<Map<String, dynamic>> _buildBatchPerformancePayload(
       currentCount,
     );
     final outputKg = isLayer ? eggOutputKg : biomassGainKg;
-    final currentFcr = outputKg > 0 ? totalFeed / outputKg : 0.0;
-    final mortalityRate = initialCount > 0
-        ? (deadBirds / initialCount) * 100.0
-        : 0.0;
+    final currentFcr = calculateBatchFeedConversionRatio(
+      livestockType: type,
+      totalFeed: totalFeed,
+      eggOutput: totalEggs,
+      birdBiomassGain: biomassGainKg,
+    );
+    final mortalityRate = calculateBatchMortalityRatePercentage(
+      totalDeadBirds: deadBirds,
+      initialPopulation: initialCount,
+    );
 
     return <String, dynamic>{
       'batchId': id,
@@ -419,4 +425,30 @@ List<Map<String, dynamic>> _weeklyFcr({
 
 int _byDateMs(Map<String, dynamic> a, Map<String, dynamic> b) {
   return (a['dateMs'] as int).compareTo(b['dateMs'] as int);
+}
+
+double calculateBatchFeedConversionRatio({
+  required String livestockType,
+  required double totalFeed,
+  required int eggOutput,
+  required double birdBiomassGain,
+}) {
+  final isLayer = livestockType.toUpperCase().contains('LAYER');
+  final denominator = isLayer ? eggOutput.toDouble() : birdBiomassGain;
+  if (denominator <= 0 || totalFeed <= 0) return 0;
+  return _roundMetric(totalFeed / denominator);
+}
+
+double calculateBatchMortalityRatePercentage({
+  required int totalDeadBirds,
+  required int initialPopulation,
+}) {
+  if (initialPopulation <= 0) return 0;
+  return _roundMetric((totalDeadBirds / initialPopulation) * 100);
+}
+
+double _roundMetric(double value, {int decimals = 2}) {
+  if (!value.isFinite) return 0;
+  final factor = math.pow(10, decimals).toDouble();
+  return (value * factor).roundToDouble() / factor;
 }

@@ -22,6 +22,7 @@ class LivestockBreedCatalog {
   static const cattle = 'Cattle / Livestock';
   static const sheepGoat = 'Sheep / Goat';
   static const pigSwine = 'Pig / Swine';
+  static const other = 'Other / Generic';
 
   static const categories = <String>[
     poultryMeat,
@@ -29,6 +30,7 @@ class LivestockBreedCatalog {
     cattle,
     sheepGoat,
     pigSwine,
+    other,
   ];
 
   static const optionsByCategory = <String, List<LivestockBreedOption>>{
@@ -54,12 +56,12 @@ class LivestockBreedCatalog {
     ],
     cattle: [
       LivestockBreedOption(
-        key: 'white_fulani',
+        key: 'local_zebu_sanga_white_fulani',
         label: 'Local Zebu / Sanga / White Fulani',
         color: Color(0xFFD2B48C),
       ),
       LivestockBreedOption(
-        key: 'ndama_brown_cross',
+        key: 'ndama_brown_crosses',
         label: 'Ndama / Brown Crosses',
         color: Color(0xFF5C2C16),
       ),
@@ -86,11 +88,12 @@ class LivestockBreedCatalog {
         color: Color(0xFFF6C3C3),
       ),
       LivestockBreedOption(
-        key: 'ashanti_black',
+        key: 'ashanti_black_local_cross',
         label: 'Ashanti Black / Local Cross',
         color: Color(0xFF111111),
       ),
     ],
+    other: [],
   };
 
   static List<LivestockBreedOption> optionsForCategory(String? category) {
@@ -114,6 +117,9 @@ class LivestockBreedCatalog {
       case 'SWINE':
       case 'PIG / SWINE':
         return pigSwine;
+      case 'OTHER':
+      case 'OTHER / GENERIC':
+        return other;
       case 'POULTRY_BROILER':
       case 'POULTRY (MEAT)':
       default:
@@ -131,6 +137,8 @@ class LivestockBreedCatalog {
         return 'SHEEP_GOAT';
       case pigSwine:
         return 'PIG';
+      case other:
+        return 'OTHER';
       case poultryMeat:
       default:
         return 'POULTRY_BROILER';
@@ -156,59 +164,32 @@ class LivestockBreedCatalog {
   static String labelForKey(String? key) => optionForKey(key).label;
 
   static String normalizeBreedKey(String? value) {
-    final cleaned = (value ?? '').trim();
-    final lowered = cleaned.toLowerCase();
-    switch (lowered) {
-      case 'cobb 500':
-      case 'cobb 500 (meat)':
-      case 'ross 308':
-      case 'ross 308 (meat)':
-      case 'white broiler (cobb 500 / ross 308)':
-      case 'ross_308':
-        return 'ross_308';
-      case 'isa brown':
-      case 'isa brown (eggs)':
-      case 'lohmann':
-      case 'lohmann brown':
-      case 'lohmann (eggs)':
-      case 'brown layer (isa brown / lohmann)':
-      case 'isa_brown':
-        return 'isa_brown';
-      case 'bovans':
-      case 'bovans black':
-      case 'black layer (bovans black)':
-      case 'bovans_black':
-        return 'bovans_black';
-      case 'local zebu / sanga / white fulani':
-      case 'white fulani':
-      case 'zebu':
-      case 'sanga':
-      case 'white_fulani':
-        return 'white_fulani';
-      case 'ndama / brown crosses':
-      case 'ndama':
-      case 'ndama_brown_cross':
-        return 'ndama_brown_cross';
-      case 'west african dwarf (local)':
-      case 'west african dwarf':
-      case 'west_african_dwarf':
-        return 'west_african_dwarf';
-      case 'sahelian / northern cross':
-      case 'sahelian':
-      case 'sahelian_northern_cross':
-        return 'sahelian_northern_cross';
-      case 'large white / landrace':
-      case 'large white':
-      case 'landrace':
-      case 'large_white':
-        return 'large_white';
-      case 'ashanti black / local cross':
-      case 'ashanti black':
-      case 'ashanti_black':
-        return 'ashanti_black';
-      default:
-        return lowered.replaceAll(RegExp(r'[^a-z0-9]+'), '_');
-    }
+    if (value == null || value.trim().isEmpty) return '';
+
+    final normalized =
+        value.trim().toLowerCase().replaceAll(RegExp(r'[\s/-]+'), '_');
+    const legacyAliases = <String, String>{
+      'broiler': 'ross_308',
+      'ross_308': 'ross_308',
+      'cobb_500': 'ross_308',
+      'hubbard': 'ross_308',
+      'layer': 'isa_brown',
+      'isa_brown': 'isa_brown',
+      'isa': 'isa_brown',
+      'lohmann': 'isa_brown',
+      'bovans_black': 'bovans_black',
+      'leghorn': 'isa_brown',
+      'large_white': 'large_white',
+      'landrace': 'large_white',
+      'white_fulani': 'local_zebu_sanga_white_fulani',
+      'local_zebu_sanga_white_fulani': 'local_zebu_sanga_white_fulani',
+      'ndama_brown_cross': 'ndama_brown_crosses',
+      'ndama_brown_crosses': 'ndama_brown_crosses',
+      'ashanti_black': 'ashanti_black_local_cross',
+      'ashanti_black_local_cross': 'ashanti_black_local_cross',
+    };
+
+    return legacyAliases[normalized] ?? normalized;
   }
 }
 

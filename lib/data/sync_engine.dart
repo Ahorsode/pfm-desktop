@@ -450,15 +450,15 @@ class SyncEngine extends ChangeNotifier {
                 email: Value(customer['email'] as String?),
                 address: Value(customer['address'] as String?),
                 balanceOwed: Value(_safeDouble(customer['balanceOwed']) ?? 0.0),
-                customerType: Value(
-                  customer['customerType'] as String? ?? 'CUSTOMER',
-                ),
+                customerType: const Value('CUSTOMER'),
                 supplyItems: Value(customer['supplyItems'] as String?),
                 contactPerson: Value(customer['contactPerson'] as String?),
                 synced: const Value(true),
               ),
             );
       }
+
+      await _syncSuppliersFromCloud(farmIdFilter);
 
       // 8. Expenses
       final remoteExpenses = await _supabase
@@ -709,11 +709,13 @@ class SyncEngine extends ChangeNotifier {
             'farmId': _remoteFarmIdForPush(m.farmId, webFarmId),
             'batchId': safeIdString(m.batchId),
             'count': m.count,
+            'type': m.healthType,
             'reason': m.reason,
             'logDate': m.logDate.toIso8601String(),
             'user_id': pushUserIdForPayload(m.userId),
             'category': m.category,
             'sub_category': m.subCategory,
+            'isolation_room_id': optionalIdString(m.isolationRoomId),
             'updatedAt': now,
           };
           assertSyncPayloadUsesStringIds(payload);
@@ -796,6 +798,10 @@ class SyncEngine extends ChangeNotifier {
             'eggsRemaining': ep.eggsRemaining,
             'cratesCollected': ep.cratesCollected,
             'qualityGrade': ep.qualityGrade,
+            'isSorted': ep.isSorted,
+            'smallCount': ep.smallCount,
+            'mediumCount': ep.mediumCount,
+            'largeCount': ep.largeCount,
             'logDate': ep.logDate.toIso8601String(),
             'userId': pushUserIdForPayload(ep.userId),
           };
@@ -852,39 +858,22 @@ class SyncEngine extends ChangeNotifier {
         }
       }
 
-      // 8. Push Customers (camelCase columns)
+      await _pushSaleItems(webFarmId);
+      await _pushFinancialTransactions(
+        webFarmId,
+        pushUserIdForPayload: pushUserIdForPayload,
+      );
+
+      // 8. Push Customers / Suppliers (web uses separate tables)
       final pendingCustomers = await (db.select(
         db.customers,
       )..where((t) => t.synced.equals(false))).get();
       for (var c in pendingCustomers) {
         try {
-          final id = safeIdString(c.id);
-          final existing = await _supabase
-              .from('customers')
-              .select('id')
-              .eq('id', id)
-              .maybeSingle();
-          final now = DateTime.now().toUtc().toIso8601String();
-          final payload = {
-            'id': id,
-            'farmId': _remoteFarmIdForPush(c.farmId, webFarmId),
-            'name': c.name,
-            'phone': c.phone,
-            'email': c.email,
-            'address': c.address,
-            'balanceOwed': c.balanceOwed,
-            'customerType': c.customerType,
-            'supplyItems': c.supplyItems,
-            'contactPerson': c.contactPerson,
-            'updatedAt': now,
-          };
-          assertSyncPayloadUsesStringIds(payload);
-
-          if (existing != null) {
-            await _supabase.from('customers').update(payload).eq('id', id);
+          if (c.customerType == 'SUPPLIER') {
+            await _pushSupplierContactToCloud(c, webFarmId);
           } else {
-            payload['createdAt'] = now;
-            await _supabase.from('customers').insert(payload);
+            await _pushCustomerContactToCloud(c, webFarmId);
           }
           await (db.update(db.customers)..where((t) => t.id.equals(c.id)))
               .write(const CustomersCompanion(synced: Value(true)));
@@ -1007,6 +996,7 @@ class SyncEngine extends ChangeNotifier {
         webFarmId,
         pushUserIdForPayload: pushUserIdForPayload,
       );
+      await _pushFarmSettings(webFarmId);
     } catch (e) {
       debugPrint("Push Changes overall error: $e");
     }
@@ -1035,6 +1025,104 @@ class SyncEngine extends ChangeNotifier {
         debugPrint(
           "Deletion sync error for ${d.targetTableName} ID ${d.recordId}: $e",
         );
+      }
+    }
+  }
+
+  Future<void> _pushSaleItems(String? webFarmId) async {
+    final pendingItems = await db.customSelect(
+      'SELECT * FROM sale_items WHERE synced = 0',
+      readsFrom: {},
+    ).get();
+
+    for (final row in pendingItems) {
+      try {
+        final id = safeIdString(row.read<String>('id'));
+        final saleId = safeIdString(row.read<String>('sale_id'));
+        final farmId = safeIdString(row.read<String>('farm_id'));
+        final existing = await _supabase
+            .from('sale_items')
+            .select('id')
+            .eq('id', id)
+            .maybeSingle();
+        final payload = {
+          'id': id,
+          'saleId': saleId,
+          'farmId': _remoteFarmIdForPush(farmId, webFarmId),
+          'description': row.read<String>('description'),
+          'quantity': row.read<int>('quantity'),
+          'unitPrice': row.read<double>('unit_price'),
+          'totalPrice': row.read<double>('total_price'),
+          'inventoryId': _safeStr(row.read<String?>('inventory_id')),
+          'livestockId': _safeStr(row.read<String?>('livestock_id')),
+        };
+        assertSyncPayloadUsesStringIds(payload);
+
+        if (existing != null) {
+          await _supabase.from('sale_items').update(payload).eq('id', id);
+        } else {
+          await _supabase.from('sale_items').insert(payload);
+        }
+        await db.customStatement(
+          'UPDATE sale_items SET synced = 1 WHERE id = ?',
+          [id],
+        );
+      } catch (e) {
+        debugPrint('Sale item push error: $e');
+      }
+    }
+  }
+
+  Future<void> _pushFinancialTransactions(
+    String? webFarmId, {
+    required String? Function(String? localUserId) pushUserIdForPayload,
+  }) async {
+    final pendingRows = await db.customSelect(
+      'SELECT * FROM financial_transactions WHERE synced = 0 AND is_deleted = 0',
+      readsFrom: {},
+    ).get();
+
+    for (final row in pendingRows) {
+      try {
+        final id = safeIdString(row.read<String>('id'));
+        final farmId = safeIdString(row.read<String>('farm_id'));
+        final existing = await _supabase
+            .from('financial_transactions')
+            .select('id')
+            .eq('id', id)
+            .maybeSingle();
+        final now = DateTime.now().toUtc().toIso8601String();
+        final payload = {
+          'id': id,
+          'farm_id': _remoteFarmIdForPush(farmId, webFarmId),
+          'user_id': pushUserIdForPayload(_safeStr(row.read<String?>('user_id'))),
+          'type': row.read<String>('type'),
+          'category': row.read<String>('category'),
+          'amount': row.read<double>('amount'),
+          'payment_status': row.read<String>('payment_status'),
+          'payment_method': row.read<String?>('payment_method'),
+          'reference_num': row.read<String?>('reference_num'),
+          'transaction_date': row.read<String>('transaction_date'),
+          'description': row.read<String?>('description'),
+          'updated_at': now,
+        };
+        assertSyncPayloadUsesStringIds(payload);
+
+        if (existing != null) {
+          await _supabase
+              .from('financial_transactions')
+              .update(payload)
+              .eq('id', id);
+        } else {
+          payload['created_at'] = now;
+          await _supabase.from('financial_transactions').insert(payload);
+        }
+        await db.customStatement(
+          'UPDATE financial_transactions SET synced = 1 WHERE id = ?',
+          [id],
+        );
+      } catch (e) {
+        debugPrint('Financial transaction push error: $e');
       }
     }
   }
@@ -1147,6 +1235,8 @@ class SyncEngine extends ChangeNotifier {
       }
       debugPrint('Pull: synced ${remoteCustomers.length} customers');
 
+      await _syncSuppliersFromCloud(farmIdFilter);
+
       // 4.1 Pull User Permissions (if provided by RPC)
       final remotePermissions =
           (syncData['user_permissions'] as List<dynamic>?) ?? [];
@@ -1189,6 +1279,14 @@ class SyncEngine extends ChangeNotifier {
                 reason: Value(m['reason'] as String?),
                 category: Value(m['category'] as String?),
                 subCategory: Value(m['sub_category'] as String?),
+                healthType: Value(
+                  (m['type'] as String?)?.toUpperCase() == 'SICK'
+                      ? 'SICK'
+                      : 'DEAD',
+                ),
+                isolationRoomId: Value(
+                  _safeStr(m['isolation_room_id'] ?? m['isolationRoomId']),
+                ),
                 logDate: _safeDateTime(m['logDate']) ?? DateTime.now().toUtc(),
                 userId: Value(m['user_id'] as String?),
                 synced: const Value(true),
@@ -1218,6 +1316,10 @@ class SyncEngine extends ChangeNotifier {
                 eggsRemaining: Value(e['eggsRemaining'] as int? ?? 0),
                 cratesCollected: Value(_safeDouble(e['cratesCollected'])),
                 qualityGrade: Value(e['qualityGrade'] as String?),
+                isSorted: Value(e['isSorted'] as bool? ?? false),
+                smallCount: Value(e['smallCount'] as int? ?? 0),
+                mediumCount: Value(e['mediumCount'] as int? ?? 0),
+                largeCount: Value(e['largeCount'] as int? ?? 0),
                 logDate: _safeDateTime(e['logDate']) ?? DateTime.now().toUtc(),
                 userId: Value(e['userId'] as String?),
                 synced: const Value(true),
@@ -1574,6 +1676,93 @@ class SyncEngine extends ChangeNotifier {
     await CloudUserIdMapService(db).rebuildForFarm(farmIdFilter);
   }
 
+  Future<void> _syncSuppliersFromCloud(String farmIdFilter) async {
+    final remoteSuppliers = await _supabase
+        .from('suppliers')
+        .select()
+        .eq('farmId', farmIdFilter);
+    for (var s in remoteSuppliers) {
+      await db
+          .into(db.customers)
+          .insertOnConflictUpdate(
+            CustomersCompanion.insert(
+              id: safeIdString(s['id']),
+              farmId: farmIdFilter,
+              name: s['name'] as String,
+              phone: Value(_safeStr(s['phone'])),
+              email: Value(_safeStr(s['email'])),
+              address: Value(_safeStr(s['address'])),
+              balanceOwed: Value(_safeDouble(s['balanceOwed']) ?? 0.0),
+              customerType: const Value('SUPPLIER'),
+              supplyItems: Value(_safeStr(s['supplyItems'])),
+              contactPerson: Value(_safeStr(s['contactPerson'])),
+              synced: const Value(true),
+            ),
+          );
+    }
+    debugPrint('Pull: synced ${remoteSuppliers.length} suppliers');
+  }
+
+  Future<void> _pushCustomerContactToCloud(
+    Customer c,
+    String? webFarmId,
+  ) async {
+    final id = safeIdString(c.id);
+    final existing = await _supabase
+        .from('customers')
+        .select('id')
+        .eq('id', id)
+        .maybeSingle();
+    final now = DateTime.now().toUtc().toIso8601String();
+    final payload = {
+      'id': id,
+      'farmId': _remoteFarmIdForPush(c.farmId, webFarmId),
+      'name': c.name,
+      'phone': c.phone,
+      'email': c.email,
+      'address': c.address,
+      'balanceOwed': c.balanceOwed,
+      'updatedAt': now,
+    };
+    assertSyncPayloadUsesStringIds(payload);
+    if (existing != null) {
+      await _supabase.from('customers').update(payload).eq('id', id);
+    } else {
+      payload['createdAt'] = now;
+      await _supabase.from('customers').insert(payload);
+    }
+  }
+
+  Future<void> _pushSupplierContactToCloud(
+    Customer c,
+    String? webFarmId,
+  ) async {
+    final id = safeIdString(c.id);
+    final existing = await _supabase
+        .from('suppliers')
+        .select('id')
+        .eq('id', id)
+        .maybeSingle();
+    final now = DateTime.now().toUtc().toIso8601String();
+    final payload = {
+      'id': id,
+      'farmId': _remoteFarmIdForPush(c.farmId, webFarmId),
+      'name': c.name,
+      'phone': c.phone,
+      'email': c.email,
+      'address': c.address,
+      'balanceOwed': c.balanceOwed,
+      'updatedAt': now,
+    };
+    assertSyncPayloadUsesStringIds(payload);
+    if (existing != null) {
+      await _supabase.from('suppliers').update(payload).eq('id', id);
+    } else {
+      payload['createdAt'] = now;
+      await _supabase.from('suppliers').insert(payload);
+    }
+  }
+
   Future<void> _pushSettlementToCloud(
     Settlement s,
     String? webFarmId, {
@@ -1582,24 +1771,12 @@ class SyncEngine extends ChangeNotifier {
     final customer = await (db.select(
       db.customers,
     )..where((t) => t.id.equals(s.customerId))).getSingleOrNull();
-    if (customer != null && !customer.synced) {
-      final id = safeIdString(customer.id);
-      final now = DateTime.now().toUtc().toIso8601String();
-      final payload = {
-        'id': id,
-        'farmId': _remoteFarmIdForPush(customer.farmId, webFarmId),
-        'name': customer.name,
-        'phone': customer.phone,
-        'email': customer.email,
-        'address': customer.address,
-        'balanceOwed': customer.balanceOwed,
-        'customerType': customer.customerType,
-        'supplyItems': customer.supplyItems,
-        'contactPerson': customer.contactPerson,
-        'updatedAt': now,
-      };
-      assertSyncPayloadUsesStringIds(payload);
-      await _supabase.from('customers').update(payload).eq('id', id);
+    if (customer != null) {
+      if (customer.customerType == 'SUPPLIER') {
+        await _pushSupplierContactToCloud(customer, webFarmId);
+      } else {
+        await _pushCustomerContactToCloud(customer, webFarmId);
+      }
       await (db.update(db.customers)..where((t) => t.id.equals(customer.id)))
           .write(const CustomersCompanion(synced: Value(true)));
     }
@@ -1610,11 +1787,14 @@ class SyncEngine extends ChangeNotifier {
       'id': expenseId,
       'farmId': _remoteFarmIdForPush(s.farmId, webFarmId),
       'user_id': pushUserIdForPayload(s.userId),
+      'supplierId': customer?.customerType == 'SUPPLIER'
+          ? optionalIdString(s.customerId)
+          : null,
       'category': _settlementExpenseCategory(s.settlementType),
       'amount': s.amount,
       'expense_date': s.settlementDate.toIso8601String(),
       'description':
-          'Settlement ${s.settlementType} (customer ${s.customerId})',
+          'Settlement ${s.settlementType} (${customer?.customerType == 'SUPPLIER' ? 'supplier' : 'customer'} ${s.customerId})',
       'created_at': now,
       'updated_at': now,
     };
@@ -1670,6 +1850,9 @@ class SyncEngine extends ChangeNotifier {
           'scheduledDate': v.scheduledDate.toIso8601String(),
           'status': v.status,
           'notes': v.notes,
+          'quantity': v.quantity,
+          'usageType': v.usageType,
+          'unit': v.unit,
         };
         assertSyncPayloadUsesStringIds(payload);
         if (existing != null) {
@@ -1707,6 +1890,9 @@ class SyncEngine extends ChangeNotifier {
           'scheduledDate': m.scheduledDate.toIso8601String(),
           'status': m.status,
           'notes': m.notes,
+          'quantity': m.quantity,
+          'usageType': m.usageType,
+          'unit': m.unit,
         };
         assertSyncPayloadUsesStringIds(payload);
         if (existing != null) {
@@ -1758,6 +1944,45 @@ class SyncEngine extends ChangeNotifier {
     }
   }
 
+  Future<void> _pushFarmSettings(String? webFarmId) async {
+    final pending = await (db.select(
+      db.farmSettings,
+    )..where((t) => t.synced.equals(false))).get();
+    for (final settings in pending) {
+      try {
+        final farmId = _remoteFarmIdForPush(settings.farmId, webFarmId);
+        final farm = await (db.select(
+          db.farms,
+        )..where((t) => t.id.equals(settings.farmId))).getSingleOrNull();
+        if (farm != null) {
+          await _supabase.from('farms').update({
+            'name': farm.name,
+            'location': farm.location,
+            'capacity': farm.capacity,
+            'updatedAt': DateTime.now().toUtc().toIso8601String(),
+          }).eq('id', farmId);
+        }
+        final payload = {
+          'id': safeIdString(settings.id),
+          'farmId': farmId,
+          'currency': settings.currency,
+          'eggsPerCrate': settings.eggsPerCrate,
+          'eggRecordReminderTime': settings.eggRecordReminderTime,
+          'feedRecordReminderTime': settings.feedRecordReminderTime,
+          if (settings.growthTargetStandard != null)
+            'growth_target_standard': settings.growthTargetStandard,
+          'updatedAt': DateTime.now().toUtc().toIso8601String(),
+        };
+        await _supabase.from('farm_settings').upsert(payload);
+        await (db.update(db.farmSettings)
+              ..where((t) => t.id.equals(settings.id)))
+            .write(const FarmSettingsCompanion(synced: Value(true)));
+      } catch (e) {
+        debugPrint('Farm settings push error: $e');
+      }
+    }
+  }
+
   Future<void> _pullHealthSchedules(String farmIdFilter) async {
     final remoteVax = await _supabase
         .from('vaccination_schedules')
@@ -1776,6 +2001,9 @@ class SyncEngine extends ChangeNotifier {
                   _safeDateTime(v['scheduledDate']) ?? DateTime.now().toUtc(),
               status: Value(v['status'] as String? ?? 'PENDING'),
               notes: Value(v['notes'] as String?),
+              quantity: Value(_safeDouble(v['quantity']) ?? 1),
+              usageType: Value(v['usageType'] as String?),
+              unit: Value(v['unit'] as String?),
               synced: const Value(true),
             ),
           );
@@ -1798,6 +2026,9 @@ class SyncEngine extends ChangeNotifier {
                   _safeDateTime(m['scheduledDate']) ?? DateTime.now().toUtc(),
               status: Value(m['status'] as String? ?? 'PENDING'),
               notes: Value(m['notes'] as String?),
+              quantity: Value(_safeDouble(m['quantity']) ?? 1),
+              usageType: Value(m['usageType'] as String?),
+              unit: Value(m['unit'] as String?),
               synced: const Value(true),
             ),
           );

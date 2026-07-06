@@ -8,6 +8,8 @@ import '../data/local_db.dart';
 import '../utils/farm_utils.dart';
 import '../utils/id_utils.dart';
 import '../utils/inventory_constants.dart';
+import '../utils/feed_source_utils.dart';
+import '../utils/livestock_breed_options.dart';
 import 'feed_analytics_screen.dart';
 
 class FeedManagementScreen extends StatefulWidget {
@@ -264,166 +266,218 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
         ? Colors.transparent
         : Colors.black.withValues(alpha: 0.02);
 
-    return StreamBuilder<List<FeedingLog>>(
-      stream: db.select(db.feedingLogs).watch(),
-      builder: (context, feedSnapshot) {
-        return StreamBuilder<List<WeightRecord>>(
-          stream: db.select(db.weightRecords).watch(),
-          builder: (context, weightSnapshot) {
-            final feedings = feedSnapshot.data ?? [];
-            final weights = weightSnapshot.data ?? [];
+    return StreamBuilder<List<Batch>>(
+      stream: (db.select(db.batches)..where((t) => t.status.equals('active')))
+          .watch(),
+      builder: (context, batchSnapshot) {
+        return StreamBuilder<List<FeedingLog>>(
+          stream: db.select(db.feedingLogs).watch(),
+          builder: (context, feedSnapshot) {
+            return StreamBuilder<List<WeightRecord>>(
+              stream: db.select(db.weightRecords).watch(),
+              builder: (context, weightSnapshot) {
+                final activeBatches = batchSnapshot.data ?? [];
+                final feedings = feedSnapshot.data ?? [];
+                final weights = weightSnapshot.data ?? [];
+                final efficiency = activeBatches.map((batch) {
+                  final totalFeed = feedings
+                      .where((log) => log.batchId == batch.id)
+                      .fold<double>(0, (sum, log) => sum + log.amountConsumed);
+                  final batchWeights = weights
+                      .where((record) => record.batchId == batch.id)
+                      .toList()
+                    ..sort((a, b) => b.logDate.compareTo(a.logDate));
+                  var weightGain = 0.0;
+                  if (batchWeights.length >= 2) {
+                    weightGain =
+                        batchWeights[0].averageWeight -
+                        batchWeights[1].averageWeight;
+                  }
+                  final flockSize = batch.currentCount > 0
+                      ? batch.currentCount
+                      : 1;
+                  final fcr = weightGain > 0
+                      ? totalFeed / (weightGain * flockSize)
+                      : 0.0;
+                  return _BatchEfficiencyRow(
+                    name: batch.batchName,
+                    totalFeed: totalFeed,
+                    fcr: fcr.toStringAsFixed(2),
+                    currentWeight: batchWeights.isNotEmpty
+                        ? batchWeights.first.averageWeight
+                        : 0,
+                  );
+                }).toList();
 
-            // Calculate active FCR
-            double? averageFcr;
-            if (feedings.isNotEmpty && weights.isNotEmpty) {
-              final totalFeed = feedings.fold<double>(
-                0.0,
-                (sum, f) => sum + f.amountConsumed,
-              );
-              // Get average weight in kg
-              final totalWeight = weights.fold<double>(
-                0.0,
-                (sum, w) => sum + w.averageWeight,
-              );
-              final avgWeightKg = (totalWeight / weights.length);
-              if (avgWeightKg > 0) {
-                averageFcr =
-                    totalFeed / (avgWeightKg * 100); // scaled estimation
-              }
-            }
-
-            return Container(
-              height: 240,
-              decoration: BoxDecoration(
-                color: cardBg,
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: borderColor),
-                boxShadow: isDark
-                    ? null
-                    : [
-                        BoxShadow(
-                          color: shadowColor,
-                          blurRadius: 10,
-                          offset: const Offset(0, 4),
-                        ),
-                      ],
-              ),
-              child: Stack(
-                children: [
-                  // Vector Line Chart background using custom painter
-                  Positioned.fill(
-                    child: CustomPaint(
-                      painter: FcrTrendPainter(isDark: isDark),
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.all(32),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Icon(
-                              Icons.trending_up,
-                              color: isDark
-                                  ? Colors.green.shade400
-                                  : const Color(0xFF16A34A),
-                              size: 20,
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
-                              'CONSUMPTION EFFICIENCY (FCR)',
-                              style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.bold,
-                                color: titleColor,
-                                letterSpacing: 0.8,
-                              ),
+                return Container(
+                  constraints: const BoxConstraints(minHeight: 240),
+                  decoration: BoxDecoration(
+                    color: cardBg,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: borderColor),
+                    boxShadow: isDark
+                        ? null
+                        : [
+                            BoxShadow(
+                              color: shadowColor,
+                              blurRadius: 10,
+                              offset: const Offset(0, 4),
                             ),
                           ],
+                  ),
+                  child: Stack(
+                    children: [
+                      Positioned.fill(
+                        child: CustomPaint(
+                          painter: FcrTrendPainter(isDark: isDark),
                         ),
-                        const Spacer(),
-                        if (averageFcr == null) ...[
-                          Center(
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 24,
-                                vertical: 32,
-                              ),
-                              decoration: BoxDecoration(
-                                border: Border.all(
-                                  color: const Color(
-                                    0xFF10B981,
-                                  ).withValues(alpha: 0.3),
-                                  style: BorderStyle.solid,
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.all(32),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Icon(
+                                  Icons.trending_up,
+                                  color: isDark
+                                      ? Colors.green.shade400
+                                      : const Color(0xFF16A34A),
+                                  size: 20,
                                 ),
-                                borderRadius: BorderRadius.circular(16),
-                                color: warningCardBg,
-                              ),
-                              child: Text(
-                                'No efficiency data available. Log weights and feedings.',
-                                style: TextStyle(
-                                  color: warningTextColor,
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w600,
+                                const SizedBox(width: 8),
+                                Text(
+                                  'CONSUMPTION EFFICIENCY (FCR)',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.bold,
+                                    color: titleColor,
+                                    letterSpacing: 0.8,
+                                  ),
                                 ),
-                              ),
+                              ],
                             ),
-                          ),
-                        ] else ...[
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.end,
-                            children: [
-                              Text(
-                                averageFcr.toStringAsFixed(2),
-                                style: TextStyle(
-                                  fontSize: 64,
-                                  fontWeight: FontWeight.w900,
-                                  color: textStyleColor,
-                                  height: 1,
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Padding(
-                                padding: const EdgeInsets.only(bottom: 12.0),
+                            const SizedBox(height: 20),
+                            if (efficiency.isEmpty)
+                              Center(
                                 child: Container(
                                   padding: const EdgeInsets.symmetric(
-                                    horizontal: 8,
-                                    vertical: 4,
+                                    horizontal: 24,
+                                    vertical: 32,
                                   ),
                                   decoration: BoxDecoration(
-                                    color: const Color(
-                                      0xFF10B981,
-                                    ).withValues(alpha: 0.2),
-                                    borderRadius: BorderRadius.circular(6),
+                                    border: Border.all(
+                                      color: const Color(
+                                        0xFF10B981,
+                                      ).withValues(alpha: 0.3),
+                                    ),
+                                    borderRadius: BorderRadius.circular(16),
+                                    color: warningCardBg,
                                   ),
-                                  child: const Text(
-                                    'OPTIMAL',
+                                  child: Text(
+                                    'No efficiency data available. Log weights and feedings.',
                                     style: TextStyle(
-                                      color: Color(0xFF10B981),
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w900,
+                                      color: warningTextColor,
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w600,
                                     ),
                                   ),
                                 ),
+                              )
+                            else
+                              Wrap(
+                                spacing: 12,
+                                runSpacing: 12,
+                                children: efficiency
+                                    .map(
+                                      (eff) => Container(
+                                        width: 220,
+                                        padding: const EdgeInsets.all(16),
+                                        decoration: BoxDecoration(
+                                          color: isDark
+                                              ? Colors.white.withValues(
+                                                  alpha: 0.08,
+                                                )
+                                              : const Color(0xFFF0FDF4),
+                                          borderRadius: BorderRadius.circular(
+                                            12,
+                                          ),
+                                          border: Border.all(
+                                            color: const Color(
+                                              0xFF10B981,
+                                            ).withValues(alpha: 0.25),
+                                          ),
+                                        ),
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              eff.name,
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: TextStyle(
+                                                fontWeight: FontWeight.w900,
+                                                color: isDark
+                                                    ? Colors.green.shade300
+                                                    : const Color(0xFF15803D),
+                                              ),
+                                            ),
+                                            const SizedBox(height: 8),
+                                            Row(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.end,
+                                              children: [
+                                                Text(
+                                                  eff.fcr,
+                                                  style: TextStyle(
+                                                    fontSize: 34,
+                                                    fontWeight: FontWeight.w900,
+                                                    color: textStyleColor,
+                                                    height: 1,
+                                                  ),
+                                                ),
+                                                const SizedBox(width: 8),
+                                                Text(
+                                                  'FCR',
+                                                  style: TextStyle(
+                                                    color: subtitleColor,
+                                                    fontWeight: FontWeight.bold,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                            const SizedBox(height: 8),
+                                            Text(
+                                              'Feed: ${eff.totalFeed.toStringAsFixed(1)} bags',
+                                              style: TextStyle(
+                                                color: subtitleColor,
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                            ),
+                                            Text(
+                                              'Weight: ${eff.currentWeight.toStringAsFixed(1)} kg',
+                                              style: TextStyle(
+                                                color: subtitleColor,
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    )
+                                    .toList(),
                               ),
-                            ],
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            'Estimated feed conversion efficiency based on current flock weight records and active feeding logs.',
-                            style: TextStyle(
-                              color: subtitleColor,
-                              fontSize: 12,
-                            ),
-                          ),
-                        ],
-                        const Spacer(),
-                      ],
-                    ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
-                ],
-              ),
+                );
+              },
             );
           },
         );
@@ -671,8 +725,7 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
   void _showLogFeedingDialog(AppDatabase db) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     String? selectedBatch;
-    String? selectedFeedType;
-    String? selectedFormulation;
+    String? selectedFeedSource;
     final amountCtrl = TextEditingController();
     DateTime selectedDate = DateTime.now();
 
@@ -681,6 +734,13 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
       builder: (context) {
         return StatefulBuilder(
           builder: (context, setDialogState) {
+            void setAmount(double amount) {
+              amountCtrl.text = amount.toStringAsFixed(
+                amount.truncateToDouble() == amount ? 0 : 2,
+              );
+              setDialogState(() {});
+            }
+
             return Dialog(
               backgroundColor: isDark ? const Color(0xFF0F172A) : Colors.white,
               shape: RoundedRectangleBorder(
@@ -713,8 +773,6 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
                       ],
                     ),
                     const SizedBox(height: 24),
-
-                    // Batch Dropdown
                     Text(
                       'Select Batch',
                       style: TextStyle(
@@ -733,6 +791,7 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
                       builder: (context, snapshot) {
                         final list = snapshot.data ?? [];
                         return DropdownButtonFormField<String>(
+                          value: selectedBatch,
                           dropdownColor: isDark
                               ? const Color(0xFF0F172A)
                               : Colors.white,
@@ -743,22 +802,22 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
                               .map(
                                 (b) => DropdownMenuItem(
                                   value: b.id,
-                                  child: Text(b.batchName),
+                                  child: Text(
+                                    '${b.batchName} (${LivestockBreedCatalog.labelForKey(b.breedType)})',
+                                  ),
                                 ),
                               )
                               .toList(),
                           onChanged: (val) =>
                               setDialogState(() => selectedBatch = val),
                           decoration: _dialogInputDecoration(
-                            'Select Layer/Broiler flock',
+                            'Select active batch',
                             isDark,
                           ),
                         );
                       },
                     ),
                     const SizedBox(height: 16),
-
-                    // Feed Type Dropdown
                     Text(
                       'Feed Type',
                       style: TextStyle(
@@ -777,77 +836,73 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
                                     t.category.equals(kFeedInventoryCategory),
                               ))
                               .watch(),
-                      builder: (context, snapshot) {
-                        final list = snapshot.data ?? [];
-                        return DropdownButtonFormField<String>(
-                          dropdownColor: isDark
-                              ? const Color(0xFF0F172A)
-                              : Colors.white,
-                          style: TextStyle(
-                            color: isDark ? Colors.white : Colors.black87,
-                          ),
-                          items: list
-                              .map(
-                                (f) => DropdownMenuItem(
-                                  value: f.id,
-                                  child: Text(f.itemName),
+                      builder: (context, inventorySnapshot) {
+                        return StreamBuilder<List<FeedFormulation>>(
+                          stream: db.select(db.feedFormulations).watch(),
+                          builder: (context, formulationSnapshot) {
+                            final inventory = inventorySnapshot.data ?? [];
+                            final formulations =
+                                formulationSnapshot.data ?? [];
+                            final options = [
+                              for (final item in inventory)
+                                DropdownMenuItem(
+                                  value: 'inv_${item.id}',
+                                  child: Text('[Inventory] ${item.itemName}'),
                                 ),
-                              )
-                              .toList(),
-                          onChanged: (val) =>
-                              setDialogState(() => selectedFeedType = val),
-                          decoration: _dialogInputDecoration(
-                            'Select raw feed ingredient',
-                            isDark,
-                          ),
+                              for (final form in formulations)
+                                DropdownMenuItem(
+                                  value: 'form_${form.id}',
+                                  child: Text('[Formulation] ${form.name}'),
+                                ),
+                            ];
+
+                            if (options.isEmpty) {
+                              return Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.all(16),
+                                decoration: BoxDecoration(
+                                  color: isDark
+                                      ? Colors.amber.withValues(alpha: 0.08)
+                                      : Colors.amber.shade50,
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                    color: Colors.amber.withValues(alpha: 0.35),
+                                  ),
+                                ),
+                                child: Text(
+                                  'No feed inventory or formulations available. Add feed stock or create a formulation first.',
+                                  style: TextStyle(
+                                    color: isDark
+                                        ? Colors.amber.shade200
+                                        : Colors.amber.shade900,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              );
+                            }
+
+                            return DropdownButtonFormField<String>(
+                              value: selectedFeedSource,
+                              dropdownColor: isDark
+                                  ? const Color(0xFF0F172A)
+                                  : Colors.white,
+                              style: TextStyle(
+                                color: isDark ? Colors.white : Colors.black87,
+                              ),
+                              items: options,
+                              onChanged: (val) => setDialogState(
+                                () => selectedFeedSource = val,
+                              ),
+                              decoration: _dialogInputDecoration(
+                                'Select inventory item or formulation',
+                                isDark,
+                              ),
+                            );
+                          },
                         );
                       },
                     ),
                     const SizedBox(height: 16),
-
-                    // Active Formulation Dropdown
-                    Text(
-                      'Active Formulation',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 12,
-                        color: isDark
-                            ? Colors.white70
-                            : const Color(0xFF475569),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    StreamBuilder<List<FeedFormulation>>(
-                      stream: db.select(db.feedFormulations).watch(),
-                      builder: (context, snapshot) {
-                        final list = snapshot.data ?? [];
-                        return DropdownButtonFormField<String>(
-                          dropdownColor: isDark
-                              ? const Color(0xFF0F172A)
-                              : Colors.white,
-                          style: TextStyle(
-                            color: isDark ? Colors.white : Colors.black87,
-                          ),
-                          items: list
-                              .map(
-                                (f) => DropdownMenuItem(
-                                  value: f.id,
-                                  child: Text(f.name),
-                                ),
-                              )
-                              .toList(),
-                          onChanged: (val) =>
-                              setDialogState(() => selectedFormulation = val),
-                          decoration: _dialogInputDecoration(
-                            'Select feed formula split',
-                            isDark,
-                          ),
-                        );
-                      },
-                    ),
-                    const SizedBox(height: 16),
-
-                    // Log Date picker field
                     Text(
                       'Log Date',
                       style: TextStyle(
@@ -931,10 +986,8 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
                       ),
                     ),
                     const SizedBox(height: 16),
-
-                    // Feed Weight Input
                     Text(
-                      'Amount Consumed (KG)',
+                      'Amount Consumed (Bags)',
                       style: TextStyle(
                         fontWeight: FontWeight.bold,
                         fontSize: 12,
@@ -951,34 +1004,50 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
                       ),
                       inputFormatters: [
                         FilteringTextInputFormatter.allow(
-                          RegExp(r'^\d*\.?\d*'),
+                          RegExp(r'^\d*\.?\d{0,2}'),
                         ),
                       ],
+                      onChanged: (_) => setDialogState(() {}),
                       style: TextStyle(
                         color: isDark ? Colors.white : Colors.black87,
                       ),
                       decoration: _dialogInputDecoration(
-                        'Weight in kilograms',
+                        'Bags consumed',
                         isDark,
                       ),
                     ),
+                    const SizedBox(height: 10),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        for (final entry in const [
+                          (0.25, '1/4 Bag'),
+                          (0.5, '1/2 Bag'),
+                          (0.75, '3/4 Bag'),
+                          (1.0, '1 Bag'),
+                        ])
+                          OutlinedButton(
+                            onPressed: () => setAmount(entry.$1),
+                            child: Text(entry.$2),
+                          ),
+                      ],
+                    ),
                     const SizedBox(height: 24),
-
-                    // Submit Action Button
                     SizedBox(
                       width: double.infinity,
                       height: 52,
                       child: ElevatedButton(
                         onPressed: () async {
                           final amount =
-                              double.tryParse(amountCtrl.text) ?? 0.0;
+                              double.tryParse(amountCtrl.text.trim()) ?? 0.0;
                           if (selectedBatch == null ||
-                              selectedFeedType == null ||
+                              selectedFeedSource == null ||
                               amount <= 0) {
                             ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(
                                 content: Text(
-                                  'Please select batch, feed type, and enter amount',
+                                  'Please select batch, feed source, and enter amount',
                                 ),
                                 backgroundColor: Colors.orange,
                               ),
@@ -986,13 +1055,15 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
                             return;
                           }
 
+                          final feedSource = parseFeedSource(
+                            selectedFeedSource!,
+                          );
                           final farmId = await FarmUtils.getBoundFarmId();
                           final workerId = await FarmUtils.getRequiredUserId();
                           if (farmId == null) return;
 
                           try {
                             await db.transaction(() async {
-                              // 1. Insert Feeding log record
                               await db
                                   .into(db.feedingLogs)
                                   .insert(
@@ -1000,8 +1071,10 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
                                       id: newLocalId(),
                                       farmId: farmId,
                                       batchId: Value(selectedBatch),
-                                      feedTypeId: Value(selectedFeedType),
-                                      formulationId: Value(selectedFormulation),
+                                      feedTypeId: Value(feedSource.feedTypeId),
+                                      formulationId: Value(
+                                        feedSource.formulationId,
+                                      ),
                                       amountConsumed: amount,
                                       logDate: selectedDate,
                                       userId: Value(workerId),
@@ -1009,32 +1082,85 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
                                     ),
                                   );
 
-                              // 2. Decrement feed ingredient stock (cloud: inventory.category = FEED)
-                              final currentFeedList =
-                                  await (db.select(db.inventory)..where(
-                                        (t) =>
-                                            t.id.equals(selectedFeedType!) &
-                                            t.category.equals(
-                                              kFeedInventoryCategory,
-                                            ),
-                                      ))
-                                      .get();
-                              if (currentFeedList.isNotEmpty) {
-                                final feed = currentFeedList.first;
-                                await (db.update(db.inventory)..where(
-                                      (t) => t.id.equals(selectedFeedType!),
-                                    ))
-                                    .write(
-                                      InventoryCompanion(
-                                        stockLevel: Value(
-                                          (feed.stockLevel - amount).clamp(
-                                            0.0,
-                                            999999.0,
+                              if (feedSource.feedTypeId != null) {
+                                final currentFeedList =
+                                    await (db.select(db.inventory)..where(
+                                          (t) => t.id.equals(
+                                            feedSource.feedTypeId!,
                                           ),
+                                        ))
+                                        .get();
+                                if (currentFeedList.isNotEmpty) {
+                                  final feed = currentFeedList.first;
+                                  await (db.update(db.inventory)..where(
+                                        (t) =>
+                                            t.id.equals(feedSource.feedTypeId!),
+                                      ))
+                                      .write(
+                                        InventoryCompanion(
+                                          stockLevel: Value(
+                                            (feed.stockLevel - amount).clamp(
+                                              0.0,
+                                              999999.0,
+                                            ),
+                                          ),
+                                          synced: const Value(false),
                                         ),
-                                        synced: const Value(false),
-                                      ),
-                                    );
+                                      );
+                                }
+                              } else if (feedSource.formulationId != null) {
+                                final forms =
+                                    await (db.select(db.feedFormulations)
+                                          ..where(
+                                            (t) => t.id.equals(
+                                              feedSource.formulationId!,
+                                            ),
+                                          ))
+                                        .get();
+                                if (forms.isNotEmpty &&
+                                    forms.first.ingredientsJson != null) {
+                                  try {
+                                    final ratios = jsonDecode(
+                                      forms.first.ingredientsJson!,
+                                    ) as Map<String, dynamic>;
+                                    for (final entry in ratios.entries) {
+                                      final ingredientUsed =
+                                          amount *
+                                          ((double.tryParse(
+                                                    entry.value.toString(),
+                                                  ) ??
+                                                  0.0) /
+                                              100.0);
+                                      if (ingredientUsed <= 0) {
+                                        continue;
+                                      }
+                                      final inventoryRows =
+                                          await (db.select(db.inventory)..where(
+                                                (t) => t.itemName.equals(
+                                                  entry.key,
+                                                ),
+                                              ))
+                                              .get();
+                                      if (inventoryRows.isEmpty) {
+                                        continue;
+                                      }
+                                      final item = inventoryRows.first;
+                                      await (db.update(db.inventory)..where(
+                                            (t) => t.id.equals(item.id),
+                                          ))
+                                          .write(
+                                            InventoryCompanion(
+                                              stockLevel: Value(
+                                                (item.stockLevel -
+                                                        ingredientUsed)
+                                                    .clamp(0.0, 999999.0),
+                                              ),
+                                              synced: const Value(false),
+                                            ),
+                                          );
+                                    }
+                                  } catch (_) {}
+                                }
                               }
                             });
 
@@ -1043,7 +1169,7 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 const SnackBar(
                                   content: Text(
-                                    'Feeding logged and inventory updated successfully',
+                                    'Feeding logged and stock updated successfully',
                                   ),
                                   backgroundColor: Colors.green,
                                 ),
@@ -2480,6 +2606,20 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
       },
     );
   }
+}
+
+class _BatchEfficiencyRow {
+  const _BatchEfficiencyRow({
+    required this.name,
+    required this.totalFeed,
+    required this.fcr,
+    required this.currentWeight,
+  });
+
+  final String name;
+  final double totalFeed;
+  final String fcr;
+  final double currentWeight;
 }
 
 // --- CUSTOM TREND LINE PAINTER ---

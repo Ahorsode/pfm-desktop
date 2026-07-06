@@ -10,6 +10,8 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../data/local_db.dart';
 import '../services/auth_service.dart';
+import '../services/dashboard_stats_service.dart';
+import '../services/executive_metrics_service.dart';
 import '../services/license_service.dart';
 import '../utils/farm_utils.dart';
 import '../utils/user_role.dart';
@@ -17,9 +19,28 @@ import 'egg_production_screen.dart';
 import 'feed_management_screen.dart';
 import 'main_scaffold.dart';
 import 'mortality_screen.dart';
+import '../widgets/financial_init_wizard.dart';
 
-class OverviewPage extends StatelessWidget {
+class OverviewPage extends StatefulWidget {
   const OverviewPage({super.key});
+
+  @override
+  State<OverviewPage> createState() => _OverviewPageState();
+}
+
+class _OverviewPageState extends State<OverviewPage> {
+  bool _checkedFinancialInit = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_checkedFinancialInit) return;
+    _checkedFinancialInit = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      await FinancialInitWizard.promptIfNeeded(context);
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -94,6 +115,11 @@ class _OwnerDashboard extends StatelessWidget {
                   const _SubscriptionBadge(),
                 ],
               ),
+            ),
+            const SizedBox(height: 28),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 40),
+              child: _ExecutiveSummarySection(),
             ),
             const SizedBox(height: 28),
             const Padding(
@@ -267,6 +293,137 @@ class _OperationalDashboard extends StatelessWidget {
   }
 }
 
+class _ExecutiveSummarySection extends StatelessWidget {
+  const _ExecutiveSummarySection();
+
+  @override
+  Widget build(BuildContext context) {
+    final db = context.watch<AppDatabase>();
+    return FutureBuilder<String?>(
+      future: FarmUtils.getBoundFarmId(),
+      builder: (context, farmSnapshot) {
+        final farmId = farmSnapshot.data;
+        if (farmId == null || farmId.isEmpty) {
+          return const SizedBox.shrink();
+        }
+        final statsService = DashboardStatsService(db);
+        final executiveService = ExecutiveMetricsService(db);
+        return FutureBuilder<bool>(
+          future: statsService.isPremiumFarm(farmId),
+          builder: (context, premiumSnapshot) {
+            if (premiumSnapshot.data != true) {
+              return const SizedBox.shrink();
+            }
+            return FutureBuilder<ExecutiveStatsSnapshot>(
+              future: executiveService.loadExecutiveStats(farmId),
+              builder: (context, execSnapshot) {
+                final stats = execSnapshot.data;
+                if (stats == null) {
+                  return const SizedBox.shrink();
+                }
+                final money = NumberFormat.currency(
+                  locale: 'en_GH',
+                  symbol: 'GHS ',
+                );
+                return Container(
+                  padding: const EdgeInsets.all(20),
+                  decoration: _cardDecoration(context),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Executive Summary',
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurface,
+                          fontWeight: FontWeight.w900,
+                          fontSize: 17,
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      Wrap(
+                        spacing: 16,
+                        runSpacing: 16,
+                        children: [
+                          _ExecutiveMetric(
+                            label: '7d Net Profit',
+                            value: money.format(stats.totalProfit),
+                            detail:
+                                '${stats.profitTrend.toStringAsFixed(1)}% revenue vs prior week',
+                          ),
+                          _ExecutiveMetric(
+                            label: 'Global FCR',
+                            value: stats.globalFcr > 0
+                                ? stats.globalFcr.toStringAsFixed(2)
+                                : '—',
+                            detail: '${stats.activeLivestock} active birds',
+                          ),
+                          _ExecutiveMetric(
+                            label: 'Customer Debt',
+                            value: money.format(stats.customerDebt),
+                            detail:
+                                'Mortality ${stats.mortalityRatePercent.toStringAsFixed(1)}%',
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                );
+              },
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+class _ExecutiveMetric extends StatelessWidget {
+  const _ExecutiveMetric({
+    required this.label,
+    required this.value,
+    required this.detail,
+  });
+
+  final String label;
+  final String value;
+  final String detail;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return SizedBox(
+      width: 220,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label.toUpperCase(),
+            style: TextStyle(
+              color: cs.onSurfaceVariant,
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            value,
+            style: TextStyle(
+              color: cs.onSurface,
+              fontSize: 22,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            detail,
+            style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _OwnerKpiStrip extends StatelessWidget {
   const _OwnerKpiStrip();
 
@@ -412,8 +569,12 @@ class _OwnerKpiStrip extends StatelessWidget {
                   ]).map((lists) {
                     final mortalities = lists[0] as List<Mortality>;
                     final batches = lists[1] as List<Batch>;
-                    final count = mortalities
-                        .where((m) => _isThisMonth(m.logDate))
+                    final overallDead = mortalities.fold(
+                      0,
+                      (sum, m) => sum + m.count,
+                    );
+                    final todayDead = mortalities
+                        .where((m) => _isToday(m.logDate))
                         .fold(0, (sum, m) => sum + m.count);
                     final initialBirds = batches.fold(
                       0,
@@ -421,8 +582,8 @@ class _OwnerKpiStrip extends StatelessWidget {
                     );
                     final rate = initialBirds == 0
                         ? 0.0
-                        : count / initialBirds * 100;
-                    return (count, rate);
+                        : overallDead / initialBirds * 100;
+                    return (todayDead, rate);
                   }),
               builder: (context, snapshot) {
                 final data = snapshot.data ?? (0, 0.0);
@@ -432,9 +593,9 @@ class _OwnerKpiStrip extends StatelessWidget {
                     ? Colors.amber
                     : Colors.green;
                 return _KpiCard(
-                  label: 'Mortality This Month',
-                  value: '${data.$1}',
-                  subLabel: '${data.$2.toStringAsFixed(1)}% mortality rate',
+                  label: 'Mortality Rate',
+                  value: '${data.$2.toStringAsFixed(1)}%',
+                  subLabel: '${data.$1} today · ${data.$2.toStringAsFixed(1)}% overall',
                   icon: Icons.warning_rounded,
                   color: Colors.red,
                   subLabelColor: rateColor,
@@ -685,127 +846,138 @@ class _AlertsPanel extends StatelessWidget {
       future: LicenseService(db).getConfig(),
       builder: (context, licenseSnapshot) {
         final license = licenseSnapshot.data;
-        return StreamBuilder<List<dynamic>>(
-          stream: CombineLatestStream.list([
-            db.select(db.inventory).watch(),
-            db.select(db.mortalities).watch(),
-            db.select(db.batches).watch(),
-          ]),
-          builder: (context, snapshot) {
-            final lists = snapshot.data;
-            final inventory =
-                (lists?[0] ?? const <InventoryItem>[]) as List<InventoryItem>;
-            final mortality =
-                (lists?[1] ?? const <Mortality>[]) as List<Mortality>;
-            final batches = (lists?[2] ?? const <Batch>[]) as List<Batch>;
-            final alerts = <_DashboardAlert>[];
-
-            for (final item in inventory) {
-              final reorder = item.reorderLevel;
-              if (item.category == 'FEED' &&
-                  reorder != null &&
-                  item.stockLevel < reorder) {
-                alerts.add(
-                  _DashboardAlert(
-                    icon: Icons.inventory_2_rounded,
-                    color: Colors.red,
-                    message:
-                        'Low Feed: ${item.itemName} is below reorder level',
-                    onTap: () => MainScaffold.of(context)?.setSelectedIndex(13),
-                  ),
-                );
-              }
+        return FutureBuilder<String?>(
+          future: FarmUtils.getBoundFarmId(),
+          builder: (context, farmSnapshot) {
+            final farmId = farmSnapshot.data;
+            if (farmId == null || farmId.isEmpty) {
+              return _alertsContainer(context, const []);
             }
+            return FutureBuilder<DashboardStatsSnapshot>(
+              future: DashboardStatsService(db).loadForFarm(farmId),
+              builder: (context, statsSnapshot) {
+                final stats = statsSnapshot.data;
+                final alerts = <_DashboardAlert>[];
+                if (stats != null) {
+                  for (final alert in stats.alerts) {
+                    alerts.add(
+                      _DashboardAlert(
+                        icon: _alertIconForName(alert.iconName),
+                        color: _alertColorForSeverity(alert.severity),
+                        message: alert.message,
+                        onTap: () => _openAlertTarget(context, alert.iconName),
+                      ),
+                    );
+                  }
+                }
 
-            final sevenDaysAgo = DateTime.now().subtract(
-              const Duration(days: 7),
-            );
-            for (final log in mortality) {
-              if (!log.logDate.isBefore(sevenDaysAgo) && log.count > 50) {
-                alerts.add(
-                  _DashboardAlert(
-                    icon: Icons.warning_rounded,
-                    color: Colors.amber,
-                    message:
-                        'High Mortality: ${log.count} deaths logged this week',
-                    onTap: () => MainScaffold.of(context)?.setSelectedIndex(6),
-                  ),
-                );
-              }
-            }
-
-            for (final batch in batches.where(
-              (b) => b.status == 'quarantine',
-            )) {
-              alerts.add(
-                _DashboardAlert(
-                  icon: Icons.health_and_safety_rounded,
-                  color: Colors.orange,
-                  message: 'Quarantine: ${batch.batchName} needs attention',
-                  onTap: () => MainScaffold.of(context)?.setSelectedIndex(8),
-                ),
-              );
-            }
-
-            if (license != null &&
-                license.expiresAt.difference(DateTime.now()).inDays < 7) {
-              alerts.add(
-                _DashboardAlert(
-                  icon: Icons.workspace_premium_rounded,
-                  color: Colors.red,
-                  message: 'Expiring Subscription: renew soon to keep access',
-                  onTap: _openUpgrade,
-                ),
-              );
-            }
-
-            return Container(
-              padding: const EdgeInsets.all(20),
-              decoration: _cardDecoration(context),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _SectionHeader(
-                    title: 'Alerts',
-                    icon: Icons.notifications_active_rounded,
-                    badgeLabel: '${alerts.length}',
-                    badgeColor: Colors.red,
-                  ),
-                  const SizedBox(height: 14),
-                  if (alerts.isEmpty)
-                    const _AlertItem(
-                      icon: Icons.check_circle_rounded,
-                      color: Colors.green,
-                      message: 'All systems normal',
-                    )
-                  else
-                    ...alerts
-                        .take(5)
-                        .map(
-                          (alert) => Padding(
-                            padding: const EdgeInsets.only(bottom: 10),
-                            child: _AlertItem(
-                              icon: alert.icon,
-                              color: alert.color,
-                              message: alert.message,
-                              onTap: alert.onTap,
-                            ),
-                          ),
-                        ),
-                  if (alerts.length > 5)
-                    TextButton(
-                      onPressed: alerts.first.onTap,
-                      child: Text('See ${alerts.length - 5} more...'),
+                if (license != null &&
+                    license.expiresAt.difference(DateTime.now()).inDays < 7) {
+                  alerts.add(
+                    _DashboardAlert(
+                      icon: Icons.workspace_premium_rounded,
+                      color: Colors.red,
+                      message: 'Expiring Subscription: renew soon to keep access',
+                      onTap: _openUpgrade,
                     ),
-                ],
-              ),
+                  );
+                }
+
+                return _alertsContainer(context, alerts);
+              },
             );
           },
         );
       },
     );
   }
+
+  Widget _alertsContainer(BuildContext context, List<_DashboardAlert> alerts) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: _cardDecoration(context),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _SectionHeader(
+            title: 'Alerts',
+            icon: Icons.notifications_active_rounded,
+            badgeLabel: '${alerts.length}',
+            badgeColor: Colors.red,
+          ),
+          const SizedBox(height: 14),
+          if (alerts.isEmpty)
+            const _AlertItem(
+              icon: Icons.check_circle_rounded,
+              color: Colors.green,
+              message: 'No urgent alerts.',
+            )
+          else
+            ...alerts
+                .take(5)
+                .map(
+                  (alert) => Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: _AlertItem(
+                      icon: alert.icon,
+                      color: alert.color,
+                      message: alert.message,
+                      onTap: alert.onTap,
+                    ),
+                  ),
+                ),
+          if (alerts.length > 5)
+            TextButton(
+              onPressed: alerts.first.onTap,
+              child: Text('See ${alerts.length - 5} more...'),
+            ),
+        ],
+      ),
+    );
+  }
 }
+
+IconData _alertIconForName(String name) {
+  switch (name) {
+    case 'vaccine':
+      return Icons.vaccines_rounded;
+    case 'medication':
+      return Icons.medical_services_rounded;
+    case 'eggs':
+      return Icons.egg_rounded;
+    case 'feed':
+      return Icons.inventory_2_rounded;
+    default:
+      return Icons.notifications_active_rounded;
+  }
+}
+
+Color _alertColorForSeverity(String severity) {
+  switch (severity) {
+    case 'error':
+      return Colors.red;
+    case 'warning':
+      return Colors.amber;
+    default:
+      return Colors.blue;
+  }
+}
+
+void _openAlertTarget(BuildContext context, String iconName) {
+  final scaffold = MainScaffold.of(context);
+  switch (iconName) {
+    case 'feed':
+      scaffold?.setSelectedIndex(13);
+    case 'vaccine':
+    case 'medication':
+      scaffold?.setSelectedIndex(8);
+    case 'eggs':
+      scaffold?.setSelectedIndex(3);
+    default:
+      return;
+  }
+}
+
 
 class _MonthlySummaryPanel extends StatelessWidget {
   const _MonthlySummaryPanel();
@@ -2110,6 +2282,13 @@ DateTime _dayStart(DateTime date) => DateTime(date.year, date.month, date.day);
 
 bool _inRange(DateTime date, DateTime start, DateTime end) =>
     !date.isBefore(start) && !date.isAfter(end);
+
+bool _isToday(DateTime date) {
+  final now = DateTime.now();
+  return date.year == now.year &&
+      date.month == now.month &&
+      date.day == now.day;
+}
 
 bool _isThisMonth(DateTime date) {
   final now = DateTime.now();

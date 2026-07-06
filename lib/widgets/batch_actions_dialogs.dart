@@ -7,6 +7,8 @@ import '../data/local_db.dart';
 import '../utils/farm_utils.dart';
 import '../utils/id_utils.dart';
 import '../utils/livestock_breed_options.dart';
+import '../utils/mortality_reasons.dart';
+import '../utils/mortality_log_utils.dart';
 import '../data/sync_engine.dart';
 
 const _addHouseSentinel = '__add_new_house__';
@@ -25,6 +27,8 @@ class _MortalityDialogState extends State<MortalityDialog> {
   final _formKey = GlobalKey<FormState>();
   String _selectedTab = 'mortality'; // 'mortality' or 'isolation'
   House? _selectedHouse;
+  String _category = mortalityReasons.keys.first;
+  String _subCategory = mortalityReasons.values.first.first;
 
   @override
   void dispose() {
@@ -384,6 +388,70 @@ class _MortalityDialogState extends State<MortalityDialog> {
                 const SizedBox(height: 20),
               ],
 
+              if (!isIsolation) ...[
+                DropdownButtonFormField<String>(
+                  initialValue: _category,
+                  dropdownColor: isDark
+                      ? const Color(0xFF1E293B)
+                      : Colors.white,
+                  style: TextStyle(
+                    color: isDark ? Colors.white : const Color(0xFF1E293B),
+                    fontSize: 14,
+                  ),
+                  decoration: _inputDecoration(
+                    context,
+                    'Condition / Reason Category',
+                    Icons.medical_information_outlined,
+                  ),
+                  items: mortalityReasons.keys
+                      .map(
+                        (cat) => DropdownMenuItem(
+                          value: cat,
+                          child: Text(cat),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: (value) {
+                    if (value == null) return;
+                    setState(() {
+                      _category = value;
+                      _subCategory = mortalityReasons[value]!.first;
+                    });
+                  },
+                ),
+                const SizedBox(height: 16),
+                if (_category != 'Unknown')
+                  DropdownButtonFormField<String>(
+                    initialValue: _subCategory,
+                    dropdownColor: isDark
+                        ? const Color(0xFF1E293B)
+                        : Colors.white,
+                    style: TextStyle(
+                      color: isDark ? Colors.white : const Color(0xFF1E293B),
+                      fontSize: 14,
+                    ),
+                    decoration: _inputDecoration(
+                      context,
+                      'Specific Symptom / Cause',
+                      Icons.search,
+                    ),
+                    items: mortalityReasons[_category]!
+                        .map(
+                          (sub) => DropdownMenuItem(
+                            value: sub,
+                            child: Text(sub),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (value) {
+                      if (value != null) {
+                        setState(() => _subCategory = value);
+                      }
+                    },
+                  ),
+                if (_category != 'Unknown') const SizedBox(height: 16),
+              ],
+
               // 5. Notes / Reason field
               TextFormField(
                 controller: _reasonController,
@@ -519,7 +587,7 @@ class _MortalityDialogState extends State<MortalityDialog> {
             await (db.select(db.mortalities)
                   ..where(
                     (t) =>
-                        t.batchId.equals(b.id) & t.category.equals('ISOLATION'),
+                        t.batchId.equals(b.id) & t.healthType.equals('SICK'),
                   )
                   ..orderBy([
                     (t) => OrderingTerm(
@@ -597,7 +665,6 @@ class _MortalityDialogState extends State<MortalityDialog> {
     try {
       await db.transaction(() async {
         if (isIsolation) {
-          // 1. Insert isolation record under mortality table
           await db
               .into(db.mortalities)
               .insert(
@@ -607,21 +674,24 @@ class _MortalityDialogState extends State<MortalityDialog> {
                   batchId: widget.batch.id,
                   count: count,
                   logDate: DateTime.now(),
+                  healthType: const Value('SICK'),
                   reason: Value(
                     _reasonController.text.trim().isEmpty
                         ? 'Quarantined for health monitoring'
                         : _reasonController.text.trim(),
                   ),
-                  category: const Value('ISOLATION'),
+                  category: const Value('Disease'),
                   subCategory: Value(
-                    _selectedHouse?.name ?? 'General Quarantine Zone',
+                    _reasonController.text.trim().isEmpty
+                        ? 'Unknown cause yet'
+                        : _reasonController.text.trim(),
                   ),
+                  isolationRoomId: Value(_selectedHouse?.id),
                   userId: Value(workerId),
                   synced: const Value(false),
                 ),
               );
 
-          // 2. Update batch count (reduces current flock count, increments isolation flock count)
           await (db.update(
             db.batches,
           )..where((t) => t.id.equals(widget.batch.id))).write(
@@ -632,7 +702,6 @@ class _MortalityDialogState extends State<MortalityDialog> {
             ),
           );
         } else {
-          // 1. Insert mortality record
           await db
               .into(db.mortalities)
               .insert(
@@ -642,18 +711,24 @@ class _MortalityDialogState extends State<MortalityDialog> {
                   batchId: widget.batch.id,
                   count: count,
                   logDate: DateTime.now(),
+                  healthType: const Value('DEAD'),
                   reason: Value(
                     _reasonController.text.trim().isEmpty
                         ? null
                         : _reasonController.text.trim(),
                   ),
-                  category: const Value('MORTALITY'),
+                  category: Value(_category),
+                  subCategory: Value(
+                    resolveSubCategory(
+                      category: _category,
+                      subCategory: _subCategory,
+                    ),
+                  ),
                   userId: Value(workerId),
                   synced: const Value(false),
                 ),
               );
 
-          // 2. Update batch count
           await (db.update(
             db.batches,
           )..where((t) => t.id.equals(widget.batch.id))).write(
@@ -1206,6 +1281,7 @@ class _EditBatchDialogState extends State<EditBatchDialog> {
                       child: Text('SHEEP / GOAT'),
                     ),
                     DropdownMenuItem(value: 'PIG', child: Text('PIG / SWINE')),
+                    DropdownMenuItem(value: 'OTHER', child: Text('OTHER')),
                   ],
                   onChanged: (v) => setState(() {
                     _type = v!;

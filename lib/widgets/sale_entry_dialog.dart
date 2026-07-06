@@ -1,0 +1,506 @@
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:intl/intl.dart';
+
+import '../data/local_db.dart';
+import '../features/sales/sale_line_draft.dart';
+import '../services/local_sales_service.dart';
+import '../utils/farm_utils.dart';
+import '../utils/inventory_sale_utils.dart';
+
+enum _DiscountMode { flat, percentage }
+
+class _ProductOption {
+  const _ProductOption({
+    required this.id,
+    required this.label,
+    required this.description,
+    required this.unitPrice,
+    required this.available,
+    required this.productType,
+  });
+
+  final String id;
+  final String label;
+  final String description;
+  final double unitPrice;
+  final double available;
+  final SaleProductType productType;
+}
+
+class _SaleLineState {
+  SaleProductType productType = SaleProductType.inventory;
+  String? productId;
+  String description = '';
+  final TextEditingController quantityController = TextEditingController(text: '1');
+  final TextEditingController unitPriceController = TextEditingController();
+  final TextEditingController customDescriptionController = TextEditingController();
+
+  void dispose() {
+    quantityController.dispose();
+    unitPriceController.dispose();
+    customDescriptionController.dispose();
+  }
+}
+
+Future<bool?> showSaleEntryDialog({
+  required BuildContext context,
+  required AppDatabase db,
+  required List<Customer> customers,
+  required List<Batch> batches,
+  required List<InventoryItem> inventory,
+  bool canOverridePrices = false,
+}) {
+  return showDialog<bool>(
+    context: context,
+    builder: (_) => _SaleEntryDialog(
+      db: db,
+      customers: customers,
+      batches: batches,
+      inventory: inventory,
+      canOverridePrices: canOverridePrices,
+    ),
+  );
+}
+
+class _SaleEntryDialog extends StatefulWidget {
+  const _SaleEntryDialog({
+    required this.db,
+    required this.customers,
+    required this.batches,
+    required this.inventory,
+    required this.canOverridePrices,
+  });
+
+  final AppDatabase db;
+  final List<Customer> customers;
+  final List<Batch> batches;
+  final List<InventoryItem> inventory;
+  final bool canOverridePrices;
+
+  @override
+  State<_SaleEntryDialog> createState() => _SaleEntryDialogState();
+}
+
+class _SaleEntryDialogState extends State<_SaleEntryDialog> {
+  final _cashController = TextEditingController();
+  final _discountController = TextEditingController(text: '0');
+  final _lines = [_SaleLineState()];
+  late final LocalSalesService _salesService;
+
+  String? _customerId;
+  DateTime _orderDate = DateTime.now();
+  _DiscountMode _discountMode = _DiscountMode.percentage;
+  bool _busy = false;
+  String? _error;
+
+  late final List<_ProductOption> _inventoryOptions;
+  late final List<_ProductOption> _livestockOptions;
+  late final bool _inventoryIsEggCatalog;
+
+  @override
+  void initState() {
+    super.initState();
+    _salesService = LocalSalesService(widget.db);
+    final saleInventory = inventoryItemsForSale(widget.inventory);
+    _inventoryIsEggCatalog = inventoryCatalogIsEggFocused(saleInventory);
+    _inventoryOptions = saleInventory
+        .map(
+          (row) => _ProductOption(
+            id: row.id,
+            label: formatSaleInventoryLabel(row),
+            description: formatSaleInventoryLabel(row),
+            unitPrice: (row.costPerUnit ?? 0) > 0 ? row.costPerUnit! : 0,
+            available: row.stockLevel,
+            productType: SaleProductType.inventory,
+          ),
+        )
+        .toList(growable: false);
+    _livestockOptions = widget.batches
+        .where((batch) => batch.currentCount > 0)
+        .map(
+          (row) {
+            final initialCost = row.initialActualCost ?? 0;
+            final initialCount = row.initialCount <= 0 ? 1 : row.initialCount;
+            return _ProductOption(
+              id: row.id,
+              label: row.batchName,
+              description: row.batchName,
+              unitPrice: initialCost / initialCount,
+              available: row.currentCount.toDouble(),
+              productType: SaleProductType.livestock,
+            );
+          },
+        )
+        .toList(growable: false);
+    _syncLockedCashTotal();
+  }
+
+  @override
+  void dispose() {
+    _cashController.dispose();
+    _discountController.dispose();
+    for (final line in _lines) {
+      line.dispose();
+    }
+    super.dispose();
+  }
+
+  double get _subtotal {
+    var total = 0.0;
+    for (final line in _lines) {
+      final quantity = int.tryParse(line.quantityController.text.trim()) ?? 0;
+      final unitPrice = double.tryParse(line.unitPriceController.text.trim()) ?? 0;
+      total += quantity * unitPrice;
+    }
+    return LocalSalesService.roundMoney(total);
+  }
+
+  double get _discountAmount {
+    final raw = double.tryParse(_discountController.text.trim()) ?? 0;
+    if (_discountMode == _DiscountMode.percentage) {
+      return LocalSalesService.roundMoney((_subtotal * raw / 100).clamp(0, _subtotal));
+    }
+    return LocalSalesService.roundMoney(raw.clamp(0, _subtotal));
+  }
+
+  double get _computedTotal =>
+      LocalSalesService.roundMoney((_subtotal - _discountAmount).clamp(0, double.infinity));
+
+  void _syncLockedCashTotal() {
+    if (widget.canOverridePrices) return;
+    _cashController.text = _computedTotal.toStringAsFixed(2);
+  }
+
+  List<SaleLineDraft> _buildDrafts() {
+    return _lines.map((line) {
+      final quantity = int.parse(line.quantityController.text.trim());
+      final unitPrice = double.parse(line.unitPriceController.text.trim());
+      final description = line.productType == SaleProductType.custom
+          ? line.customDescriptionController.text.trim()
+          : line.description;
+      return SaleLineDraft(
+        productType: line.productType,
+        description: description,
+        quantity: quantity,
+        unitPrice: unitPrice,
+        inventoryId: line.productType == SaleProductType.inventory ? line.productId : null,
+        livestockId: line.productType == SaleProductType.livestock ? line.productId : null,
+      );
+    }).toList(growable: false);
+  }
+
+  Future<void> _submit() async {
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      final farmId = await FarmUtils.getBoundFarmId();
+      final userId = await FarmUtils.getRequiredUserId();
+      if (farmId == null) throw Exception('Farm is not bound to this device.');
+
+      final cash = double.parse(_cashController.text.trim());
+      await _salesService.recordMultiLineSale(
+        farmId: farmId,
+        userId: userId,
+        items: _buildDrafts(),
+        orderDate: _orderDate,
+        totalCashReceived: cash,
+        customerId: _customerId,
+        customerName: _customerId == null
+            ? 'Walk-in Customer'
+            : widget.customers.firstWhere((c) => c.id == _customerId).name,
+        discountAmount: widget.canOverridePrices ? _discountAmount : 0,
+        requireExactCashTotal: !widget.canOverridePrices,
+      );
+      if (mounted) Navigator.of(context).pop(true);
+    } catch (error) {
+      if (mounted) setState(() => _error = error.toString());
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Record Multi-Line Sale'),
+      content: SizedBox(
+        width: 520,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              DropdownButtonFormField<String?>(
+                initialValue: _customerId,
+                decoration: const InputDecoration(labelText: 'Customer'),
+                items: [
+                  const DropdownMenuItem(value: null, child: Text('Walk-in Customer')),
+                  ...widget.customers.map(
+                    (customer) => DropdownMenuItem(
+                      value: customer.id,
+                      child: Text(customer.name),
+                    ),
+                  ),
+                ],
+                onChanged: (value) => setState(() => _customerId = value),
+              ),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Sale Date & Time'),
+                subtitle: Text(DateFormat('yyyy-MM-dd HH:mm').format(_orderDate)),
+                trailing: IconButton(
+                  icon: const Icon(Icons.event_outlined),
+                  onPressed: () async {
+                    final date = await showDatePicker(
+                      context: context,
+                      initialDate: _orderDate,
+                      firstDate: DateTime(2020),
+                      lastDate: DateTime.now().add(const Duration(days: 1)),
+                    );
+                    if (date == null || !mounted) return;
+                    final time = await showTimePicker(
+                      context: context,
+                      initialTime: TimeOfDay.fromDateTime(_orderDate),
+                    );
+                    if (time == null || !mounted) return;
+                    setState(() {
+                      _orderDate = DateTime(
+                        date.year,
+                        date.month,
+                        date.day,
+                        time.hour,
+                        time.minute,
+                      );
+                    });
+                  },
+                ),
+              ),
+              for (var index = 0; index < _lines.length; index += 1)
+                _LineEditor(
+                  line: _lines[index],
+                  canOverridePrices: widget.canOverridePrices,
+                  inventoryTypeLabel:
+                      _inventoryIsEggCatalog ? 'Eggs' : 'Inventory',
+                  inventoryOptions: _inventoryOptions,
+                  livestockOptions: _livestockOptions,
+                  onChanged: () => setState(_syncLockedCashTotal),
+                  onRemove: _lines.length == 1
+                      ? null
+                      : () {
+                          setState(() {
+                            _lines[index].dispose();
+                            _lines.removeAt(index);
+                            _syncLockedCashTotal();
+                          });
+                        },
+                ),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  onPressed: () => setState(() {
+                    _lines.add(_SaleLineState());
+                    _syncLockedCashTotal();
+                  }),
+                  icon: const Icon(Icons.add),
+                  label: const Text('Add Line'),
+                ),
+              ),
+              if (widget.canOverridePrices) ...[
+                SegmentedButton<_DiscountMode>(
+                  segments: const [
+                    ButtonSegment(value: _DiscountMode.flat, label: Text('Flat')),
+                    ButtonSegment(value: _DiscountMode.percentage, label: Text('%')),
+                  ],
+                  selected: {_discountMode},
+                  onSelectionChanged: (value) => setState(() {
+                    _discountMode = value.first;
+                    _syncLockedCashTotal();
+                  }),
+                ),
+                TextField(
+                  controller: _discountController,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  decoration: const InputDecoration(labelText: 'Discount'),
+                  onChanged: (_) => setState(_syncLockedCashTotal),
+                ),
+              ],
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Subtotal'),
+                trailing: Text('GH₵ ${_subtotal.toStringAsFixed(2)}'),
+              ),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Sale Total'),
+                trailing: Text(
+                  'GH₵ ${_computedTotal.toStringAsFixed(2)}',
+                  style: const TextStyle(fontWeight: FontWeight.w900),
+                ),
+              ),
+              TextField(
+                controller: _cashController,
+                readOnly: !widget.canOverridePrices,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: InputDecoration(
+                  labelText: 'Total Cash Received (GH₵)',
+                  errorText: !widget.canOverridePrices &&
+                          (_cashController.text.isNotEmpty) &&
+                          ((double.tryParse(_cashController.text) ?? 0) - _computedTotal)
+                                  .abs() >
+                              0.01
+                      ? 'Cash received must equal the locked sale total'
+                      : null,
+                ),
+                onChanged: widget.canOverridePrices ? (_) => setState(() {}) : null,
+              ),
+              if (_error != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(_error!, style: const TextStyle(color: Colors.red)),
+                ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: _busy ? null : () => Navigator.pop(context), child: const Text('Cancel')),
+        FilledButton(
+          onPressed: _busy ? null : _submit,
+          child: Text(_busy ? 'Saving...' : 'Record Sale'),
+        ),
+      ],
+    );
+  }
+}
+
+class _LineEditor extends StatelessWidget {
+  const _LineEditor({
+    required this.line,
+    required this.canOverridePrices,
+    required this.inventoryTypeLabel,
+    required this.inventoryOptions,
+    required this.livestockOptions,
+    required this.onChanged,
+    this.onRemove,
+  });
+
+  final _SaleLineState line;
+  final bool canOverridePrices;
+  final String inventoryTypeLabel;
+  final List<_ProductOption> inventoryOptions;
+  final List<_ProductOption> livestockOptions;
+  final VoidCallback onChanged;
+  final VoidCallback? onRemove;
+
+  List<_ProductOption> get _options => switch (line.productType) {
+    SaleProductType.inventory => inventoryOptions,
+    SaleProductType.livestock => livestockOptions,
+    SaleProductType.custom => const [],
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: const EdgeInsets.symmetric(vertical: 8),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: SegmentedButton<SaleProductType>(
+                    segments: [
+                      ButtonSegment(
+                        value: SaleProductType.inventory,
+                        label: Text(inventoryTypeLabel),
+                      ),
+                      const ButtonSegment(
+                        value: SaleProductType.livestock,
+                        label: Text('Livestock'),
+                      ),
+                      if (canOverridePrices)
+                        const ButtonSegment(
+                          value: SaleProductType.custom,
+                          label: Text('Custom'),
+                        ),
+                    ],
+                    selected: {line.productType},
+                    onSelectionChanged: (value) {
+                      line.productType = value.first;
+                      line.productId = null;
+                      line.description = '';
+                      line.unitPriceController.clear();
+                      onChanged();
+                    },
+                  ),
+                ),
+                if (onRemove != null)
+                  IconButton(onPressed: onRemove, icon: const Icon(Icons.delete_outline)),
+              ],
+            ),
+            const SizedBox(height: 8),
+            if (line.productType == SaleProductType.custom)
+              TextField(
+                controller: line.customDescriptionController,
+                decoration: const InputDecoration(labelText: 'Description'),
+                onChanged: (_) => onChanged(),
+              )
+            else
+              DropdownButtonFormField<String?>(
+                initialValue: line.productId,
+                decoration: InputDecoration(
+                  labelText: line.productType == SaleProductType.inventory
+                      ? '$inventoryTypeLabel Product'
+                      : 'Livestock Batch',
+                ),
+                items: _options
+                    .map(
+                      (option) => DropdownMenuItem(
+                        value: option.id,
+                        child: Text(option.label),
+                      ),
+                    )
+                    .toList(),
+                onChanged: (value) {
+                  line.productId = value;
+                  final selected = _options.where((option) => option.id == value).firstOrNull;
+                  if (selected != null) {
+                    line.description = selected.description;
+                    line.unitPriceController.text = selected.unitPrice.toStringAsFixed(2);
+                  }
+                  onChanged();
+                },
+              ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: line.quantityController,
+                    keyboardType: TextInputType.number,
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    decoration: const InputDecoration(labelText: 'Quantity'),
+                    onChanged: (_) => onChanged(),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: TextField(
+                    controller: line.unitPriceController,
+                    readOnly: !canOverridePrices,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    decoration: const InputDecoration(labelText: 'Unit Price'),
+                    onChanged: canOverridePrices ? (_) => onChanged() : null,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}

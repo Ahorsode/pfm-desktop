@@ -5,7 +5,90 @@ import 'package:provider/provider.dart';
 
 import '../data/local_db.dart';
 import '../services/batch_analytics_processor.dart';
+import '../utils/farm_utils.dart';
+import '../utils/navigation_permissions.dart';
+import '../utils/worker_permissions_loader.dart';
 import 'main_scaffold.dart';
+
+enum _CompareMetricKey { netProfit, revenue, expenses, eggs, fcr, mortalityRate }
+
+class _MetricDef {
+  const _MetricDef({
+    required this.label,
+    required this.short,
+    required this.accessor,
+    required this.format,
+    this.lowerIsBetter = false,
+    this.finance = false,
+    this.benchmark,
+  });
+
+  final String label;
+  final String short;
+  final double Function(BatchPerformanceSnapshot batch) accessor;
+  final String Function(double value) format;
+  final bool lowerIsBetter;
+  final bool finance;
+  final double? benchmark;
+}
+
+const _metricPalette = [
+  Color(0xFF16A34A),
+  Color(0xFF2563EB),
+  Color(0xFFF59E0B),
+  Color(0xFF9333EA),
+  Color(0xFFEC4899),
+  Color(0xFF0891B2),
+];
+
+Map<_CompareMetricKey, _MetricDef> _metricDefinitions(bool canViewFinance) {
+  return {
+    _CompareMetricKey.netProfit: _MetricDef(
+      label: 'Net Profitability',
+      short: 'Profit',
+      accessor: (b) => b.netProfitability,
+      format: (v) => NumberFormat.currency(symbol: 'GH₵ ', decimalDigits: 2).format(v),
+      finance: true,
+    ),
+    _CompareMetricKey.revenue: _MetricDef(
+      label: 'Total Revenue',
+      short: 'Revenue',
+      accessor: (b) => b.grossRevenue,
+      format: (v) => NumberFormat.currency(symbol: 'GH₵ ', decimalDigits: 2).format(v),
+      finance: true,
+    ),
+    _CompareMetricKey.expenses: _MetricDef(
+      label: 'Total Costs',
+      short: 'Costs',
+      accessor: (b) => b.totalCosts,
+      format: (v) => NumberFormat.currency(symbol: 'GH₵ ', decimalDigits: 2).format(v),
+      lowerIsBetter: true,
+      finance: true,
+    ),
+    _CompareMetricKey.eggs: _MetricDef(
+      label: 'Eggs Collected',
+      short: 'Eggs',
+      accessor: (b) => b.totalEggs.toDouble(),
+      format: (v) => '${v.round()} eggs',
+    ),
+    _CompareMetricKey.fcr: _MetricDef(
+      label: 'Feed Conversion Ratio',
+      short: 'FCR',
+      accessor: (b) => b.currentFcr,
+      format: (v) => v.toStringAsFixed(2),
+      lowerIsBetter: true,
+      benchmark: 1.6,
+    ),
+    _CompareMetricKey.mortalityRate: _MetricDef(
+      label: 'Mortality Rate',
+      short: 'Mortality',
+      accessor: (b) => b.mortalityRate,
+      format: (v) => '${v.toStringAsFixed(2)}%',
+      lowerIsBetter: true,
+      benchmark: 3.5,
+    ),
+  };
+}
 
 class ComparativeAnalyticsScreen extends StatefulWidget {
   const ComparativeAnalyticsScreen({super.key});
@@ -19,7 +102,12 @@ class _ComparativeAnalyticsScreenState
     extends State<ComparativeAnalyticsScreen> {
   late AppDatabase db;
   Future<List<BatchPerformanceSnapshot>>? _analyticsFuture;
-  String? _selectedBatchId;
+  final Set<String> _selectedBatchIds = {};
+  final Set<String> _hiddenBatchIds = {};
+  _CompareMetricKey _selectedMetric = _CompareMetricKey.fcr;
+  bool _showBenchmark = true;
+  bool _canViewBatches = true;
+  bool _canViewFinance = true;
 
   final _currency = NumberFormat.currency(symbol: 'GH₵ ', decimalDigits: 2);
 
@@ -28,6 +116,32 @@ class _ComparativeAnalyticsScreenState
     super.didChangeDependencies();
     db = Provider.of<AppDatabase>(context);
     _analyticsFuture ??= BatchAnalyticsProcessor.load(db);
+    _loadAccess();
+  }
+
+  Future<void> _loadAccess() async {
+    try {
+      final permissions = await loadWorkerPermissions(db);
+      final role = await FarmUtils.getUserRole();
+      if (!mounted) return;
+      final normalizedRole = role?.toUpperCase() ?? 'WORKER';
+      setState(() {
+        _canViewBatches = canShowNavigationItem(
+          name: 'Analytics',
+          role: role,
+          roles: const ['WORKER', 'CASHIER', 'MANAGER', 'ACCOUNTANT', 'FINANCE_OFFICER'],
+          permissions: permissions,
+        );
+        _canViewFinance = permissions.contains('can_view_finance') ||
+            permissions.contains('can_edit_finance') ||
+            normalizedRole == 'OWNER' ||
+            normalizedRole == 'MANAGER';
+      });
+    } catch (_) {
+      if (mounted) {
+        setState(() => _canViewBatches = false);
+      }
+    }
   }
 
   void _refreshAnalytics() {
@@ -36,23 +150,54 @@ class _ComparativeAnalyticsScreenState
     });
   }
 
-  BatchPerformanceSnapshot? _selectedSnapshot(
+  void _ensureSelection(List<BatchPerformanceSnapshot> snapshots) {
+    if (_selectedBatchIds.isNotEmpty || snapshots.isEmpty) return;
+    for (final snapshot in snapshots.take(4)) {
+      _selectedBatchIds.add(snapshot.batchId);
+    }
+  }
+
+  BatchPerformanceSnapshot? _primarySnapshot(
     List<BatchPerformanceSnapshot> snapshots,
   ) {
     if (snapshots.isEmpty) return null;
     final active = snapshots.where((s) => s.status == 'active').toList();
     final candidates = active.isEmpty ? snapshots : active;
-    final selectedId = _selectedBatchId;
-    final selected = selectedId == null
-        ? null
-        : candidates.where((s) => s.batchId == selectedId).firstOrNull;
-    final resolved = selected ?? candidates.first;
-    _selectedBatchId = resolved.batchId;
-    return resolved;
+    for (final id in _selectedBatchIds) {
+      final match = candidates.where((s) => s.batchId == id).firstOrNull;
+      if (match != null) return match;
+    }
+    return candidates.first;
+  }
+
+  List<BatchPerformanceSnapshot> _activeSnapshots(
+    List<BatchPerformanceSnapshot> snapshots,
+  ) {
+    return snapshots
+        .where(
+          (snapshot) =>
+              _selectedBatchIds.contains(snapshot.batchId) &&
+              !_hiddenBatchIds.contains(snapshot.batchId),
+        )
+        .toList();
   }
 
   @override
   Widget build(BuildContext context) {
+    if (!_canViewBatches) {
+      return Scaffold(
+        body: Center(
+          child: Text(
+            'Batch view permission is required to access comparative analytics.',
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+      );
+    }
+
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final bg = isDark ? const Color(0xFF0B1220) : const Color(0xFFF6F8FB);
 
@@ -66,23 +211,52 @@ class _ComparativeAnalyticsScreenState
           }
 
           final snapshots = snapshot.data ?? const <BatchPerformanceSnapshot>[];
-          final selected = _selectedSnapshot(snapshots);
+          _ensureSelection(snapshots);
+          final selected = _primarySnapshot(snapshots);
+          final activeSnapshots = _activeSnapshots(snapshots);
 
           return Row(
             children: [
               _BatchAnalyticsRail(
                 snapshots: snapshots,
-                selectedBatchId: selected?.batchId,
-                onSelect: (id) => setState(() => _selectedBatchId = id),
+                selectedBatchIds: _selectedBatchIds,
+                hiddenBatchIds: _hiddenBatchIds,
+                onToggleBatch: (id) {
+                  setState(() {
+                    if (_selectedBatchIds.contains(id)) {
+                      _selectedBatchIds.remove(id);
+                      _hiddenBatchIds.remove(id);
+                    } else {
+                      _selectedBatchIds.add(id);
+                    }
+                  });
+                },
+                onToggleHidden: (id) {
+                  setState(() {
+                    if (_hiddenBatchIds.contains(id)) {
+                      _hiddenBatchIds.remove(id);
+                    } else {
+                      _hiddenBatchIds.add(id);
+                    }
+                  });
+                },
               ),
               Expanded(
                 child: selected == null
                     ? _EmptyAnalyticsState(onRefresh: _refreshAnalytics)
                     : _AnalyticsWorkspace(
                         selected: selected,
+                        activeSnapshots: activeSnapshots,
                         snapshots: snapshots,
                         currency: _currency,
+                        canViewFinance: _canViewFinance,
+                        selectedMetric: _selectedMetric,
+                        showBenchmark: _showBenchmark,
                         onRefresh: _refreshAnalytics,
+                        onMetricChanged: (metric) =>
+                            setState(() => _selectedMetric = metric),
+                        onBenchmarkChanged: (value) =>
+                            setState(() => _showBenchmark = value),
                       ),
               ),
             ],
@@ -95,13 +269,17 @@ class _ComparativeAnalyticsScreenState
 
 class _BatchAnalyticsRail extends StatelessWidget {
   final List<BatchPerformanceSnapshot> snapshots;
-  final String? selectedBatchId;
-  final ValueChanged<String> onSelect;
+  final Set<String> selectedBatchIds;
+  final Set<String> hiddenBatchIds;
+  final ValueChanged<String> onToggleBatch;
+  final ValueChanged<String> onToggleHidden;
 
   const _BatchAnalyticsRail({
     required this.snapshots,
-    required this.selectedBatchId,
-    required this.onSelect,
+    required this.selectedBatchIds,
+    required this.hiddenBatchIds,
+    required this.onToggleBatch,
+    required this.onToggleHidden,
   });
 
   @override
@@ -112,6 +290,8 @@ class _BatchAnalyticsRail extends StatelessWidget {
     final border = isDark ? const Color(0xFF253044) : const Color(0xFFE2E8F0);
     final active = snapshots.where((s) => s.status == 'active').toList();
     final display = active.isEmpty ? snapshots : active;
+    final selectedCount =
+        display.where((batch) => selectedBatchIds.contains(batch.batchId)).length;
 
     return Container(
       width: 326,
@@ -146,7 +326,7 @@ class _BatchAnalyticsRail extends StatelessWidget {
                         ),
                       ),
                       Text(
-                        '${display.length} active data streams',
+                        '$selectedCount selected · ${display.length} batches',
                         style: TextStyle(
                           color: theme.colorScheme.onSurfaceVariant,
                           fontSize: 12,
@@ -163,7 +343,7 @@ class _BatchAnalyticsRail extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.fromLTRB(22, 18, 22, 8),
             child: Text(
-              'ACTIVE BATCHES',
+              'COMPARE BATCHES',
               style: TextStyle(
                 color: theme.colorScheme.onSurfaceVariant,
                 fontSize: 11,
@@ -189,11 +369,12 @@ class _BatchAnalyticsRail extends StatelessWidget {
                     separatorBuilder: (_, index) => const SizedBox(height: 6),
                     itemBuilder: (context, index) {
                       final batch = display[index];
-                      final selected = batch.batchId == selectedBatchId;
+                      final selected = selectedBatchIds.contains(batch.batchId);
+                      final hidden = hiddenBatchIds.contains(batch.batchId);
                       final danger = batch.mortalityRate > 5.0;
                       return InkWell(
                         borderRadius: BorderRadius.circular(8),
-                        onTap: () => onSelect(batch.batchId),
+                        onTap: () => onToggleBatch(batch.batchId),
                         child: Container(
                           padding: const EdgeInsets.all(12),
                           decoration: BoxDecoration(
@@ -216,6 +397,16 @@ class _BatchAnalyticsRail extends StatelessWidget {
                             children: [
                               Row(
                                 children: [
+                                  Icon(
+                                    selected
+                                        ? Icons.check_box_rounded
+                                        : Icons.check_box_outline_blank_rounded,
+                                    size: 18,
+                                    color: selected
+                                        ? const Color(0xFF16A34A)
+                                        : theme.colorScheme.onSurfaceVariant,
+                                  ),
+                                  const SizedBox(width: 8),
                                   Expanded(
                                     child: Text(
                                       batch.batchName,
@@ -227,6 +418,19 @@ class _BatchAnalyticsRail extends StatelessWidget {
                                       ),
                                     ),
                                   ),
+                                  if (selected)
+                                    IconButton(
+                                      tooltip: hidden
+                                          ? 'Show in charts'
+                                          : 'Hide from charts',
+                                      onPressed: () => onToggleHidden(batch.batchId),
+                                      icon: Icon(
+                                        hidden
+                                            ? Icons.visibility_off_outlined
+                                            : Icons.visibility_outlined,
+                                        size: 16,
+                                      ),
+                                    ),
                                   Icon(
                                     danger
                                         ? Icons.warning_amber_rounded
@@ -310,15 +514,27 @@ class _RailMetric extends StatelessWidget {
 
 class _AnalyticsWorkspace extends StatelessWidget {
   final BatchPerformanceSnapshot selected;
+  final List<BatchPerformanceSnapshot> activeSnapshots;
   final List<BatchPerformanceSnapshot> snapshots;
   final NumberFormat currency;
+  final bool canViewFinance;
+  final _CompareMetricKey selectedMetric;
+  final bool showBenchmark;
   final VoidCallback onRefresh;
+  final ValueChanged<_CompareMetricKey> onMetricChanged;
+  final ValueChanged<bool> onBenchmarkChanged;
 
   const _AnalyticsWorkspace({
     required this.selected,
+    required this.activeSnapshots,
     required this.snapshots,
     required this.currency,
+    required this.canViewFinance,
+    required this.selectedMetric,
+    required this.showBenchmark,
     required this.onRefresh,
+    required this.onMetricChanged,
+    required this.onBenchmarkChanged,
   });
 
   @override
@@ -326,6 +542,7 @@ class _AnalyticsWorkspace extends StatelessWidget {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     final border = isDark ? const Color(0xFF253044) : const Color(0xFFE2E8F0);
+    final metrics = _metricDefinitions(canViewFinance);
 
     return Padding(
       padding: const EdgeInsets.all(24),
@@ -334,7 +551,24 @@ class _AnalyticsWorkspace extends StatelessWidget {
         children: [
           _WorkspaceHeader(selected: selected, onRefresh: onRefresh),
           const SizedBox(height: 16),
-          _KpiStrip(selected: selected, currency: currency),
+          _CompareMetricPanel(
+            activeSnapshots: activeSnapshots,
+            availableMetrics: metrics.entries
+                .where((entry) => canViewFinance || !entry.value.finance)
+                .map((entry) => entry.key)
+                .toList(),
+            metrics: metrics,
+            selectedMetric: selectedMetric,
+            showBenchmark: showBenchmark,
+            onMetricChanged: onMetricChanged,
+            onBenchmarkChanged: onBenchmarkChanged,
+          ),
+          const SizedBox(height: 16),
+          _KpiStrip(
+            selected: selected,
+            currency: currency,
+            canViewFinance: canViewFinance,
+          ),
           const SizedBox(height: 16),
           Expanded(
             flex: 7,
@@ -359,6 +593,7 @@ class _AnalyticsWorkspace extends StatelessWidget {
                         child: _FinancialBarsPanel(
                           snapshot: selected,
                           currency: currency,
+                          canViewFinance: canViewFinance,
                         ),
                       ),
                     ],
@@ -375,6 +610,7 @@ class _AnalyticsWorkspace extends StatelessWidget {
                       child: _FinancialBarsPanel(
                         snapshot: selected,
                         currency: currency,
+                        canViewFinance: canViewFinance,
                       ),
                     ),
                   ],
@@ -387,8 +623,9 @@ class _AnalyticsWorkspace extends StatelessWidget {
             flex: 3,
             child: _BatchComparisonTable(
               snapshots: snapshots,
-              selectedBatchId: selected.batchId,
+              selectedBatchIds: activeSnapshots.map((s) => s.batchId).toSet(),
               currency: currency,
+              canViewFinance: canViewFinance,
               border: border,
             ),
           ),
@@ -445,11 +682,214 @@ class _WorkspaceHeader extends StatelessWidget {
   }
 }
 
+class _CompareMetricPanel extends StatelessWidget {
+  final List<BatchPerformanceSnapshot> activeSnapshots;
+  final List<_CompareMetricKey> availableMetrics;
+  final Map<_CompareMetricKey, _MetricDef> metrics;
+  final _CompareMetricKey selectedMetric;
+  final bool showBenchmark;
+  final ValueChanged<_CompareMetricKey> onMetricChanged;
+  final ValueChanged<bool> onBenchmarkChanged;
+
+  const _CompareMetricPanel({
+    required this.activeSnapshots,
+    required this.availableMetrics,
+    required this.metrics,
+    required this.selectedMetric,
+    required this.showBenchmark,
+    required this.onMetricChanged,
+    required this.onBenchmarkChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final border = isDark ? const Color(0xFF253044) : const Color(0xFFE2E8F0);
+    final metric = metrics[selectedMetric]!;
+
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: theme.cardColor,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.compare_arrows_rounded, size: 18, color: Color(0xFF16A34A)),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Batch Comparison · ${metric.label}',
+                  style: TextStyle(
+                    color: theme.colorScheme.onSurface,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+              Text(
+                '${activeSnapshots.length} active streams',
+                style: TextStyle(
+                  color: theme.colorScheme.onSurfaceVariant,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final key in availableMetrics)
+                ChoiceChip(
+                  label: Text(metrics[key]!.short),
+                  selected: selectedMetric == key,
+                  onSelected: (_) => onMetricChanged(key),
+                ),
+            ],
+          ),
+          if (metric.benchmark != null) ...[
+            const SizedBox(height: 8),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Industry benchmark'),
+              value: showBenchmark,
+              onChanged: onBenchmarkChanged,
+            ),
+          ],
+          const SizedBox(height: 12),
+          SizedBox(
+            height: 220,
+            child: activeSnapshots.isEmpty
+                ? const _PanelEmptyState('Select or unhide batches from the rail.')
+                : _MultiBatchMetricChart(
+                    snapshots: activeSnapshots,
+                    metric: metric,
+                    showBenchmark: showBenchmark && metric.benchmark != null,
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MultiBatchMetricChart extends StatelessWidget {
+  final List<BatchPerformanceSnapshot> snapshots;
+  final _MetricDef metric;
+  final bool showBenchmark;
+
+  const _MultiBatchMetricChart({
+    required this.snapshots,
+    required this.metric,
+    required this.showBenchmark,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final values = snapshots.map(metric.accessor).toList();
+    final maxValue = values.fold<double>(0, (a, b) => a > b ? a : b);
+    final benchmark = metric.benchmark ?? 0;
+    final chartMax = (maxValue > benchmark || !showBenchmark ? maxValue : benchmark) * 1.2;
+    final safeMax = chartMax <= 0 ? 1.0 : chartMax;
+
+    return BarChart(
+      BarChartData(
+        maxY: safeMax,
+        borderData: FlBorderData(show: false),
+        gridData: FlGridData(
+          show: true,
+          drawVerticalLine: false,
+          getDrawingHorizontalLine: (value) => FlLine(
+            color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.35),
+            strokeWidth: 1,
+          ),
+        ),
+        titlesData: FlTitlesData(
+          topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          leftTitles: AxisTitles(
+            sideTitles: SideTitles(
+              showTitles: true,
+              reservedSize: 42,
+              getTitlesWidget: (value, meta) => SideTitleWidget(
+                meta: meta,
+                child: Text(
+                  metric.finance ? value.toStringAsFixed(0) : value.toStringAsFixed(1),
+                  style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800),
+                ),
+              ),
+            ),
+          ),
+          bottomTitles: AxisTitles(
+            sideTitles: SideTitles(
+              showTitles: true,
+              reservedSize: 30,
+              getTitlesWidget: (value, meta) {
+                final index = value.toInt();
+                if (index < 0 || index >= snapshots.length) {
+                  return const SizedBox.shrink();
+                }
+                final name = snapshots[index].batchName;
+                return SideTitleWidget(
+                  meta: meta,
+                  child: Text(
+                    name.length > 10 ? '${name.substring(0, 9)}…' : name,
+                    style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800),
+                  ),
+                );
+              },
+            ),
+          ),
+        ),
+        extraLinesData: showBenchmark && metric.benchmark != null
+            ? ExtraLinesData(
+                horizontalLines: [
+                  HorizontalLine(
+                    y: metric.benchmark!,
+                    color: const Color(0xFF2563EB),
+                    strokeWidth: 2,
+                    dashArray: [6, 4],
+                  ),
+                ],
+              )
+            : null,
+        barGroups: [
+          for (var i = 0; i < snapshots.length; i++)
+            BarChartGroupData(
+              x: i,
+              barRods: [
+                BarChartRodData(
+                  toY: values[i],
+                  width: 24,
+                  color: _metricPalette[i % _metricPalette.length],
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ],
+            ),
+        ],
+      ),
+    );
+  }
+}
+
 class _KpiStrip extends StatelessWidget {
   final BatchPerformanceSnapshot selected;
   final NumberFormat currency;
+  final bool canViewFinance;
 
-  const _KpiStrip({required this.selected, required this.currency});
+  const _KpiStrip({
+    required this.selected,
+    required this.currency,
+    required this.canViewFinance,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -478,26 +918,47 @@ class _KpiStrip extends StatelessWidget {
                   : const Color(0xFFE8833A),
             ),
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: _KpiTile(
-              label: 'Net Profit',
-              value: currency.format(selected.netProfitability),
-              icon: Icons.account_balance_wallet_rounded,
-              color: selected.netProfitability >= 0
-                  ? const Color(0xFF16A34A)
-                  : const Color(0xFFDC2626),
+          if (canViewFinance) ...[
+            const SizedBox(width: 12),
+            Expanded(
+              child: _KpiTile(
+                label: 'Net Profit',
+                value: currency.format(selected.netProfitability),
+                icon: Icons.account_balance_wallet_rounded,
+                color: selected.netProfitability >= 0
+                    ? const Color(0xFF16A34A)
+                    : const Color(0xFFDC2626),
+              ),
             ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: _KpiTile(
-              label: 'Gross Revenue',
-              value: currency.format(selected.grossRevenue),
-              icon: Icons.point_of_sale_rounded,
-              color: const Color(0xFF2563EB),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _KpiTile(
+                label: 'Gross Revenue',
+                value: currency.format(selected.grossRevenue),
+                icon: Icons.point_of_sale_rounded,
+                color: const Color(0xFF2563EB),
+              ),
             ),
-          ),
+          ] else ...[
+            const SizedBox(width: 12),
+            Expanded(
+              child: _KpiTile(
+                label: 'Eggs Collected',
+                value: '${selected.totalEggs}',
+                icon: Icons.egg_alt_outlined,
+                color: const Color(0xFFF59E0B),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _KpiTile(
+                label: 'Current Birds',
+                value: '${selected.currentCount}',
+                icon: Icons.pets_rounded,
+                color: const Color(0xFF2563EB),
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -781,11 +1242,44 @@ class _MortalityGaugePanel extends StatelessWidget {
 class _FinancialBarsPanel extends StatelessWidget {
   final BatchPerformanceSnapshot snapshot;
   final NumberFormat currency;
+  final bool canViewFinance;
 
-  const _FinancialBarsPanel({required this.snapshot, required this.currency});
+  const _FinancialBarsPanel({
+    required this.snapshot,
+    required this.currency,
+    required this.canViewFinance,
+  });
 
   @override
   Widget build(BuildContext context) {
+    if (!canViewFinance) {
+      return _AnalyticsPanel(
+        title: 'Egg Production',
+        icon: Icons.egg_alt_outlined,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              '${snapshot.totalEggs} eggs collected',
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurface,
+                fontSize: 24,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Finance metrics require finance view permission.',
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
     final maxY =
         [
           snapshot.totalCosts,
@@ -988,14 +1482,16 @@ class _MetricLine extends StatelessWidget {
 
 class _BatchComparisonTable extends StatelessWidget {
   final List<BatchPerformanceSnapshot> snapshots;
-  final String selectedBatchId;
+  final Set<String> selectedBatchIds;
   final NumberFormat currency;
+  final bool canViewFinance;
   final Color border;
 
   const _BatchComparisonTable({
     required this.snapshots,
-    required this.selectedBatchId,
+    required this.selectedBatchIds,
     required this.currency,
+    required this.canViewFinance,
     required this.border,
   });
 
@@ -1003,7 +1499,9 @@ class _BatchComparisonTable extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final active = snapshots.where((s) => s.status == 'active').toList();
-    final rows = active.isEmpty ? snapshots : active;
+    final rows = (active.isEmpty ? snapshots : active)
+        .where((row) => selectedBatchIds.contains(row.batchId))
+        .toList();
 
     return Container(
       decoration: BoxDecoration(
@@ -1023,14 +1521,19 @@ class _BatchComparisonTable extends StatelessWidget {
               ),
               border: Border(bottom: BorderSide(color: border)),
             ),
-            child: const Row(
+            child: Row(
               children: [
                 Expanded(flex: 3, child: _TableHeader('Batch')),
                 Expanded(child: _TableHeader('FCR')),
                 Expanded(child: _TableHeader('Mortality')),
-                Expanded(flex: 2, child: _TableHeader('Revenue')),
-                Expanded(flex: 2, child: _TableHeader('Costs')),
-                Expanded(flex: 2, child: _TableHeader('Net')),
+                if (canViewFinance) ...[
+                  Expanded(flex: 2, child: _TableHeader('Revenue')),
+                  Expanded(flex: 2, child: _TableHeader('Costs')),
+                  Expanded(flex: 2, child: _TableHeader('Net')),
+                ] else ...[
+                  Expanded(flex: 2, child: _TableHeader('Eggs')),
+                  Expanded(flex: 2, child: _TableHeader('Birds')),
+                ],
               ],
             ),
           ),
@@ -1041,7 +1544,7 @@ class _BatchComparisonTable extends StatelessWidget {
                     itemCount: rows.length,
                     itemBuilder: (context, index) {
                       final row = rows[index];
-                      final selected = row.batchId == selectedBatchId;
+                      final selected = selectedBatchIds.contains(row.batchId);
                       final color = selected
                           ? const Color(0xFF16A34A).withValues(alpha: 0.08)
                           : Colors.transparent;
@@ -1077,27 +1580,38 @@ class _BatchComparisonTable extends StatelessWidget {
                                 '${row.mortalityRate.toStringAsFixed(1)}%',
                               ),
                             ),
-                            Expanded(
-                              flex: 2,
-                              child: _TableCell(
-                                currency.format(row.grossRevenue),
+                            if (canViewFinance) ...[
+                              Expanded(
+                                flex: 2,
+                                child: _TableCell(
+                                  currency.format(row.grossRevenue),
+                                ),
                               ),
-                            ),
-                            Expanded(
-                              flex: 2,
-                              child: _TableCell(
-                                currency.format(row.totalCosts),
+                              Expanded(
+                                flex: 2,
+                                child: _TableCell(
+                                  currency.format(row.totalCosts),
+                                ),
                               ),
-                            ),
-                            Expanded(
-                              flex: 2,
-                              child: _TableCell(
-                                currency.format(row.netProfitability),
-                                color: row.netProfitability >= 0
-                                    ? const Color(0xFF16A34A)
-                                    : const Color(0xFFDC2626),
+                              Expanded(
+                                flex: 2,
+                                child: _TableCell(
+                                  currency.format(row.netProfitability),
+                                  color: row.netProfitability >= 0
+                                      ? const Color(0xFF16A34A)
+                                      : const Color(0xFFDC2626),
+                                ),
                               ),
-                            ),
+                            ] else ...[
+                              Expanded(
+                                flex: 2,
+                                child: _TableCell('${row.totalEggs}'),
+                              ),
+                              Expanded(
+                                flex: 2,
+                                child: _TableCell('${row.currentCount}'),
+                              ),
+                            ],
                           ],
                         ),
                       );

@@ -7,6 +7,7 @@ import 'package:rxdart/rxdart.dart';
 import '../data/local_db.dart';
 import '../utils/farm_utils.dart';
 import '../utils/id_utils.dart';
+import '../utils/mortality_log_utils.dart';
 
 class CombinedMortalityLog {
   final Mortality mortality;
@@ -38,7 +39,6 @@ class _MortalityScreenState extends State<MortalityScreen> {
 
   Stream<List<CombinedMortalityLog>> _getCombinedLogs(AppDatabase db) {
     final mortalitiesStream = (db.select(db.mortalities)
-          ..where((t) => t.category.equals('MORTALITY') | t.category.isNull() | t.category.equals(''))
           ..orderBy([(t) => OrderingTerm(expression: t.logDate, mode: OrderingMode.desc)]))
         .watch();
     final batchesStream = db.select(db.batches).watch();
@@ -49,6 +49,12 @@ class _MortalityScreenState extends State<MortalityScreen> {
       (List<Mortality> mortalities, List<Batch> batches) {
         final batchMap = {for (var b in batches) b.id: b.batchName};
         return mortalities
+            .where(
+              (m) => isDeadMortalityRecord(
+                healthType: m.healthType,
+                category: m.category,
+              ),
+            )
             .map((m) => CombinedMortalityLog(m, batchMap[m.batchId] ?? 'Unknown Unit'))
             .toList();
       },
@@ -179,7 +185,15 @@ class _MortalityScreenState extends State<MortalityScreen> {
             final alerts = <String>[];
             for (var batch in batches) {
               final last24hCount = mortalities
-                  .where((m) => m.batchId == batch.id && m.logDate.isAfter(oneDayAgo) && m.category != 'ISOLATION')
+                  .where(
+                    (m) =>
+                        m.batchId == batch.id &&
+                        m.logDate.isAfter(oneDayAgo) &&
+                        isDeadMortalityRecord(
+                          healthType: m.healthType,
+                          category: m.category,
+                        ),
+                  )
                   .fold<int>(0, (sum, m) => sum + m.count);
 
               if (last24hCount > 0 && batch.currentCount > 0) {
@@ -238,7 +252,12 @@ class _MortalityScreenState extends State<MortalityScreen> {
       stream: db.select(db.mortalities).watch(),
       builder: (context, snapshot) {
         final total = snapshot.data
-                ?.where((m) => m.category != 'ISOLATION')
+                ?.where(
+                  (m) => isDeadMortalityRecord(
+                    healthType: m.healthType,
+                    category: m.category,
+                  ),
+                )
                 .fold<int>(0, (sum, m) => sum + m.count) ??
             0;
         return Container(
@@ -691,7 +710,9 @@ class _MortalityScreenState extends State<MortalityScreen> {
               batchId: batch.id,
               count: count,
               logDate: DateTime.now(),
-              category: const Value('MORTALITY'),
+              healthType: const Value('DEAD'),
+              category: const Value('Unknown'),
+              subCategory: const Value('Unknown cause yet'),
               userId: Value(workerId),
               synced: const Value(false),
             ));

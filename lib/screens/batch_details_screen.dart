@@ -4,7 +4,9 @@ import 'package:drift/drift.dart' hide Column, Batch;
 import 'package:provider/provider.dart';
 import '../data/local_db.dart';
 import '../utils/farm_utils.dart';
+import '../utils/growth_utils.dart';
 import '../utils/livestock_breed_options.dart';
+import '../utils/mortality_log_utils.dart';
 import '../widgets/batch_actions_dialogs.dart';
 import 'package:fl_chart/fl_chart.dart';
 
@@ -22,6 +24,9 @@ class _BatchDetailsScreenState extends State<BatchDetailsScreen> {
   int _totalMortality = 0;
   double _totalFeed = 0.0;
   double _totalSales = 0.0;
+  double _fcr = 0.0;
+  double _mortalityRate = 0.0;
+  GrowthPerformance? _growthPerformance;
   bool _showFinancials = false;
 
   @override
@@ -41,22 +46,170 @@ class _BatchDetailsScreenState extends State<BatchDetailsScreen> {
     final weights =
         await (db.select(db.weightRecords)
               ..where((t) => t.batchId.equals(widget.batch.id))
-              ..orderBy([(t) => OrderingTerm.asc(t.logDate)]))
+              ..orderBy([(t) => OrderingTerm.desc(t.logDate)]))
             .get();
     final sales = await (db.select(
       db.sales,
     )..where((t) => t.batchId.equals(widget.batch.id))).get();
     final canView = await FarmUtils.canViewFinancials();
 
+    final deadCount = mortality
+        .where(
+          (m) => isDeadMortalityRecord(
+            healthType: m.healthType,
+            category: m.category,
+          ),
+        )
+        .fold(0, (sum, m) => sum + m.count);
+    final totalFeed = feeding.fold(0.0, (sum, f) => sum + f.amountConsumed);
+    final latestWeight =
+        weights.isNotEmpty ? weights.first.averageWeight : 0.0;
+    final fcr = latestWeight > 0 && widget.batch.currentCount > 0
+        ? totalFeed / (widget.batch.currentCount * latestWeight)
+        : 0.0;
+    final mortalityRate = widget.batch.initialCount > 0
+        ? (deadCount / widget.batch.initialCount) * 100
+        : 0.0;
+    final growth = latestWeight > 0
+        ? calculateGrowthPerformance(
+            hatchDate: widget.batch.arrivalDate,
+            currentWeight: latestWeight,
+          )
+        : null;
+
     if (mounted) {
       setState(() {
-        _totalMortality = mortality.fold(0, (sum, m) => sum + m.count);
-        _totalFeed = feeding.fold(0.0, (sum, f) => sum + f.amountConsumed);
-        _weightRecords = weights;
+        _totalMortality = deadCount;
+        _totalFeed = totalFeed;
+        _weightRecords = weights.reversed.toList();
         _totalSales = sales.fold(0.0, (sum, s) => sum + s.totalAmount);
+        _fcr = fcr;
+        _mortalityRate = mortalityRate;
+        _growthPerformance = growth;
         _showFinancials = canView;
       });
     }
+  }
+
+
+  Widget _buildMetricsRow(bool isNarrow) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final cards = [
+      _metricCard(
+        'Feed Conversion (FCR)',
+        _fcr > 0 ? _fcr.toStringAsFixed(2) : '---',
+        '${_totalFeed.toStringAsFixed(0)} bags fed',
+        Icons.show_chart,
+        const Color(0xFFF59E0B),
+        isDark,
+      ),
+      _metricCard(
+        'Mortality Rate',
+        '${_mortalityRate.toStringAsFixed(1)}%',
+        '$_totalMortality total deaths',
+        Icons.coronavirus_outlined,
+        const Color(0xFFEF4444),
+        isDark,
+      ),
+      if (_growthPerformance != null)
+        _metricCard(
+          'Growth Progress',
+          '${_growthPerformance!.weightPerformance.toStringAsFixed(0)}%',
+          'Target ${_growthPerformance!.targetWeight.toStringAsFixed(2)} kg',
+          Icons.trending_up,
+          _growthPerformance!.status == GrowthStatus.critical
+              ? const Color(0xFFEF4444)
+              : _growthPerformance!.status == GrowthStatus.deviated
+              ? const Color(0xFFF59E0B)
+              : const Color(0xFF10B981),
+          isDark,
+        ),
+    ];
+
+    if (isNarrow) {
+      return Column(
+        children: [
+          for (var i = 0; i < cards.length; i++) ...[
+            if (i > 0) const SizedBox(height: 12),
+            cards[i],
+          ],
+        ],
+      );
+    }
+
+    return Row(
+      children: [
+        for (var i = 0; i < cards.length; i++) ...[
+          if (i > 0) const SizedBox(width: 16),
+          Expanded(child: cards[i]),
+        ],
+      ],
+    );
+  }
+
+  Widget _metricCard(
+    String title,
+    String value,
+    String subtext,
+    IconData icon,
+    Color color,
+    bool isDark,
+  ) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1A1D21) : Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isDark
+              ? Colors.white.withValues(alpha: 0.05)
+              : Colors.black.withValues(alpha: 0.05),
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(icon, color: color, size: 20),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    color: isDark ? Colors.grey : Colors.grey.shade600,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                Text(
+                  value,
+                  style: TextStyle(
+                    color: isDark ? Colors.white : const Color(0xFF1E293B),
+                    fontWeight: FontWeight.w900,
+                    fontSize: 18,
+                  ),
+                ),
+                Text(
+                  subtext,
+                  style: TextStyle(
+                    color: isDark ? Colors.white54 : Colors.grey.shade600,
+                    fontSize: 10,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -96,6 +249,8 @@ class _BatchDetailsScreenState extends State<BatchDetailsScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _buildHeroHeader(age, isNarrow),
+                const SizedBox(height: 16),
+                _buildMetricsRow(isNarrow),
                 const SizedBox(height: 16),
                 _buildActionButtons(),
                 const SizedBox(height: 24),

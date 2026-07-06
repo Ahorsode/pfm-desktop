@@ -44,6 +44,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   int _eggsPerCrate = 30;
+  int _farmCapacity = 0;
   String _eggReminderTime = '08:00';
   String _feedReminderTime = '07:00';
   bool _autoSync = true;
@@ -77,6 +78,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     setState(() {
       _farmName = farmRow?.name ?? '';
       _farmLocation = farmRow?.location ?? '';
+      _farmCapacity = farmRow?.capacity ?? 0;
       _currency = _normalizeCurrency(settingsRow?.currency);
       _eggsPerCrate = settingsRow?.eggsPerCrate ?? 30;
       _eggReminderTime = settingsRow?.eggRecordReminderTime ?? '08:00';
@@ -96,7 +98,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (farmId != null && farmId.isNotEmpty) {
       // Update farm
       await (db.update(db.farms)..where((f) => f.id.equals(farmId))).write(
-        FarmsCompanion(name: Value(_farmName), location: Value(_farmLocation)),
+        FarmsCompanion(
+          name: Value(_farmName),
+          location: Value(_farmLocation),
+          capacity: Value(_farmCapacity),
+        ),
       );
       // Upsert farm settings
       final existing = await (db.select(
@@ -113,6 +119,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         feedRecordReminderTime: Value(
           _feedReminderTime.isEmpty ? null : _feedReminderTime,
         ),
+        synced: const Value(false),
       );
       if (existing == null) {
         await db.into(db.farmSettings).insert(companion);
@@ -124,6 +131,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
 
     if (mounted) {
+      Provider.of<SyncEngine>(context, listen: false).syncNow();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: const Row(
@@ -293,6 +301,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         icon: Icons.location_on_rounded,
                         value: _farmLocation,
                         onChanged: (v) => setState(() => _farmLocation = v),
+                      ),
+                      const SizedBox(height: 14),
+                      _inputRow(
+                        context: context,
+                        label: 'Total Capacity',
+                        icon: Icons.people_outline_rounded,
+                        value: _farmCapacity.toString(),
+                        onChanged: (v) => setState(
+                          () => _farmCapacity = int.tryParse(v) ?? _farmCapacity,
+                        ),
                       ),
                     ],
                   ),

@@ -8,7 +8,9 @@ import '../widgets/batch_actions_dialogs.dart';
 import 'batch_details_screen.dart';
 import '../utils/id_utils.dart';
 import '../utils/livestock_breed_options.dart';
+import '../utils/growth_utils.dart';
 import '../widgets/worker_stamp.dart';
+import 'comparative_analytics_screen.dart';
 
 class LivestockManager extends StatefulWidget {
   const LivestockManager({super.key});
@@ -153,6 +155,35 @@ class _LivestockManagerState extends State<LivestockManager> {
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
+              OutlinedButton.icon(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const ComparativeAnalyticsScreen(),
+                    ),
+                  );
+                },
+                icon: const Icon(Icons.analytics_outlined, size: 18),
+                label: Text(
+                  isCompact ? 'REPORTS' : 'PERFORMANCE REPORTS',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 12,
+                  ),
+                ),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: const Color(0xFF10B981),
+                  side: BorderSide(
+                    color: const Color(0xFF10B981).withValues(alpha: 0.35),
+                  ),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 14,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
               FilledButton.icon(
                 onPressed: () => _showAddBatchDialog(context, db),
                 icon: const Icon(Icons.add_rounded, size: 18),
@@ -186,7 +217,7 @@ class _LivestockManagerState extends State<LivestockManager> {
   //  FILTER ROW
   // ────────────────────────────────────────────
   Widget _buildFilterRow(ColorScheme cs) {
-    const filters = ['All', 'Broiler', 'Layer', 'Turkey', 'Duck', 'Other'];
+    const filters = ['All', 'Poultry', 'Cattle', 'Pig', 'Sheep', 'Other'];
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: Row(
@@ -227,10 +258,10 @@ class _LivestockManagerState extends State<LivestockManager> {
   IconData _filterIcon(String label) {
     return switch (label) {
       'All' => Icons.select_all_rounded,
-      'Broiler' => Icons.flutter_dash_rounded,
-      'Layer' => Icons.egg_outlined,
-      'Turkey' => Icons.set_meal_rounded,
-      'Duck' => Icons.water_rounded,
+      'Poultry' => Icons.flutter_dash_rounded,
+      'Cattle' => Icons.grass_rounded,
+      'Pig' => Icons.set_meal_rounded,
+      'Sheep' => Icons.waves_rounded,
       _ => Icons.category_outlined,
     };
   }
@@ -360,15 +391,12 @@ class _LivestockManagerState extends State<LivestockManager> {
     return batches.where((b) {
       final type = b.type.toUpperCase();
       return switch (_selectedFilter) {
-        'Broiler' => type.contains('BROILER'),
-        'Layer' => type.contains('LAYER'),
-        'Turkey' => type.contains('TURKEY'),
-        'Duck' => type.contains('DUCK'),
-        _ =>
-          !type.contains('BROILER') &&
-              !type.contains('LAYER') &&
-              !type.contains('TURKEY') &&
-              !type.contains('DUCK'),
+        'Poultry' => type.startsWith('POULTRY'),
+        'Cattle' => type == 'CATTLE',
+        'Pig' => type == 'PIG',
+        'Sheep' => type == 'SHEEP_GOAT',
+        'Other' => type == 'OTHER',
+        _ => true,
       };
     }).toList();
   }
@@ -388,24 +416,7 @@ class _LivestockManagerState extends State<LivestockManager> {
   }
 
   String _getBatchTypeLabel(String type) {
-    return switch (type.toUpperCase()) {
-      'POULTRY_BROILER' => 'Poultry Broiler',
-      'POULTRY_LAYER' => 'Poultry Layer',
-      'POULTRY_TURKEY' => 'Turkey',
-      'POULTRY_DUCK' => 'Duck',
-      'OTHER' => 'Other Species',
-      _ => type,
-    };
-  }
-
-  String _getAnimalLabel(String type) {
-    return switch (type.toUpperCase()) {
-      'POULTRY_BROILER' => 'broilers',
-      'POULTRY_LAYER' => 'layers',
-      'POULTRY_TURKEY' => 'turkeys',
-      'POULTRY_DUCK' => 'ducks',
-      _ => 'animals',
-    };
+    return formatLivestockType(type);
   }
 
   DataRow _row(
@@ -417,7 +428,6 @@ class _LivestockManagerState extends State<LivestockManager> {
   ) {
     final arrivalDate = DateFormat('dd MMM yyyy').format(batch.arrivalDate);
     final typeLabel = _getBatchTypeLabel(batch.type);
-    final isLayer = batch.type.toUpperCase().contains('LAYER');
     final breed = LivestockBreedCatalog.labelForKey(batch.breedType);
 
     return DataRow(
@@ -506,60 +516,49 @@ class _LivestockManagerState extends State<LivestockManager> {
           ),
         ),
         DataCell(
-          Row(
-            mainAxisSize: MainAxisSize.min,
+          Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    NumberFormat('#,###').format(batch.initialCount),
-                    style: TextStyle(
-                      fontWeight: FontWeight.w900,
-                      fontSize: 13,
-                      color: Theme.of(context).brightness == Brightness.dark
-                          ? Colors.white
-                          : const Color(0xFF1E293B),
-                    ),
-                  ),
-                  if (totalMortality > 0)
-                    Container(
-                      margin: const EdgeInsets.only(top: 2),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 4,
-                        vertical: 1,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Theme.of(context).brightness == Brightness.dark
-                            ? Colors.red.withValues(alpha: 0.2)
-                            : const Color(0xFFFEF2F2),
-                        borderRadius: BorderRadius.circular(4),
-                        border: Border.all(
-                          color: Colors.red.withValues(alpha: 0.3),
-                          width: 0.5,
-                        ),
-                      ),
-                      child: Text(
-                        '- ${NumberFormat('#,###').format(totalMortality)}',
-                        style: const TextStyle(
-                          color: Color(0xFFB91C1C),
-                          fontSize: 9,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-              const SizedBox(width: 8),
               Text(
-                _getAnimalLabel(batch.type),
+                NumberFormat('#,###').format(batch.currentCount),
                 style: TextStyle(
-                  color: cs.onSurfaceVariant.withValues(alpha: 0.6),
-                  fontSize: 10,
-                  fontWeight: FontWeight.w600,
+                  fontWeight: FontWeight.w900,
+                  fontSize: 13,
+                  color: Theme.of(context).brightness == Brightness.dark
+                      ? Colors.white
+                      : const Color(0xFF1E293B),
                 ),
               ),
+              if (batch.isolationCount > 0 ||
+                  (batch.initialCount -
+                          batch.currentCount -
+                          batch.isolationCount) >
+                      0)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Wrap(
+                    spacing: 6,
+                    runSpacing: 4,
+                    children: [
+                      if (batch.isolationCount > 0)
+                        _countBadge(
+                          '${batch.isolationCount} ISO',
+                          const Color(0xFFD97706),
+                          const Color(0xFFFFFBEB),
+                        ),
+                      if (batch.initialCount -
+                              batch.currentCount -
+                              batch.isolationCount >
+                          0)
+                        _countBadge(
+                          '${batch.initialCount - batch.currentCount - batch.isolationCount} DEAD',
+                          const Color(0xFFB91C1C),
+                          const Color(0xFFFEF2F2),
+                        ),
+                    ],
+                  ),
+                ),
             ],
           ),
         ),
@@ -636,6 +635,24 @@ class _LivestockManagerState extends State<LivestockManager> {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _countBadge(String label, Color textColor, Color bgColor) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: textColor,
+          fontSize: 9,
+          fontWeight: FontWeight.w900,
+        ),
+      ),
     );
   }
 

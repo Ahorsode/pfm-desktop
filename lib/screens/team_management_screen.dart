@@ -14,6 +14,7 @@ import '../utils/user_role.dart';
 import '../data/sync_engine.dart';
 import '../utils/id_utils.dart';
 import '../services/team_provisioning_service.dart';
+import '../utils/team_seat_limit.dart';
 
 class TeamManagementScreen extends StatefulWidget {
   const TeamManagementScreen({super.key});
@@ -25,7 +26,15 @@ class TeamManagementScreen extends StatefulWidget {
 class _TeamManagementScreenState extends State<TeamManagementScreen>
     with SingleTickerProviderStateMixin {
   late AppDatabase db;
-  final _roles = ['OWNER', 'MANAGER', 'WORKER', 'ACCOUNTANT'];
+  final _roles = [
+    'OWNER',
+    'MANAGER',
+    'WORKER',
+    'CASHIER',
+    'ACCOUNTANT',
+    'FINANCE_OFFICER',
+  ];
+  static const _assignableRoles = assignableStaffRoles;
   final Map<String, String> _pendingRoleUpdates = {};
   StreamSubscription<List<Map<String, dynamic>>>? _profileRealtimeSub;
   late AnimationController _shimmerController;
@@ -203,6 +212,255 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
     }
   }
 
+  Future<Set<String>> _loadMemberPermissions(
+    String farmId,
+    String userId,
+  ) async {
+    try {
+      final row = await Supabase.instance.client
+          .from('user_permissions')
+          .select()
+          .eq('farm_id', farmId)
+          .eq('user_id', userId)
+          .maybeSingle();
+      if (row == null) {
+        return {};
+      }
+      final enabled = <String>{};
+      for (final definition in teamPermissionDefinitions) {
+        if (row[definition.key] == true) {
+          enabled.add(definition.key);
+        }
+      }
+      return enabled;
+    } catch (error) {
+      debugPrint('Unable to load member permissions: $error');
+      return {};
+    }
+  }
+
+  Future<void> _saveMemberPermissions({
+    required String farmId,
+    required String userId,
+    required Set<String> permissions,
+  }) async {
+    final payload = <String, dynamic>{
+      'id': 'perm_${farmId}_$userId',
+      'farm_id': farmId,
+      'user_id': userId,
+    };
+    for (final definition in teamPermissionDefinitions) {
+      payload[definition.key] = permissions.contains(definition.key);
+    }
+    await Supabase.instance.client.from('user_permissions').upsert(payload);
+    await _revokeRemoteUserSession(userId);
+  }
+
+  Future<void> _showInvitePermissionsDialog(Profile profile) async {
+    var selectedPermissions = decodePermissions(profile.customPermissionsJson);
+    if (selectedPermissions.isEmpty) {
+      selectedPermissions = defaultPermissionsForRole(profile.role).toList();
+    }
+
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Edit Permissions — ${profile.phoneNumber}'),
+        content: StatefulBuilder(
+          builder: (ctx, setState) => SizedBox(
+            width: 540,
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Role: ${formatRoleLabel(profile.role)}'),
+                  const SizedBox(height: 12),
+                  _PermissionGroup(
+                    title: 'View',
+                    permissions: teamPermissionDefinitions
+                        .where((it) => it.group == 'View')
+                        .toList(),
+                    selectedPermissions: selectedPermissions.toSet(),
+                    onChanged: (key, checked) {
+                      setState(() {
+                        selectedPermissions = applyPermissionToggle(
+                          selectedPermissions.toSet(),
+                          key,
+                          checked,
+                        ).toList();
+                      });
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  _PermissionGroup(
+                    title: 'Edit',
+                    permissions: teamPermissionDefinitions
+                        .where((it) => it.group == 'Edit')
+                        .toList(),
+                    selectedPermissions: selectedPermissions.toSet(),
+                    onChanged: (key, checked) {
+                      setState(() {
+                        selectedPermissions = applyPermissionToggle(
+                          selectedPermissions.toSet(),
+                          key,
+                          checked,
+                        ).toList();
+                      });
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              setState(() => _isApplying = true);
+              try {
+                await (db.update(db.profiles)
+                      ..where((p) => p.id.equals(profile.id)))
+                    .write(
+                  ProfilesCompanion(
+                    customPermissionsJson: drift.Value(
+                      encodePermissions(selectedPermissions),
+                    ),
+                    updatedAt: drift.Value(DateTime.now()),
+                    synced: const drift.Value(false),
+                  ),
+                );
+                await Supabase.instance.client.from('profiles').update({
+                  'customPermissionsJson': encodePermissions(selectedPermissions),
+                  'updatedAt': DateTime.now().toUtc().toIso8601String(),
+                }).eq('id', profile.id);
+                _showMessage('Invitation permissions updated.');
+              } catch (error) {
+                _showMessage('Unable to update permissions: $error', isError: true);
+              } finally {
+                if (mounted) setState(() => _isApplying = false);
+              }
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showMemberPermissionsDialog(
+    FarmMember member,
+    String role,
+  ) async {
+    final farmId = member.farmId;
+    var selectedPermissions = await _loadMemberPermissions(farmId, member.userId);
+    if (selectedPermissions.isEmpty) {
+      selectedPermissions = defaultPermissionsForRole(role);
+    }
+    var permissionsCustomized = selectedPermissions.isNotEmpty;
+
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Access Control — ${member.userId}'),
+        content: StatefulBuilder(
+          builder: (ctx, setState) => SizedBox(
+            width: 540,
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Role: ${formatRoleLabel(role)}'),
+                  const SizedBox(height: 12),
+                  _PermissionGroup(
+                    title: 'View',
+                    permissions: teamPermissionDefinitions
+                        .where((it) => it.group == 'View')
+                        .toList(),
+                    selectedPermissions: selectedPermissions,
+                    onChanged: (key, checked) {
+                      setState(() {
+                        permissionsCustomized = true;
+                        selectedPermissions = applyPermissionToggle(
+                          selectedPermissions,
+                          key,
+                          checked,
+                        );
+                      });
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  _PermissionGroup(
+                    title: 'Edit',
+                    permissions: teamPermissionDefinitions
+                        .where((it) => it.group == 'Edit')
+                        .toList(),
+                    selectedPermissions: selectedPermissions,
+                    onChanged: (key, checked) {
+                      setState(() {
+                        permissionsCustomized = true;
+                        selectedPermissions = applyPermissionToggle(
+                          selectedPermissions,
+                          key,
+                          checked,
+                        );
+                      });
+                    },
+                  ),
+                  TextButton.icon(
+                    onPressed: () {
+                      setState(() {
+                        permissionsCustomized = false;
+                        selectedPermissions = defaultPermissionsForRole(role);
+                      });
+                    },
+                    icon: const Icon(Icons.restore_rounded),
+                    label: Text(
+                      'Reset to ${formatRoleLabel(role)} defaults',
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              Navigator.of(ctx).pop();
+              setState(() => _isApplying = true);
+              try {
+                await _saveMemberPermissions(
+                  farmId: farmId,
+                  userId: member.userId,
+                  permissions: permissionsCustomized
+                      ? selectedPermissions
+                      : defaultPermissionsForRole(role),
+                );
+                _showMessage('Permissions updated and sessions revoked.');
+              } catch (error) {
+                _showMessage('Unable to save permissions: $error', isError: true);
+              } finally {
+                if (mounted) setState(() => _isApplying = false);
+              }
+            },
+            child: const Text('Save & Apply'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _showAddMemberDialog() async {
     final phoneCtrl = TextEditingController();
     String selectedRole = 'WORKER';
@@ -238,11 +496,11 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
                       Expanded(
                         child: DropdownButtonFormField<String>(
                           initialValue: selectedRole,
-                          items: const ['WORKER', 'MANAGER', 'ACCOUNTANT']
+                          items: _assignableRoles
                               .map(
                                 (role) => DropdownMenuItem(
                                   value: role,
-                                  child: Text(role),
+                                  child: Text(formatRoleLabel(role)),
                                 ),
                               )
                               .toList(),
@@ -287,14 +545,11 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
                               onChanged: (key, checked) {
                                 setState(() {
                                   permissionsCustomized = true;
-                                  selectedPermissions = {
-                                    ...selectedPermissions,
-                                  };
-                                  if (checked) {
-                                    selectedPermissions.add(key);
-                                  } else {
-                                    selectedPermissions.remove(key);
-                                  }
+                                  selectedPermissions = applyPermissionToggle(
+                                    selectedPermissions,
+                                    key,
+                                    checked,
+                                  );
                                 });
                               },
                             ),
@@ -308,14 +563,11 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
                               onChanged: (key, checked) {
                                 setState(() {
                                   permissionsCustomized = true;
-                                  selectedPermissions = {
-                                    ...selectedPermissions,
-                                  };
-                                  if (checked) {
-                                    selectedPermissions.add(key);
-                                  } else {
-                                    selectedPermissions.remove(key);
-                                  }
+                                  selectedPermissions = applyPermissionToggle(
+                                    selectedPermissions,
+                                    key,
+                                    checked,
+                                  );
                                 });
                               },
                             ),
@@ -616,13 +868,89 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
             if (!_isOwner) const SizedBox(height: 16),
 
             if (_canManage)
-              Align(
-                alignment: Alignment.centerRight,
-                child: FilledButton.icon(
-                  onPressed: _isApplying ? null : () => _showAddMemberDialog(),
-                  icon: const Icon(Icons.person_add_rounded),
-                  label: const Text('Add Member'),
-                ),
+              FutureBuilder<String?>(
+                future: _getFarmId(),
+                builder: (context, farmSnap) {
+                  final farmId = farmSnap.data;
+                  if (farmId == null || farmId.isEmpty) {
+                    return const SizedBox.shrink();
+                  }
+                  return FutureBuilder<SeatLimitCheck>(
+                    future: checkSeatLimit(db, farmId),
+                    builder: (context, limitSnap) {
+                      final limit = limitSnap.data;
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          if (limit != null) ...[
+                            Container(
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                color: cs.surfaceContainerHighest.withValues(alpha: 0.35),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: limit.canAdd
+                                      ? cs.primary.withValues(alpha: 0.2)
+                                      : Colors.redAccent.withValues(alpha: 0.3),
+                                ),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    '${limit.current} / ${limit.isUnlimited ? '∞' : limit.limit} seats used',
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w900,
+                                      fontSize: 16,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  ClipRRect(
+                                    borderRadius: BorderRadius.circular(999),
+                                    child: LinearProgressIndicator(
+                                      minHeight: 8,
+                                      value: limit.isUnlimited
+                                          ? null
+                                          : (limit.current / limit.limit)
+                                              .clamp(0.0, 1.0),
+                                      backgroundColor: cs.outline.withValues(alpha: 0.15),
+                                      color: limit.canAdd
+                                          ? const Color(0xFF16A34A)
+                                          : Colors.redAccent,
+                                    ),
+                                  ),
+                                  if (!limit.canAdd) ...[
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      'Seat limit reached. Upgrade to add more staff.',
+                                      style: TextStyle(
+                                        color: cs.error,
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                          ],
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: FilledButton.icon(
+                              onPressed: _isApplying ||
+                                      (limit != null && !limit.canAdd)
+                                  ? null
+                                  : () => _showAddMemberDialog(),
+                              icon: const Icon(Icons.person_add_rounded),
+                              label: const Text('Add Member'),
+                            ),
+                          ),
+                        ],
+                      );
+                    },
+                  );
+                },
               ),
             if (_canManage) const SizedBox(height: 12),
 
@@ -827,23 +1155,19 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
                                                       height: 32,
                                                       child: DropdownButton<String>(
                                                         value: selectedRole,
-                                                        items:
-                                                            [
-                                                                  'WORKER',
-                                                                  'MANAGER',
-                                                                  'ACCOUNTANT',
-                                                                ]
-                                                                .map(
-                                                                  (
+                                                        items: _assignableRoles
+                                                            .map(
+                                                              (r) =>
+                                                                  DropdownMenuItem(
+                                                                value: r,
+                                                                child: Text(
+                                                                  formatRoleLabel(
                                                                     r,
-                                                                  ) => DropdownMenuItem(
-                                                                    value: r,
-                                                                    child: Text(
-                                                                      r,
-                                                                    ),
                                                                   ),
-                                                                )
-                                                                .toList(),
+                                                                ),
+                                                              ),
+                                                            )
+                                                            .toList(),
                                                         onChanged: (newRole) {
                                                           if (newRole != null) {
                                                             setState(() {
@@ -866,6 +1190,22 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
                                                                 ),
                                                       child: const Text(
                                                         'Apply',
+                                                        style: TextStyle(
+                                                          fontSize: 11,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  if (_isOwner)
+                                                    OutlinedButton(
+                                                      onPressed: _isApplying
+                                                          ? null
+                                                          : () =>
+                                                                _showMemberPermissionsDialog(
+                                                                  member,
+                                                                  role,
+                                                                ),
+                                                      child: const Text(
+                                                        'Perms',
                                                         style: TextStyle(
                                                           fontSize: 11,
                                                         ),
@@ -994,16 +1334,42 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
                                               ),
                                             ),
                                             DataCell(
-                                              Text(
-                                                isPending
-                                                    ? 'Awaiting mobile setup'
-                                                    : 'Self-registered on mobile',
-                                                style: TextStyle(
-                                                  fontSize: 11,
-                                                  color: cs.onSurfaceVariant,
-                                                  fontStyle: FontStyle.italic,
-                                                ),
-                                              ),
+                                              isPending && _canManage
+                                                  ? Row(
+                                                      children: [
+                                                        OutlinedButton(
+                                                          onPressed: _isApplying
+                                                              ? null
+                                                              : () =>
+                                                                    _showInvitePermissionsDialog(
+                                                                      profile,
+                                                                    ),
+                                                          child: const Text(
+                                                            'Edit Permissions',
+                                                            style: TextStyle(fontSize: 11),
+                                                          ),
+                                                        ),
+                                                        const SizedBox(width: 8),
+                                                        Text(
+                                                          'Awaiting mobile setup',
+                                                          style: TextStyle(
+                                                            fontSize: 11,
+                                                            color: cs.onSurfaceVariant,
+                                                            fontStyle: FontStyle.italic,
+                                                          ),
+                                                        ),
+                                                      ],
+                                                    )
+                                                  : Text(
+                                                      isPending
+                                                          ? 'Awaiting mobile setup'
+                                                          : 'Self-registered on mobile',
+                                                      style: TextStyle(
+                                                        fontSize: 11,
+                                                        color: cs.onSurfaceVariant,
+                                                        fontStyle: FontStyle.italic,
+                                                      ),
+                                                    ),
                                             ),
                                           ],
                                         );

@@ -90,6 +90,8 @@ class _EggAnalyticsScreenState extends State<EggAnalyticsScreen> {
     final batchMap = {for (final b in batches) b.id: b};
     final totalBirds = batches.fold(0, (sum, b) => sum + b.currentCount);
     final totalEggs = periodEggs.fold(0, (sum, e) => sum + e.eggsCollected);
+    final totalUnusable = periodEggs.fold(0, (sum, e) => sum + e.unusableCount);
+    final collectionEvents = periodEggs.length;
 
     final daily = <DateTime, int>{};
     for (var i = 0; i < _periodDays; i++) {
@@ -130,6 +132,8 @@ class _EggAnalyticsScreenState extends State<EggAnalyticsScreen> {
       totalEggs: totalEggs,
       dailyAverage: totalEggs / _periodDays,
       efficiency: totalBirds == 0 ? 0 : totalEggs / totalBirds,
+      collectionEvents: collectionEvents,
+      totalUnusable: totalUnusable,
       bestDay: bestDay,
       daily: daily,
       topBatches: topBatches.take(3).toList(),
@@ -162,6 +166,11 @@ class _EggAnalyticsView extends StatelessWidget {
                 'Production Efficiency',
                 '${data.efficiency.toStringAsFixed(2)} eggs/bird',
                 Icons.speed_rounded,
+              ),
+              _MetricCard(
+                'Collection Events',
+                '${data.collectionEvents}',
+                Icons.event_note_rounded,
               ),
               _MetricCard(
                 'Best Day',
@@ -385,6 +394,8 @@ class _EggAnalytics {
   final int totalEggs;
   final double dailyAverage;
   final double efficiency;
+  final int collectionEvents;
+  final int totalUnusable;
   final MapEntry<DateTime, int>? bestDay;
   final Map<DateTime, int> daily;
   final List<_EggBatchRow> topBatches;
@@ -393,6 +404,8 @@ class _EggAnalytics {
     required this.totalEggs,
     required this.dailyAverage,
     required this.efficiency,
+    required this.collectionEvents,
+    required this.totalUnusable,
     required this.bestDay,
     required this.daily,
     required this.topBatches,
@@ -409,6 +422,8 @@ class _EggAnalytics {
       totalEggs: 0,
       dailyAverage: 0,
       efficiency: 0,
+      collectionEvents: 0,
+      totalUnusable: 0,
       bestDay: null,
       daily: daily,
       topBatches: const [],

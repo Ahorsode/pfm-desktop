@@ -142,6 +142,7 @@ class Inventory extends Table {
   TextColumn get unit => text()();
   TextColumn get category => text().nullable()();
   RealColumn get costPerUnit => real().nullable()();
+  TextColumn get usageType => text().nullable()();
   TextColumn get supplierId => text().nullable()();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
   DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
@@ -186,6 +187,10 @@ class EggProductions extends Table {
   IntColumn get eggsRemaining => integer().withDefault(const Constant(0))();
   RealColumn get cratesCollected => real().nullable()();
   TextColumn get qualityGrade => text().nullable()();
+  BoolColumn get isSorted => boolean().withDefault(const Constant(false))();
+  IntColumn get smallCount => integer().withDefault(const Constant(0))();
+  IntColumn get mediumCount => integer().withDefault(const Constant(0))();
+  IntColumn get largeCount => integer().withDefault(const Constant(0))();
   DateTimeColumn get logDate => dateTime()();
   TextColumn get userId => text().nullable()();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
@@ -208,6 +213,10 @@ class Mortalities extends Table {
   TextColumn get reason => text().nullable()();
   TextColumn get category => text().nullable()();
   TextColumn get subCategory => text().nullable()();
+  TextColumn get healthType =>
+      text().named('type').withDefault(const Constant('DEAD'))();
+  TextColumn get isolationRoomId =>
+      text().nullable().named('isolation_room_id')();
   DateTimeColumn get logDate => dateTime()();
   TextColumn get userId => text().nullable()();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
@@ -390,6 +399,9 @@ class VaccinationSchedules extends Table {
   DateTimeColumn get scheduledDate => dateTime()();
   TextColumn get status => text().withDefault(const Constant('PENDING'))();
   TextColumn get notes => text().nullable()();
+  RealColumn get quantity => real().withDefault(const Constant(1))();
+  TextColumn get usageType => text().nullable()();
+  TextColumn get unit => text().nullable()();
   TextColumn get farmId => text()();
   BoolColumn get synced => boolean().withDefault(const Constant(false))();
 
@@ -409,6 +421,27 @@ class MedicationSchedules extends Table {
   DateTimeColumn get scheduledDate => dateTime()();
   TextColumn get status => text().withDefault(const Constant('PENDING'))();
   TextColumn get notes => text().nullable()();
+  RealColumn get quantity => real().withDefault(const Constant(1))();
+  TextColumn get usageType => text().nullable()();
+  TextColumn get unit => text().nullable()();
+  TextColumn get farmId => text()();
+  BoolColumn get synced => boolean().withDefault(const Constant(false))();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+// 17b. Health Records
+@DataClassName('HealthRecord')
+class HealthRecords extends Table {
+  @override
+  String get tableName => 'health_records';
+
+  TextColumn get id => text()();
+  TextColumn get batchId => text().nullable()();
+  TextColumn get recordType => text().nullable()();
+  TextColumn get description => text().nullable()();
+  DateTimeColumn get recordDate => dateTime()();
   TextColumn get farmId => text()();
   BoolColumn get synced => boolean().withDefault(const Constant(false))();
 
@@ -579,6 +612,7 @@ LazyDatabase _openConnection() {
     FeedFormulations,
     VaccinationSchedules,
     MedicationSchedules,
+    HealthRecords,
     Sales,
     Expenses,
     Settlements,
@@ -596,12 +630,13 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 23;
+  int get schemaVersion => 27;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
     onCreate: (m) async {
       await m.createAll();
+      await _ensureSalesLedgerTables(m);
     },
     onUpgrade: (m, from, to) async {
       if (from < 15) {
@@ -670,8 +705,83 @@ class AppDatabase extends _$AppDatabase {
       if (from >= 17 && from < 23) {
         await m.addColumn(licenseConfigs, licenseConfigs.lastCloudCheckAt);
       }
+      if (from < 24) {
+        await m.addColumn(eggProductions, eggProductions.isSorted);
+        await m.addColumn(eggProductions, eggProductions.smallCount);
+        await m.addColumn(eggProductions, eggProductions.mediumCount);
+        await m.addColumn(eggProductions, eggProductions.largeCount);
+      }
+      if (from < 25) {
+        await m.addColumn(mortalities, mortalities.healthType);
+        await m.addColumn(mortalities, mortalities.isolationRoomId);
+        await m.database.customStatement('''
+          UPDATE mortality
+          SET type = 'SICK'
+          WHERE upper(category) = 'ISOLATION'
+        ''');
+        await m.database.customStatement('''
+          UPDATE mortality
+          SET type = 'DEAD'
+          WHERE type IS NULL OR trim(type) = ''
+        ''');
+      }
+      if (from < 26) {
+        await m.addColumn(inventory, inventory.usageType);
+        await m.addColumn(vaccinationSchedules, vaccinationSchedules.quantity);
+        await m.addColumn(vaccinationSchedules, vaccinationSchedules.usageType);
+        await m.addColumn(vaccinationSchedules, vaccinationSchedules.unit);
+        await m.addColumn(medicationSchedules, medicationSchedules.quantity);
+        await m.addColumn(medicationSchedules, medicationSchedules.usageType);
+        await m.addColumn(medicationSchedules, medicationSchedules.unit);
+        await m.createTable(healthRecords);
+      }
+      if (from < 27) {
+        await _ensureSalesLedgerTables(m);
+      }
     },
   );
+}
+
+Future<void> _ensureSalesLedgerTables(Migrator m) async {
+  await m.database.customStatement('''
+    CREATE TABLE IF NOT EXISTS sale_items (
+      id TEXT NOT NULL PRIMARY KEY,
+      sale_id TEXT NOT NULL,
+      description TEXT NOT NULL,
+      quantity INTEGER NOT NULL,
+      unit_price REAL NOT NULL,
+      total_price REAL NOT NULL,
+      farm_id TEXT NOT NULL,
+      inventory_id TEXT,
+      livestock_id TEXT,
+      synced INTEGER NOT NULL DEFAULT 0 CHECK (synced IN (0, 1))
+    )
+  ''');
+
+  await m.database.customStatement('''
+    CREATE TABLE IF NOT EXISTS financial_transactions (
+      id TEXT NOT NULL PRIMARY KEY,
+      farm_id TEXT NOT NULL,
+      user_id TEXT,
+      type TEXT NOT NULL,
+      category TEXT NOT NULL,
+      amount REAL NOT NULL,
+      payment_status TEXT NOT NULL,
+      payment_method TEXT,
+      reference_num TEXT,
+      transaction_date TEXT NOT NULL,
+      description TEXT,
+      customer_id TEXT,
+      deposit_amount REAL NOT NULL DEFAULT 0,
+      outstanding_credit REAL NOT NULL DEFAULT 0,
+      expense_outlay REAL NOT NULL DEFAULT 0,
+      is_deleted INTEGER NOT NULL DEFAULT 0,
+      settled_at TEXT,
+      created_at TEXT,
+      updated_at TEXT,
+      synced INTEGER NOT NULL DEFAULT 0 CHECK (synced IN (0, 1))
+    )
+  ''');
 }
 
 Future<void> _ensureProvisioningLocalTables(Migrator m) async {

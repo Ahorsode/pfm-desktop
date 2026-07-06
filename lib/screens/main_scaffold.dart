@@ -30,14 +30,19 @@ import 'egg_analytics_screen.dart';
 import 'feed_analytics_screen.dart';
 import 'sales_analytics_screen.dart';
 import 'user_profile_screen.dart';
+import 'trash_screen.dart';
 
 import 'mortality_screen.dart';
+import 'health_screen.dart';
 import 'quarantine_screen.dart';
 import 'feed_management_screen.dart';
 import '../widgets/app_sidebar.dart';
 import '../widgets/session_mode_badge.dart';
 import '../services/auth_service.dart';
 import '../utils/user_role.dart';
+import '../utils/worker_permissions_loader.dart';
+import '../utils/navigation_permissions.dart';
+import '../utils/staff_permission_defaults.dart';
 
 class MainScaffold extends StatefulWidget {
   final String role;
@@ -58,7 +63,7 @@ class MainScaffoldState extends State<MainScaffold> {
   Timer? _subscriptionCheckTimer;
   late final String _normalizedRole;
   late final List<Widget> _pages;
-  late final List<SidebarMenuSection> _sections;
+  List<SidebarMenuSection> _sections = const [];
 
   @override
   void initState() {
@@ -67,6 +72,7 @@ class MainScaffoldState extends State<MainScaffold> {
     final config = _buildRoleConfig(_normalizedRole);
     _pages = config.pages;
     _sections = config.sections;
+    _loadPermissionsAndFilterSections(config.sections);
     _subscriptionCheckTimer = Timer.periodic(
       const Duration(hours: 6),
       (_) => _checkSubscriptionInBackground(),
@@ -117,6 +123,54 @@ class MainScaffoldState extends State<MainScaffold> {
     } catch (e) {
       debugPrint('[Background] Subscription check failed: $e');
     }
+  }
+
+  Future<void> _loadPermissionsAndFilterSections(
+    List<SidebarMenuSection> baseSections,
+  ) async {
+    try {
+      final db = context.read<AppDatabase>();
+      final permissions = await loadWorkerPermissions(db);
+      if (!mounted) return;
+      setState(() {
+        _sections = _filterSections(baseSections, permissions);
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _sections = baseSections;
+      });
+    }
+  }
+
+  List<SidebarMenuSection> _filterSections(
+    List<SidebarMenuSection> sections,
+    Set<String> permissions,
+  ) {
+    return sections
+        .map((section) {
+          final items = section.items.where((item) {
+            if (item.label == 'Data Recovery') {
+              return _normalizedRole == UserRoleUtils.owner ||
+                  _normalizedRole == UserRoleUtils.manager;
+            }
+            if (item.label != 'Reports & Logs') {
+              return true;
+            }
+            return canShowNavigationItem(
+              name: 'Reports & Logs',
+              role: _normalizedRole == UserRoleUtils.owner
+                  ? 'OWNER'
+                  : widget.role,
+              roles: assignableStaffRoles,
+              permissions: permissions,
+            );
+          }).toList();
+          if (items.isEmpty) return null;
+          return SidebarMenuSection(title: section.title, items: items);
+        })
+        .whereType<SidebarMenuSection>()
+        .toList();
   }
 
   @override
@@ -338,6 +392,7 @@ _RoleDashboardConfig _buildRoleConfig(String role) {
       EggProductionScreen(),
       FeedManagementScreen(),
       MortalityScreen(),
+      HealthScreen(),
       ClimateScreen(),
       QuarantineScreen(),
       SalesScreen(),
@@ -352,6 +407,7 @@ _RoleDashboardConfig _buildRoleConfig(String role) {
       FeedAnalyticsScreen(),
       SalesAnalyticsScreen(),
       UserProfileScreen(),
+      TrashScreen(),
     ],
     sections: const [
       SidebarMenuSection(
@@ -390,11 +446,16 @@ _RoleDashboardConfig _buildRoleConfig(String role) {
           ),
           SidebarMenuItem(
             index: 7,
+            icon: Icons.health_and_safety_rounded,
+            label: 'Health',
+          ),
+          SidebarMenuItem(
+            index: 8,
             icon: Icons.thermostat_rounded,
             label: 'Climate',
           ),
           SidebarMenuItem(
-            index: 8,
+            index: 9,
             icon: Icons.health_and_safety_outlined,
             label: 'Quarantine',
           ),
@@ -404,27 +465,27 @@ _RoleDashboardConfig _buildRoleConfig(String role) {
         title: 'COMMERCIAL HUB',
         items: [
           SidebarMenuItem(
-            index: 9,
+            index: 10,
             icon: Icons.receipt_long_rounded,
             label: 'Sales',
           ),
           SidebarMenuItem(
-            index: 10,
+            index: 11,
             icon: Icons.people_alt_rounded,
             label: 'Customers',
           ),
           SidebarMenuItem(
-            index: 11,
+            index: 12,
             icon: Icons.local_shipping_rounded,
             label: 'Suppliers',
           ),
           SidebarMenuItem(
-            index: 12,
+            index: 13,
             icon: Icons.account_balance_wallet_rounded,
             label: 'Finance',
           ),
           SidebarMenuItem(
-            index: 13,
+            index: 14,
             icon: Icons.inventory_2_rounded,
             label: 'Inventory',
           ),
@@ -433,21 +494,26 @@ _RoleDashboardConfig _buildRoleConfig(String role) {
       SidebarMenuSection(
         title: 'GOVERNANCE',
         items: [
-          SidebarMenuItem(index: 14, icon: Icons.group_rounded, label: 'Team'),
+          SidebarMenuItem(index: 15, icon: Icons.group_rounded, label: 'Team'),
           SidebarMenuItem(
-            index: 15,
+            index: 16,
             icon: Icons.settings_rounded,
             label: 'Settings',
           ),
           SidebarMenuItem(
-            index: 16,
+            index: 17,
             icon: Icons.library_books_rounded,
             label: 'Reports & Logs',
           ),
           SidebarMenuItem(
-            index: 20,
+            index: 21,
             icon: Icons.account_circle_rounded,
             label: 'Profile',
+          ),
+          SidebarMenuItem(
+            index: 22,
+            icon: Icons.restore_from_trash_rounded,
+            label: 'Data Recovery',
           ),
         ],
       ),

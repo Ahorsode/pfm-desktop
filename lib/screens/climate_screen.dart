@@ -254,8 +254,14 @@ class _ClimateHouseCard extends StatelessWidget {
                     : '${humidity.toStringAsFixed(0)}%',
                 color: _humidityColor(humidity),
               ),
+              if (house.isIsolation)
+                _MetricBadge(
+                  icon: Icons.health_and_safety_rounded,
+                  label: 'Isolation',
+                  color: const Color(0xFFF59E0B),
+                ),
               _MetricBadge(
-                icon: Icons.health_and_safety_rounded,
+                icon: Icons.fact_check_rounded,
                 label: status.$1,
                 color: status.$2,
               ),

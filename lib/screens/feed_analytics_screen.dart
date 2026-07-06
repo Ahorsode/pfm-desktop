@@ -164,12 +164,12 @@ class _FeedAnalyticsView extends StatelessWidget {
             children: [
               _MetricCard(
                 'Total Feed Consumed',
-                '${data.totalFeed.toStringAsFixed(1)} kg',
+                '${data.totalFeed.toStringAsFixed(1)} bags',
                 Icons.restaurant_rounded,
               ),
               _MetricCard(
                 'Daily Average',
-                '${data.dailyAverage.toStringAsFixed(1)} kg/day',
+                '${data.dailyAverage.toStringAsFixed(1)} bags/day',
                 Icons.insights_rounded,
               ),
               _MetricCard(
@@ -214,7 +214,7 @@ class _FeedBatchTable extends StatelessWidget {
       child: DataTable(
         columns: const [
           DataColumn(label: Text('Batch')),
-          DataColumn(label: Text('Feed Consumed (kg)')),
+          DataColumn(label: Text('Feed Consumed (bags)')),
           DataColumn(label: Text('% of Total')),
         ],
         rows: rows

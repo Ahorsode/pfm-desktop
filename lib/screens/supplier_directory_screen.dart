@@ -198,8 +198,9 @@ class _SupplierDirectoryScreenState extends State<SupplierDirectoryScreen> {
                                 flex: 2,
                                 child: FilledButton(
                                   onPressed: () async {
-                                    if (!formKey.currentState!.validate())
+                                    if (!formKey.currentState!.validate()) {
                                       return;
+                                    }
                                     final companion = CustomersCompanion(
                                       id: Value(supplier?.id ?? newLocalId()),
                                       farmId: Value(farmId),

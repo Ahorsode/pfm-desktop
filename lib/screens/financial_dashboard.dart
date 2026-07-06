@@ -10,6 +10,7 @@ import '../data/sync_engine.dart';
 import '../services/auth_service.dart';
 import '../utils/farm_utils.dart';
 import '../utils/id_utils.dart';
+import '../services/finance_category_labels.dart';
 import '../widgets/app_sidebar.dart';
 import '../widgets/session_mode_badge.dart';
 import 'offline_terminal_login_screen.dart';
@@ -154,17 +155,8 @@ class _FinancialHomeState extends State<_FinancialHome> {
     symbol: 'GHS ',
     decimalDigits: 2,
   );
-  static const _expenseCategories = [
-    'Feed bag purchases',
-    'Medicines',
-    'Electricity bills',
-    'Worker payroll',
-  ];
-  static const _revenueSources = [
-    'Egg crate sales',
-    'Spent layer sales',
-    'Broiler processing batches',
-  ];
+  static const _expenseCategories = expenseEnumCategories;
+  static const _revenueSources = revenueCategories;
 
   final _expenseAmountController = TextEditingController();
   final _expenseDescriptionController = TextEditingController();
@@ -268,7 +260,9 @@ class _FinancialHomeState extends State<_FinancialHome> {
                                         .map(
                                           (category) => DropdownMenuItem(
                                             value: category,
-                                            child: Text(category),
+                                            child: Text(
+                                              expenseCategoryLabel(category),
+                                            ),
                                           ),
                                         )
                                         .toList(),
@@ -499,7 +493,7 @@ class _FinancialHomeState extends State<_FinancialHome> {
           type: 'Expense',
           description: expense.description?.trim().isNotEmpty == true
               ? expense.description!.trim()
-              : expense.category,
+              : expenseCategoryLabel(expense.category),
           amount: expense.amount,
           isRevenue: false,
         ),

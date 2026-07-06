@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:drift/drift.dart' hide Column;
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -11,6 +12,7 @@ import '../services/auth_service.dart';
 import '../services/session_mode_service.dart';
 import '../utils/farm_utils.dart';
 import '../utils/secure_auth_storage.dart';
+import '../utils/settings_profile_contract.dart';
 
 class UserProfileScreen extends StatefulWidget {
   const UserProfileScreen({super.key});
@@ -202,6 +204,127 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     });
   }
 
+  Future<void> _editProfile(_UserProfileData profile) async {
+    final firstNameController = TextEditingController(text: profile.firstName ?? '');
+    final surnameController = TextEditingController(text: profile.surname ?? '');
+    final emailController = TextEditingController(text: profile.email ?? '');
+    final phoneController = TextEditingController(text: profile.phoneNumber ?? '');
+
+    bool isValid() {
+      if (firstNameController.text.trim().isEmpty) return false;
+      if (surnameController.text.trim().isEmpty) return false;
+      final email = emailController.text.trim();
+      if (email.isNotEmpty &&
+          !RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(email)) {
+        return false;
+      }
+      final phone = phoneController.text.trim();
+      if (phone.isNotEmpty && phone.replaceAll(RegExp(r'\D'), '').length < 7) {
+        return false;
+      }
+      return true;
+    }
+
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Edit Profile'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: firstNameController,
+                  onChanged: (_) => setDialogState(() {}),
+                  decoration: const InputDecoration(labelText: 'First Name *'),
+                ),
+                TextField(
+                  controller: surnameController,
+                  onChanged: (_) => setDialogState(() {}),
+                  decoration: const InputDecoration(labelText: 'Last Name *'),
+                ),
+                TextField(
+                  controller: emailController,
+                  onChanged: (_) => setDialogState(() {}),
+                  decoration: const InputDecoration(labelText: 'Email (optional)'),
+                ),
+                TextField(
+                  controller: phoneController,
+                  onChanged: (_) => setDialogState(() {}),
+                  decoration: const InputDecoration(labelText: 'Phone (optional)'),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+            FilledButton(
+              onPressed: isValid() ? () => Navigator.pop(context, true) : null,
+              child: const Text('Save'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (saved != true || profile.userId.isEmpty) {
+      firstNameController.dispose();
+      surnameController.dispose();
+      emailController.dispose();
+      phoneController.dispose();
+      return;
+    }
+
+    final displayName = SettingsProfileContract.buildDisplayName(
+      firstName: firstNameController.text,
+      middleName: profile.middleName,
+      surname: surnameController.text,
+    );
+
+    final db = context.read<AppDatabase>();
+    await (db.update(db.users)..where((u) => u.id.equals(profile.userId))).write(
+      UsersCompanion(
+        firstname: Value(firstNameController.text.trim()),
+        surname: Value(surnameController.text.trim()),
+        email: Value(emailController.text.trim().isEmpty ? null : emailController.text.trim()),
+        phoneNumber: Value(phoneController.text.trim().isEmpty ? null : phoneController.text.trim()),
+        name: Value(displayName),
+        synced: const Value(false),
+        updatedAt: Value(DateTime.now()),
+      ),
+    );
+
+    try {
+      await supa.Supabase.instance.client.auth.updateUser(
+        supa.UserAttributes(
+          data: {
+            'firstName': firstNameController.text.trim(),
+            'lastName': surnameController.text.trim(),
+          },
+        ),
+      );
+      await supa.Supabase.instance.client.from('users').update({
+        'firstname': firstNameController.text.trim(),
+        'surname': surnameController.text.trim(),
+        'email': emailController.text.trim().isEmpty ? null : emailController.text.trim(),
+        'phoneNumber': phoneController.text.trim().isEmpty ? null : phoneController.text.trim(),
+        'name': displayName,
+        'updatedAt': DateTime.now().toUtc().toIso8601String(),
+      }).eq('id', profile.userId);
+    } catch (_) {}
+
+    firstNameController.dispose();
+    surnameController.dispose();
+    emailController.dispose();
+    phoneController.dispose();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Profile updated successfully.')),
+    );
+    _refresh();
+  }
+
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<_UserProfileData>(
@@ -225,7 +348,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _ProfileHeader(profile: profile, onRefresh: _refresh),
+                  _ProfileHeader(profile: profile, onRefresh: _refresh, onEdit: _editProfile),
                   const SizedBox(height: 22),
                   LayoutBuilder(
                     builder: (context, constraints) {
@@ -369,8 +492,13 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
 class _ProfileHeader extends StatelessWidget {
   final _UserProfileData profile;
   final VoidCallback onRefresh;
+  final Future<void> Function(_UserProfileData profile)? onEdit;
 
-  const _ProfileHeader({required this.profile, required this.onRefresh});
+  const _ProfileHeader({
+    required this.profile,
+    required this.onRefresh,
+    this.onEdit,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -430,6 +558,12 @@ class _ProfileHeader extends StatelessWidget {
                         icon: Icons.agriculture_rounded,
                         label: profile.farm!.name,
                       ),
+                    if (profile.membership?.joinedAt != null)
+                      _StatusPill(
+                        icon: Icons.calendar_month_rounded,
+                        label:
+                            'Member since ${DateFormat.yMMMM().format(profile.membership!.joinedAt)}',
+                      ),
                   ],
                 ),
               ],
@@ -440,6 +574,12 @@ class _ProfileHeader extends StatelessWidget {
             icon: const Icon(Icons.refresh_rounded),
             tooltip: 'Refresh profile',
           ),
+          if (onEdit != null)
+            IconButton.filledTonal(
+              onPressed: () => onEdit!(profile),
+              icon: const Icon(Icons.edit_rounded),
+              tooltip: 'Edit profile',
+            ),
         ],
       ),
     );

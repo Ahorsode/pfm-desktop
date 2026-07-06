@@ -7,7 +7,13 @@ import '../data/local_db.dart';
 import '../utils/farm_utils.dart';
 import '../utils/id_utils.dart';
 import '../utils/livestock_breed_options.dart';
+import '../utils/egg_log_utils.dart';
+import '../utils/inventory_sale_utils.dart';
 import 'egg_analytics_screen.dart';
+
+enum _EggStockFilter { active, soldOut, all }
+
+enum _EggHistoryTab { production, sales }
 
 class EggProductionScreen extends StatefulWidget {
   const EggProductionScreen({super.key});
@@ -18,6 +24,8 @@ class EggProductionScreen extends StatefulWidget {
 
 class _EggProductionScreenState extends State<EggProductionScreen> {
   late AppDatabase db;
+  _EggStockFilter _stockFilter = _EggStockFilter.active;
+  _EggHistoryTab _historyTab = _EggHistoryTab.production;
 
   @override
   void didChangeDependencies() {
@@ -381,6 +389,31 @@ class _EggProductionScreenState extends State<EggProductionScreen> {
                                 '$ageDays Days',
                                 isDark,
                               ),
+                              const SizedBox(height: 12),
+                              Align(
+                                alignment: Alignment.centerRight,
+                                child: ElevatedButton(
+                                  onPressed: () => _openLogProductionDialog(
+                                    isDark,
+                                    preselectedBatchId: f.id,
+                                  ),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: const Color(0xFF0D9488),
+                                    foregroundColor: Colors.white,
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 14,
+                                      vertical: 10,
+                                    ),
+                                  ),
+                                  child: const Text(
+                                    'Log Production',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                ),
+                              ),
                             ],
                           ),
                         );
@@ -441,257 +474,451 @@ class _EggProductionScreenState extends State<EggProductionScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            'PRODUCTION HISTORY',
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w900,
-              color: subColor,
-              letterSpacing: 1,
-            ),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'PRODUCTION & SALES HISTORY',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w900,
+                    color: subColor,
+                    letterSpacing: 1,
+                  ),
+                ),
+              ),
+              SegmentedButton<_EggHistoryTab>(
+                segments: const [
+                  ButtonSegment(
+                    value: _EggHistoryTab.production,
+                    label: Text('Production'),
+                  ),
+                  ButtonSegment(
+                    value: _EggHistoryTab.sales,
+                    label: Text('Sales'),
+                  ),
+                ],
+                selected: {_historyTab},
+                onSelectionChanged: (value) {
+                  setState(() => _historyTab = value.first);
+                },
+              ),
+            ],
           ),
+          if (_historyTab == _EggHistoryTab.production) ...[
+            const SizedBox(height: 16),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                FilterChip(
+                  label: const Text('In stock'),
+                  selected: _stockFilter == _EggStockFilter.active,
+                  onSelected: (_) {
+                    setState(() => _stockFilter = _EggStockFilter.active);
+                  },
+                ),
+                FilterChip(
+                  label: const Text('Sold out'),
+                  selected: _stockFilter == _EggStockFilter.soldOut,
+                  onSelected: (_) {
+                    setState(() => _stockFilter = _EggStockFilter.soldOut);
+                  },
+                ),
+                FilterChip(
+                  label: const Text('All'),
+                  selected: _stockFilter == _EggStockFilter.all,
+                  onSelected: (_) {
+                    setState(() => _stockFilter = _EggStockFilter.all);
+                  },
+                ),
+              ],
+            ),
+          ],
           const SizedBox(height: 20),
+          if (_historyTab == _EggHistoryTab.sales)
+            _buildEggSalesHistoryTable(isDark, textColor, subColor)
+          else
+            _buildEggProductionHistoryTable(isDark, textColor, subColor),
+        ],
+      ),
+    );
+  }
 
-          StreamBuilder<List<EggProduction>>(
-            stream: (db.select(
-              db.eggProductions,
-            )..orderBy([(t) => OrderingTerm.desc(t.logDate)])).watch(),
-            builder: (context, snapshot) {
-              final logs = snapshot.data ?? [];
+  String _stockFilterKey(_EggStockFilter filter) {
+    return switch (filter) {
+      _EggStockFilter.active => 'active',
+      _EggStockFilter.soldOut => 'sold_out',
+      _EggStockFilter.all => 'all',
+    };
+  }
 
-              if (logs.isEmpty) {
-                return Center(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 40.0),
-                    child: Column(
-                      children: [
-                        Icon(
-                          Icons.insert_chart_outlined_rounded,
-                          size: 36,
-                          color: subColor.withValues(alpha: 0.3),
-                        ),
-                        const SizedBox(height: 12),
-                        Text(
-                          'No egg logs registered yet.',
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                            color: subColor,
-                          ),
-                        ),
-                      ],
+  Widget _buildEggProductionHistoryTable(
+    bool isDark,
+    Color textColor,
+    Color subColor,
+  ) {
+    return StreamBuilder<List<EggProduction>>(
+      stream: (db.select(db.eggProductions)
+            ..orderBy([(t) => OrderingTerm.desc(t.logDate)]))
+          .watch(),
+      builder: (context, snapshot) {
+        final allLogs = snapshot.data ?? [];
+        final filterKey = _stockFilterKey(_stockFilter);
+        final logs = allLogs
+            .where((log) => matchesEggProductionStockFilter(log, filterKey))
+            .toList(growable: false);
+
+        if (logs.isEmpty) {
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 40.0),
+              child: Column(
+                children: [
+                  Icon(
+                    Icons.insert_chart_outlined_rounded,
+                    size: 36,
+                    color: subColor.withValues(alpha: 0.3),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    'No egg logs match this filter.',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: subColor,
                     ),
                   ),
-                );
-              }
+                ],
+              ),
+            ),
+          );
+        }
 
-              // Dynamic Batch lookups mapping id to name
-              return FutureBuilder<List<Batch>>(
-                future: db.select(db.batches).get(),
-                builder: (context, batchSnapshot) {
-                  final batches = batchSnapshot.data ?? [];
-                  final batchMap = {for (var b in batches) b.id: b.batchName};
+        var totalUsable = 0;
+        var totalRemaining = 0;
+        var totalSold = 0;
+        for (final log in logs) {
+          final usable = eggUsableCount(
+            collected: log.eggsCollected,
+            unusable: log.unusableCount,
+          );
+          totalUsable += usable;
+          totalRemaining += log.eggsRemaining;
+          totalSold += eggSoldCount(
+            collected: log.eggsCollected,
+            unusable: log.unusableCount,
+            remaining: log.eggsRemaining,
+          );
+        }
+        final activePct = totalUsable <= 0
+            ? 0
+            : ((totalRemaining / totalUsable) * 100).round();
+        final soldPct = totalUsable <= 0
+            ? 0
+            : ((totalSold / totalUsable) * 100).round();
 
-                  return LayoutBuilder(
-                    builder: (context, constraints) {
-                      return Scrollbar(
-                        thumbVisibility: true,
-                        child: SizedBox(
-                          height: constraints.maxHeight,
-                          child: SingleChildScrollView(
-                            scrollDirection: Axis.horizontal,
-                            child: ConstrainedBox(
-                              constraints: BoxConstraints(
-                                minHeight: constraints.maxHeight,
-                              ),
-                              child: DataTable(
-                                columnSpacing: 28,
-                                headingRowColor: WidgetStateProperty.all(
-                                  isDark
-                                      ? Colors.white.withValues(alpha: 0.02)
-                                      : const Color(0xFFF8FAFC),
-                                ),
-                                headingRowHeight: 46,
-                                dataRowMinHeight: 52,
-                                dataRowMaxHeight: 52,
-                                horizontalMargin: 12,
-                                columns: [
-                                  _buildTableColumn('DATE', isDark),
-                                  _buildTableColumn('LIVESTOCK', isDark),
-                                  _buildTableColumn('STATUS', isDark),
-                                  _buildTableColumn('SMALL', isDark),
-                                  _buildTableColumn('MEDIUM', isDark),
-                                  _buildTableColumn('LARGE', isDark),
-                                  _buildTableColumn('TOTAL', isDark),
-                                  _buildTableColumn('UNUSABLE', isDark),
-                                  _buildTableColumn('ACTION', isDark),
-                                ],
-                                rows: logs.map((log) {
-                                  final batchName =
-                                      batchMap[log.batchId] ??
-                                      'Flock #${log.batchId}';
+        return FutureBuilder<List<Batch>>(
+          future: db.select(db.batches).get(),
+          builder: (context, batchSnapshot) {
+            final batches = batchSnapshot.data ?? [];
+            final batchMap = {for (var b in batches) b.id: b.batchName};
 
-                                  // Parse grades
-                                  int s = 0, m = 0, l = 0;
-                                  final qGrade = log.qualityGrade;
-                                  if (qGrade != null && qGrade.contains('S:')) {
-                                    final parts = qGrade.split(',');
-                                    for (var part in parts) {
-                                      if (part.startsWith('S:')) {
-                                        s =
-                                            int.tryParse(part.substring(2)) ??
-                                            0;
-                                      }
-                                      if (part.startsWith('M:')) {
-                                        m =
-                                            int.tryParse(part.substring(2)) ??
-                                            0;
-                                      }
-                                      if (part.startsWith('L:')) {
-                                        l =
-                                            int.tryParse(part.substring(2)) ??
-                                            0;
-                                      }
-                                    }
-                                  }
-
-                                  // Synced indicator or status chip
-                                  final isSynced = log.synced;
-                                  final statusChipColor = isSynced
-                                      ? const Color(0xFF10B981)
-                                      : Colors.orange;
-
-                                  return DataRow(
-                                    cells: [
-                                      DataCell(
-                                        Text(
-                                          DateFormat(
-                                            'dd MMM yyyy',
-                                          ).format(log.logDate),
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            color: textColor,
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                        ),
-                                      ),
-                                      DataCell(
-                                        Text(
-                                          batchName,
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            color: textColor,
-                                            fontWeight: FontWeight.w800,
-                                          ),
-                                        ),
-                                      ),
-                                      DataCell(
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 8,
-                                            vertical: 4,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            color: statusChipColor.withValues(
-                                              alpha: 0.1,
-                                            ),
-                                            borderRadius: BorderRadius.circular(
-                                              12,
-                                            ),
-                                            border: Border.all(
-                                              color: statusChipColor.withValues(
-                                                alpha: 0.2,
-                                              ),
-                                            ),
-                                          ),
-                                          child: Text(
-                                            isSynced ? 'SYNCED' : 'OFFLINE',
-                                            style: TextStyle(
-                                              color: statusChipColor,
-                                              fontSize: 9,
-                                              fontWeight: FontWeight.w900,
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                      DataCell(
-                                        Text(
-                                          '$s',
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            color: textColor,
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                        ),
-                                      ),
-                                      DataCell(
-                                        Text(
-                                          '$m',
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            color: textColor,
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                        ),
-                                      ),
-                                      DataCell(
-                                        Text(
-                                          '$l',
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            color: textColor,
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                        ),
-                                      ),
-                                      DataCell(
-                                        Text(
-                                          '${log.eggsCollected}',
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            color: textColor,
-                                            fontWeight: FontWeight.w900,
-                                          ),
-                                        ),
-                                      ),
-                                      DataCell(
-                                        Text(
-                                          '${log.unusableCount}',
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            color: Colors.redAccent,
-                                            fontWeight: FontWeight.w900,
-                                          ),
-                                        ),
-                                      ),
-                                      DataCell(
-                                        IconButton(
-                                          icon: const Icon(
-                                            Icons.delete_outline_rounded,
-                                            color: Colors.redAccent,
-                                            size: 18,
-                                          ),
-                                          onPressed: () =>
-                                              _confirmDeleteLog(log.id),
-                                          tooltip: 'Delete log',
-                                        ),
-                                      ),
-                                    ],
-                                  );
-                                }).toList(),
-                              ),
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildFifoSummaryTile(
+                        isDark: isDark,
+                        label: 'Active stock',
+                        value: '$totalRemaining eggs',
+                        percent: '$activePct%',
+                        color: const Color(0xFF10B981),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _buildFifoSummaryTile(
+                        isDark: isDark,
+                        label: 'Sold',
+                        value: '$totalSold eggs',
+                        percent: '$soldPct%',
+                        color: const Color(0xFFF59E0B),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    return Scrollbar(
+                      thumbVisibility: true,
+                      child: SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: ConstrainedBox(
+                          constraints: BoxConstraints(
+                            minWidth: constraints.maxWidth,
+                          ),
+                          child: DataTable(
+                            columnSpacing: 24,
+                            headingRowColor: WidgetStateProperty.all(
+                              isDark
+                                  ? Colors.white.withValues(alpha: 0.02)
+                                  : const Color(0xFFF8FAFC),
                             ),
+                            headingRowHeight: 46,
+                            dataRowMinHeight: 52,
+                            dataRowMaxHeight: 52,
+                            horizontalMargin: 12,
+                            columns: [
+                              _buildTableColumn('DATE', isDark),
+                              _buildTableColumn('LIVESTOCK', isDark),
+                              _buildTableColumn('STATUS', isDark),
+                              _buildTableColumn('TOTAL', isDark),
+                              _buildTableColumn('REMAINING', isDark),
+                              _buildTableColumn('SOLD', isDark),
+                              _buildTableColumn('ACTIVE %', isDark),
+                              _buildTableColumn('SOLD %', isDark),
+                              _buildTableColumn('UNUSABLE', isDark),
+                              _buildTableColumn('ACTION', isDark),
+                            ],
+                            rows: logs.map((log) {
+                              final batchName =
+                                  batchMap[log.batchId] ??
+                                  'Flock #${log.batchId}';
+                              final sold = eggSoldCount(
+                                collected: log.eggsCollected,
+                                unusable: log.unusableCount,
+                                remaining: log.eggsRemaining,
+                              );
+                              final activePercent = eggActivePercent(
+                                collected: log.eggsCollected,
+                                unusable: log.unusableCount,
+                                remaining: log.eggsRemaining,
+                              );
+                              final soldPercent = eggSoldPercent(
+                                collected: log.eggsCollected,
+                                unusable: log.unusableCount,
+                                remaining: log.eggsRemaining,
+                              );
+                              final statusLabel =
+                                  log.isSorted ? 'SORTED' : 'UNSORTED';
+                              final statusColor = log.isSorted
+                                  ? const Color(0xFF10B981)
+                                  : const Color(0xFF64748B);
+
+                              return _buildHistoryRow(
+                                log: log,
+                                batchName: batchName,
+                                isDark: isDark,
+                                textColor: textColor,
+                                statusLabel: statusLabel,
+                                statusColor: statusColor,
+                                totalLabel: formatCrateDisplay(
+                                  log.eggsCollected,
+                                ),
+                                remainingLabel: '${log.eggsRemaining}',
+                                soldLabel: '$sold',
+                                activePercentLabel: '$activePercent%',
+                                soldPercentLabel: '$soldPercent%',
+                              );
+                            }).toList(),
                           ),
                         ),
-                      );
-                    },
-                  );
-                },
-              );
-            },
+                      ),
+                    );
+                  },
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildFifoSummaryTile({
+    required bool isDark,
+    required String label,
+    required String value,
+    required String percent,
+    required Color color,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: isDark ? 0.12 : 0.08),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: color.withValues(alpha: 0.25)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+              color: color,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w900,
+              color: isDark ? Colors.white : const Color(0xFF1E293B),
+            ),
+          ),
+          Text(
+            percent,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: color,
+            ),
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildEggSalesHistoryTable(
+    bool isDark,
+    Color textColor,
+    Color subColor,
+  ) {
+    return FutureBuilder<String?>(
+      future: FarmUtils.getBoundFarmId(),
+      builder: (context, farmSnapshot) {
+        final farmId = farmSnapshot.data;
+        if (farmId == null || farmId.isEmpty) {
+          return Center(
+            child: Text(
+              'Bind a farm to view egg sales history.',
+              style: TextStyle(color: subColor, fontWeight: FontWeight.w600),
+            ),
+          );
+        }
+
+        return FutureBuilder<List<QueryRow>>(
+          future: db.customSelect(
+            '''
+            SELECT si.quantity, si.unit_price, si.total_price, si.description,
+                   s.sale_date, i.item_name, i.unit
+            FROM sale_items si
+            INNER JOIN sales s ON s.id = si.sale_id
+            LEFT JOIN inventory i ON i.id = si.inventory_id
+            WHERE si.farm_id = ?
+              AND (
+                upper(coalesce(i.category, '')) = 'EGGS'
+                OR lower(coalesce(i.item_name, '')) LIKE '%egg%'
+                OR lower(coalesce(si.description, '')) LIKE '%egg%'
+              )
+            ORDER BY s.sale_date DESC
+            LIMIT 120
+            ''',
+            variables: [Variable.withString(farmId)],
+            readsFrom: {db.sales},
+          ).get(),
+          builder: (context, salesSnapshot) {
+            final rows = salesSnapshot.data ?? const [];
+            if (rows.isEmpty) {
+              return Center(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 40),
+                  child: Text(
+                    'No egg sales recorded yet.',
+                    style: TextStyle(
+                      color: subColor,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              );
+            }
+
+            return SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: DataTable(
+                columnSpacing: 24,
+                headingRowColor: WidgetStateProperty.all(
+                  isDark
+                      ? Colors.white.withValues(alpha: 0.02)
+                      : const Color(0xFFF8FAFC),
+                ),
+                columns: [
+                  _buildTableColumn('DATE', isDark),
+                  _buildTableColumn('ITEM', isDark),
+                  _buildTableColumn('QTY', isDark),
+                  _buildTableColumn('UNIT PRICE', isDark),
+                  _buildTableColumn('TOTAL', isDark),
+                ],
+                rows: rows.map((row) {
+                  final saleDate = row.read<DateTime>('sale_date');
+                  final itemName =
+                      row.readNullable<String>('item_name') ??
+                      row.read<String>('description');
+                  final unit = row.readNullable<String>('unit') ?? 'units';
+                  return DataRow(
+                    cells: [
+                      DataCell(
+                        Text(
+                          DateFormat('dd MMM yyyy').format(saleDate),
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: textColor,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                      DataCell(
+                        Text(
+                          itemName,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: textColor,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                      DataCell(
+                        Text(
+                          '${row.read<int>('quantity')} $unit',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: textColor,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                      DataCell(
+                        Text(
+                          row.read<double>('unit_price').toStringAsFixed(2),
+                          style: TextStyle(fontSize: 12, color: textColor),
+                        ),
+                      ),
+                      DataCell(
+                        Text(
+                          row.read<double>('total_price').toStringAsFixed(2),
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: textColor,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ),
+                    ],
+                  );
+                }).toList(),
+              ),
+            );
+          },
+        );
+      },
     );
   }
 
@@ -1044,11 +1271,158 @@ class _EggProductionScreenState extends State<EggProductionScreen> {
     );
   }
 
-  void _openLogProductionDialog(bool isDark) {
+  void _openLogProductionDialog(bool isDark, {String? preselectedBatchId}) {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => LogEggProductionDialog(db: db, isDark: isDark),
+      builder: (context) => LogEggProductionDialog(
+        db: db,
+        isDark: isDark,
+        preselectedBatchId: preselectedBatchId,
+      ),
+    );
+  }
+
+  DataRow _buildHistoryRow({
+    required EggProduction log,
+    required String batchName,
+    required bool isDark,
+    required Color textColor,
+    required String statusLabel,
+    required Color statusColor,
+    required String totalLabel,
+    required String remainingLabel,
+    required String soldLabel,
+    required String activePercentLabel,
+    required String soldPercentLabel,
+  }) {
+    final syncColor = log.synced ? const Color(0xFF10B981) : Colors.orange;
+    return DataRow(
+      cells: [
+        DataCell(
+          Text(
+            DateFormat('dd MMM yyyy').format(log.logDate),
+            style: TextStyle(
+              fontSize: 12,
+              color: textColor,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ),
+        DataCell(
+          Text(
+            batchName,
+            style: TextStyle(
+              fontSize: 12,
+              color: textColor,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ),
+        DataCell(
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: statusColor.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  statusLabel,
+                  style: TextStyle(
+                    color: statusColor,
+                    fontSize: 9,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                log.synced ? 'Synced' : 'Pending sync',
+                style: TextStyle(
+                  color: syncColor,
+                  fontSize: 9,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+        ),
+        DataCell(
+          Text(
+            totalLabel,
+            style: TextStyle(
+              fontSize: 12,
+              color: textColor,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ),
+        DataCell(
+          Text(
+            remainingLabel,
+            style: const TextStyle(
+              fontSize: 12,
+              color: Color(0xFF10B981),
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ),
+        DataCell(
+          Text(
+            soldLabel,
+            style: const TextStyle(
+              fontSize: 12,
+              color: Color(0xFFF59E0B),
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ),
+        DataCell(
+          Text(
+            activePercentLabel,
+            style: TextStyle(
+              fontSize: 12,
+              color: textColor,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+        DataCell(
+          Text(
+            soldPercentLabel,
+            style: TextStyle(
+              fontSize: 12,
+              color: textColor,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+        DataCell(
+          Text(
+            '${log.unusableCount}',
+            style: const TextStyle(
+              fontSize: 12,
+              color: Colors.redAccent,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ),
+        DataCell(
+          IconButton(
+            icon: const Icon(
+              Icons.delete_outline_rounded,
+              color: Colors.redAccent,
+              size: 18,
+            ),
+            onPressed: () => _confirmDeleteLog(log.id),
+            tooltip: 'Delete log',
+          ),
+        ),
+      ],
     );
   }
 }
@@ -1056,10 +1430,13 @@ class _EggProductionScreenState extends State<EggProductionScreen> {
 class LogEggProductionDialog extends StatefulWidget {
   final AppDatabase db;
   final bool isDark;
+  final String? preselectedBatchId;
+
   const LogEggProductionDialog({
     super.key,
     required this.db,
     required this.isDark,
+    this.preselectedBatchId,
   });
 
   @override
@@ -1083,12 +1460,13 @@ class _LogEggProductionDialogState extends State<LogEggProductionDialog> {
 
   final _unusableController = TextEditingController(text: '0');
 
-  String _selectedGeneralSize = 'Medium';
+  String _selectedGeneralSize = 'MEDIUM';
   DateTime _logDate = DateTime.now();
 
   @override
   void initState() {
     super.initState();
+    _selectedFlockId = widget.preselectedBatchId;
     _totalController.addListener(_updateState);
     _cratesController.addListener(_updateState);
     _remainderController.addListener(_updateState);
@@ -1119,15 +1497,12 @@ class _LogEggProductionDialogState extends State<LogEggProductionDialog> {
     setState(() {});
   }
 
-  int get _expectedTotal {
-    if (_isCratesMode) {
-      final crates = int.tryParse(_cratesController.text) ?? 0;
-      final remainder = int.tryParse(_remainderController.text) ?? 0;
-      return (crates * 30) + remainder;
-    } else {
-      return int.tryParse(_totalController.text) ?? 0;
-    }
-  }
+  int get _expectedTotal => calculateEggsCollected(
+    useCrates: _isCratesMode,
+    crates: int.tryParse(_cratesController.text) ?? 0,
+    remainder: int.tryParse(_remainderController.text) ?? 0,
+    individualTotal: int.tryParse(_totalController.text) ?? 0,
+  );
 
   int get _allocatedTotal {
     final s = int.tryParse(_smallController.text) ?? 0;
@@ -1135,6 +1510,15 @@ class _LogEggProductionDialogState extends State<LogEggProductionDialog> {
     final l = int.tryParse(_largeController.text) ?? 0;
     return s + m + l;
   }
+
+  String? get _validationError => validateEggLog(
+    eggsCollected: _expectedTotal,
+    unusableCount: int.tryParse(_unusableController.text) ?? 0,
+    isSorted: _isSorted,
+    smallCount: int.tryParse(_smallController.text) ?? 0,
+    mediumCount: int.tryParse(_mediumController.text) ?? 0,
+    largeCount: int.tryParse(_largeController.text) ?? 0,
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -1204,7 +1588,7 @@ class _LogEggProductionDialogState extends State<LogEggProductionDialog> {
                         return DropdownMenuItem<String>(
                           value: f.id,
                           child: Text(
-                            ' ( birds)',
+                            '${f.batchName} (${LivestockBreedCatalog.labelForKey(f.breedType)})',
                             style: TextStyle(color: textColor, fontSize: 14),
                           ),
                         );
@@ -1255,7 +1639,12 @@ class _LogEggProductionDialogState extends State<LogEggProductionDialog> {
                         label: 'UNSORTED',
                         isActive: !_isSorted,
                         activeColor: primaryColor,
-                        onTap: () => setState(() => _isSorted = false),
+                        onTap: () => setState(() {
+                          _isSorted = false;
+                          _smallController.text = '0';
+                          _mediumController.text = '0';
+                          _largeController.text = '0';
+                        }),
                       ),
                     ),
                     const SizedBox(width: 12),
@@ -1300,15 +1689,20 @@ class _LogEggProductionDialogState extends State<LogEggProductionDialog> {
                         ? const Color(0xFF161A1D)
                         : Colors.white,
                     initialValue: _selectedGeneralSize,
-                    items: ['Small', 'Medium', 'Large'].map((s) {
-                      return DropdownMenuItem<String>(
-                        value: s,
-                        child: Text(
-                          s,
-                          style: TextStyle(color: textColor, fontSize: 14),
-                        ),
-                      );
-                    }).toList(),
+                    items: [
+                      DropdownMenuItem(
+                        value: 'SMALL',
+                        child: Text('Small', style: TextStyle(color: textColor, fontSize: 14)),
+                      ),
+                      DropdownMenuItem(
+                        value: 'MEDIUM',
+                        child: Text('Medium', style: TextStyle(color: textColor, fontSize: 14)),
+                      ),
+                      DropdownMenuItem(
+                        value: 'LARGE',
+                        child: Text('Large', style: TextStyle(color: textColor, fontSize: 14)),
+                      ),
+                    ],
                     onChanged: (val) =>
                         setState(() => _selectedGeneralSize = val!),
                     decoration: _dialogInputDec(inputBg),
@@ -1329,11 +1723,11 @@ class _LogEggProductionDialogState extends State<LogEggProductionDialog> {
                           children: [
                             _buildLabel('SIZE DISTRIBUTION', primaryColor),
                             Text(
-                              'Allocated:  / ',
+                              'Allocated: $_allocatedTotal / $_expectedTotal',
                               style: TextStyle(
                                 fontSize: 11,
                                 fontWeight: FontWeight.bold,
-                                color: _allocatedTotal == _expectedTotal
+                                color: _allocatedTotal <= _expectedTotal
                                     ? primaryColor
                                     : Colors.redAccent,
                               ),
@@ -1587,55 +1981,44 @@ class _LogEggProductionDialogState extends State<LogEggProductionDialog> {
   void _submitForm() async {
     if (!_formKey.currentState!.validate()) return;
 
-    if (_isSorted && _allocatedTotal != _expectedTotal) {
+    final validationError = _validationError;
+    if (validationError != null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Allocated eggs () must equal total expected ()'),
-        ),
+        SnackBar(content: Text(validationError)),
       );
       return;
     }
 
-    int s = 0, m = 0, l = 0;
-
-    if (_isSorted) {
-      s = int.tryParse(_smallController.text) ?? 0;
-      m = int.tryParse(_mediumController.text) ?? 0;
-      l = int.tryParse(_largeController.text) ?? 0;
-    } else {
-      // If unsorted, assign all expected total to the selected general size
-      final total = _expectedTotal;
-      if (_selectedGeneralSize == 'Small') {
-        s = total;
-      } else if (_selectedGeneralSize == 'Medium')
-        m = total;
-      else
-        l = total;
-    }
-
     final totalCollected = _expectedTotal;
     final u = int.tryParse(_unusableController.text) ?? 0;
+    final s = _isSorted ? (int.tryParse(_smallController.text) ?? 0) : 0;
+    final m = _isSorted ? (int.tryParse(_mediumController.text) ?? 0) : 0;
+    final l = _isSorted ? (int.tryParse(_largeController.text) ?? 0) : 0;
+    final qualityGrade = _isSorted ? null : normalizeQualityGrade(_selectedGeneralSize);
+    final crates = int.tryParse(_cratesController.text) ?? 0;
 
     final navigator = Navigator.of(context);
     final messenger = ScaffoldMessenger.of(context);
 
     final farmId = await FarmUtils.getBoundFarmId();
     final workerId = await FarmUtils.getRequiredUserId();
-    if (farmId == null) return;
-
-    final serializedGrades = 'S:,M:,L:';
+    if (farmId == null || _selectedFlockId == null) return;
 
     try {
-      await widget.db
-          .into(widget.db.eggProductions)
-          .insert(
+      await widget.db.into(widget.db.eggProductions).insert(
             EggProductionsCompanion.insert(
               id: newLocalId(),
               farmId: farmId,
               batchId: _selectedFlockId!,
               eggsCollected: totalCollected,
               unusableCount: Value(u),
-              qualityGrade: Value(serializedGrades),
+              eggsRemaining: Value(totalCollected - u),
+              qualityGrade: Value(qualityGrade),
+              isSorted: Value(_isSorted),
+              smallCount: Value(s),
+              mediumCount: Value(m),
+              largeCount: Value(l),
+              cratesCollected: Value(_isCratesMode ? crates.toDouble() : null),
               logDate: _logDate,
               userId: Value(workerId),
               synced: const Value(false),
@@ -1655,7 +2038,7 @@ class _LogEggProductionDialogState extends State<LogEggProductionDialog> {
         ),
       );
     } catch (e) {
-      messenger.showSnackBar(SnackBar(content: Text('Error: ')));
+      messenger.showSnackBar(SnackBar(content: Text('Error: $e')));
     }
   }
 }

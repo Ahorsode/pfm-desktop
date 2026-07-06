@@ -8,6 +8,8 @@ import 'package:fl_chart/fl_chart.dart';
 import '../data/local_db.dart';
 import '../data/sync_engine.dart';
 import '../widgets/financial_init_dialog.dart';
+import '../widgets/finance_ledger_hub_panel.dart';
+import '../widgets/financial_init_wizard.dart';
 import '../utils/farm_utils.dart';
 import '../utils/id_utils.dart';
 import 'package:drift/drift.dart' hide Batch, Column;
@@ -35,86 +37,8 @@ class _FinancialControlScreenState extends State<FinancialControlScreen> {
   Future<void> _checkUninitializedBatches() async {
     if (_hasCheckedInit) return;
     _hasCheckedInit = true;
-    final batches = await db.select(db.batches).get();
-    final uninitialized = batches
-        .where((b) => b.initialActualCost == null)
-        .toList();
-    if (uninitialized.isNotEmpty && mounted) {
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (_) => AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-          ),
-          title: const Row(
-            children: [
-              Icon(
-                Icons.warning_amber_rounded,
-                color: Color(0xFFF59E0B),
-                size: 28,
-              ),
-              SizedBox(width: 12),
-              Text(
-                'Financial Setup Required',
-                style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18),
-              ),
-            ],
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'The following batches need initial cost data before financial reports can be accurate:',
-                style: TextStyle(fontSize: 13, color: Colors.grey),
-              ),
-              const SizedBox(height: 16),
-              ...uninitialized.map(
-                (b) => ListTile(
-                  dense: true,
-                  leading: const Icon(
-                    Icons.circle,
-                    size: 8,
-                    color: Color(0xFFF59E0B),
-                  ),
-                  title: Text(
-                    b.batchName,
-                    style: const TextStyle(fontWeight: FontWeight.w700),
-                  ),
-                  trailing: FilledButton(
-                    onPressed: () {
-                      Navigator.pop(context);
-                      showDialog(
-                        context: context,
-                        barrierDismissible: false,
-                        builder: (_) => FinancialInitDialog(batch: b),
-                      );
-                    },
-                    style: FilledButton.styleFrom(
-                      backgroundColor: const Color(0xFF16A34A),
-                    ),
-                    child: const Text(
-                      'Initialize',
-                      style: TextStyle(fontSize: 12),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text(
-                'REMIND ME LATER',
-                style: TextStyle(color: Colors.grey),
-              ),
-            ),
-          ],
-        ),
-      );
-    }
+    if (!mounted) return;
+    await FinancialInitWizard.promptIfNeeded(context);
   }
 
   @override
@@ -342,6 +266,8 @@ class _FinancialControlScreenState extends State<FinancialControlScreen> {
                                         ),
                                       ],
                                     ),
+                                    const SizedBox(height: 32),
+                                    const FinanceLedgerHubPanel(),
                                     const SizedBox(height: 32),
 
                                     if (!isNarrow)

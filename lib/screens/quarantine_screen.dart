@@ -7,6 +7,7 @@ import 'package:rxdart/rxdart.dart';
 import '../data/local_db.dart';
 import '../utils/farm_utils.dart';
 import '../utils/id_utils.dart';
+import '../utils/mortality_log_utils.dart';
 
 class CombinedQuarantineLog {
   final Mortality mortality;
@@ -88,7 +89,9 @@ class _QuarantineScreenState extends State<QuarantineScreen> {
 
   Stream<Map<String, int>> _getRoomOccupancyMap(AppDatabase db) {
     final batchesStream = (db.select(db.batches)..where((t) => t.status.equals('active') & t.isolationCount.isBiggerThanValue(0))).watch();
-    final mortalitiesStream = (db.select(db.mortalities)..where((t) => t.category.equals('ISOLATION'))).watch();
+    final mortalitiesStream = (db.select(db.mortalities)
+          ..where((t) => t.healthType.equals('SICK')))
+        .watch();
 
     return Rx.combineLatest2(
       batchesStream,
@@ -161,7 +164,7 @@ class _QuarantineScreenState extends State<QuarantineScreen> {
 
   Stream<List<CombinedQuarantineLog>> _getCombinedQuarantineLogs(AppDatabase db) {
     final mortalitiesStream = (db.select(db.mortalities)
-          ..where((t) => t.category.equals('ISOLATION'))
+          ..where((t) => t.healthType.equals('SICK'))
           ..orderBy([(t) => OrderingTerm(expression: t.logDate, mode: OrderingMode.desc)]))
         .watch();
     final batchesStream = db.select(db.batches).watch();
@@ -1150,7 +1153,9 @@ class _QuarantineScreenState extends State<QuarantineScreen> {
               batchId: batch.id,
               count: count,
               logDate: DateTime.now(),
-              category: const Value('MORTALITY'),
+              healthType: const Value('DEAD'),
+              category: const Value(isolationMortalityCategory),
+              subCategory: const Value(isolationMortalitySubCategory),
               reason: const Value('Died inside quarantine isolation room'),
               userId: Value(workerId),
               synced: const Value(false),
@@ -1423,9 +1428,11 @@ class _QuarantineScreenState extends State<QuarantineScreen> {
           batchId: batch.id,
           count: count,
           logDate: DateTime.now(),
-          category: const Value('ISOLATION'),
-          subCategory: Value(room.name),
+          healthType: const Value('SICK'),
+          category: const Value('Disease'),
+          subCategory: Value(reason.trim().isEmpty ? 'Unknown cause yet' : reason.trim()),
           reason: Value(reason),
+          isolationRoomId: Value(room.id),
           userId: Value(workerId),
           synced: const Value(false),
         ));
