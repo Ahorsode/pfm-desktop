@@ -1052,7 +1052,7 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
                                         MediaQuery.of(context).size.width - 64,
                                   ),
                                   child: DataTable(
-                                    headingRowColor: MaterialStateProperty.all(
+                                    headingRowColor: WidgetStateProperty.all(
                                       cs.primaryContainer.withOpacity(0.16),
                                     ),
                                     columns: const [
@@ -1231,7 +1231,7 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
                                             ),
                                           ],
                                         );
-                                      }).toList(),
+                                      }),
                                       // Provisioned profiles update in realtime from Supabase.
                                       ...profiles.map((profile) {
                                         final isPending =
@@ -1373,7 +1373,7 @@ class _TeamManagementScreenState extends State<TeamManagementScreen>
                                             ),
                                           ],
                                         );
-                                      }).toList(),
+                                      }),
                                     ],
                                   ),
                                 ),
@@ -1447,7 +1447,7 @@ class _TeamDirectoryShimmer extends StatelessWidget {
               padding: const EdgeInsets.only(bottom: 12),
               child: _ShimmerRow(
                 progress: animation.value,
-                baseColor: cs.surfaceVariant.withOpacity(0.34),
+                baseColor: cs.surfaceContainerHighest.withOpacity(0.34),
                 shineColor: cs.surface.withOpacity(0.82),
               ),
             ),

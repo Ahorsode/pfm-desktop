@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../data/local_db.dart';
 import '../data/sync_engine.dart';
 import '../widgets/register_unit_dialog.dart';
@@ -10,6 +11,8 @@ import '../utils/id_utils.dart';
 import '../utils/livestock_breed_options.dart';
 import '../utils/growth_utils.dart';
 import '../widgets/worker_stamp.dart';
+import '../widgets/financial_init_wizard.dart';
+import '../utils/worker_permissions_loader.dart';
 import 'comparative_analytics_screen.dart';
 
 class LivestockManager extends StatefulWidget {
@@ -21,8 +24,32 @@ class LivestockManager extends StatefulWidget {
 
 class _LivestockManagerState extends State<LivestockManager> {
   String _selectedFilter = 'All';
+  String _lifecycleFilter = 'Active';
+  bool _canEditBatches = true;
+  bool _checkedFinancialInit = false;
   final ScrollController _horizontalController = ScrollController();
   final ScrollController _verticalController = ScrollController();
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      final db = context.read<AppDatabase>();
+      final permissions = await loadWorkerPermissions(db);
+      if (!mounted) return;
+      final role = (await SharedPreferences.getInstance()).getString('user_role');
+      final normalized = (role ?? 'OWNER').toUpperCase();
+      setState(() {
+        _canEditBatches = normalized == 'OWNER' ||
+            normalized == 'MANAGER' ||
+            permissions.contains('can_edit_batches');
+      });
+      if (!_checkedFinancialInit && mounted) {
+        _checkedFinancialInit = true;
+        await FinancialInitWizard.promptIfNeeded(context);
+      }
+    });
+  }
 
   @override
   void dispose() {
@@ -54,7 +81,11 @@ class _LivestockManagerState extends State<LivestockManager> {
                     children: [
                       // Filter chips
                       _buildFilterRow(cs),
-                      const SizedBox(height: 20),
+                      const SizedBox(height: 12),
+                      _buildLifecycleRow(cs),
+                      const SizedBox(height: 12),
+                      _buildMissingCostBanner(db, cs),
+                      const SizedBox(height: 12),
 
                       // Table
                       Expanded(child: _buildTableCard(db, cs, isCompact)),
@@ -185,7 +216,9 @@ class _LivestockManagerState extends State<LivestockManager> {
               ),
               const SizedBox(width: 12),
               FilledButton.icon(
-                onPressed: () => _showAddBatchDialog(context, db),
+                onPressed: _canEditBatches
+                    ? () => _showAddBatchDialog(context, db)
+                    : null,
                 icon: const Icon(Icons.add_rounded, size: 18),
                 label: Text(
                   isCompact ? 'ADD' : 'ADD UNIT',
@@ -210,6 +243,77 @@ class _LivestockManagerState extends State<LivestockManager> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildLifecycleRow(ColorScheme cs) {
+    const filters = ['Active', 'Inactive', 'All'];
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: filters.map((f) {
+          final selected = _lifecycleFilter == f;
+          return Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: ChoiceChip(
+              label: Text(f),
+              selected: selected,
+              onSelected: (_) => setState(() => _lifecycleFilter = f),
+              selectedColor: const Color(0xFF10B981),
+              labelStyle: TextStyle(
+                fontWeight: FontWeight.w700,
+                color: selected ? Colors.white : cs.onSurfaceVariant,
+              ),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  Widget _buildMissingCostBanner(AppDatabase db, ColorScheme cs) {
+    return StreamBuilder<List<Batch>>(
+      stream: (db.select(db.batches)..where((t) => t.status.equals('active')))
+          .watch(),
+      builder: (context, snapshot) {
+        final missing = (snapshot.data ?? [])
+            .where((batch) => (batch.initialActualCost ?? 0) <= 0)
+            .toList();
+        if (missing.isEmpty) return const SizedBox.shrink();
+
+        return Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: const Color(0xFFFEF3C7),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: const Color(0xFFF59E0B).withValues(alpha: 0.4)),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.warning_amber_rounded, color: Color(0xFFB45309)),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  '${missing.length} active batch(es) are missing initial cost. Accurate profit reporting requires financial setup.',
+                  style: TextStyle(
+                    color: cs.onSurface,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 12,
+                  ),
+                ),
+              ),
+              if (_canEditBatches)
+                TextButton(
+                  onPressed: () async {
+                    await FinancialInitWizard.promptIfNeeded(context);
+                  },
+                  child: const Text('Set up now'),
+                ),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -387,18 +491,33 @@ class _LivestockManagerState extends State<LivestockManager> {
   }
 
   List<Batch> _applyFilter(List<Batch> batches) {
-    if (_selectedFilter == 'All') return batches;
-    return batches.where((b) {
-      final type = b.type.toUpperCase();
-      return switch (_selectedFilter) {
-        'Poultry' => type.startsWith('POULTRY'),
-        'Cattle' => type == 'CATTLE',
-        'Pig' => type == 'PIG',
-        'Sheep' => type == 'SHEEP_GOAT',
-        'Other' => type == 'OTHER',
-        _ => true,
-      };
-    }).toList();
+    Iterable<Batch> filtered = batches;
+
+    filtered = switch (_lifecycleFilter) {
+      'Active' => filtered.where(
+          (b) => b.status.toLowerCase() == 'active',
+        ),
+      'Inactive' => filtered.where(
+          (b) => b.status.toLowerCase() != 'active',
+        ),
+      _ => filtered,
+    };
+
+    if (_selectedFilter != 'All') {
+      filtered = filtered.where((b) {
+        final type = b.type.toUpperCase();
+        return switch (_selectedFilter) {
+          'Poultry' => type.startsWith('POULTRY'),
+          'Cattle' => type == 'CATTLE',
+          'Pig' => type == 'PIG',
+          'Sheep' => type == 'SHEEP_GOAT',
+          'Other' => type == 'OTHER',
+          _ => true,
+        };
+      });
+    }
+
+    return filtered.toList();
   }
 
   DataColumn _col(String label) {
@@ -490,30 +609,21 @@ class _LivestockManagerState extends State<LivestockManager> {
         ),
         // Worker Stamps
         DataCell(
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const WorkerStamp(
-                color: Colors.blue,
-                fullName: 'System Supervisor',
-                position: 'System Officer',
-              ),
-              const SizedBox(width: 4),
-              const WorkerStamp(
-                color: Colors.orange,
-                fullName: 'Veterinary Specialist',
-                position: 'Veterinarian',
-              ),
-              if (batch.currentCount < 100) ...[
-                const SizedBox(width: 4),
-                const WorkerStamp(
-                  color: Colors.red,
-                  fullName: 'Farm Operations Manager',
-                  position: 'Manager',
+          batch.userId == null || batch.userId!.isEmpty
+              ? Text(
+                  '—',
+                  style: TextStyle(
+                    color: cs.onSurfaceVariant.withValues(alpha: 0.5),
+                    fontSize: 12,
+                  ),
+                )
+              : WorkerStamp(
+                  color: const Color(0xFF3B82F6),
+                  fullName: 'Batch Operator',
+                  position: batch.userId!.length > 8
+                      ? batch.userId!.substring(0, 8)
+                      : batch.userId!,
                 ),
-              ],
-            ],
-          ),
         ),
         DataCell(
           Column(
@@ -613,24 +723,26 @@ class _LivestockManagerState extends State<LivestockManager> {
                 },
               ),
               const SizedBox(width: 8),
-              _iconAction(
-                Icons.edit_outlined,
-                const Color(0xFF3B82F6),
-                'Edit',
-                onTap: () {
-                  showDialog(
-                    context: context,
-                    builder: (c) => EditBatchDialog(batch: batch),
-                  );
-                },
-              ),
-              const SizedBox(width: 8),
-              _iconAction(
-                Icons.delete_outline_rounded,
-                const Color(0xFF94A3B8),
-                'Delete',
-                onTap: () => _confirmDelete(batch, db),
-              ),
+              if (_canEditBatches) ...[
+                _iconAction(
+                  Icons.edit_outlined,
+                  const Color(0xFF3B82F6),
+                  'Edit',
+                  onTap: () {
+                    showDialog(
+                      context: context,
+                      builder: (c) => EditBatchDialog(batch: batch),
+                    );
+                  },
+                ),
+                const SizedBox(width: 8),
+                _iconAction(
+                  Icons.delete_outline_rounded,
+                  const Color(0xFF94A3B8),
+                  'Delete',
+                  onTap: () => _confirmDelete(batch, db),
+                ),
+              ],
             ],
           ),
         ),

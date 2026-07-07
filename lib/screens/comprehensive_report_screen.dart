@@ -14,7 +14,14 @@ import '../utils/worker_permissions_loader.dart';
 import 'report_log_screen.dart';
 
 class ComprehensiveReportScreen extends StatefulWidget {
-  const ComprehensiveReportScreen({super.key});
+  const ComprehensiveReportScreen({
+    super.key,
+    this.focusBatchId,
+    this.focusBatchName,
+  });
+
+  final String? focusBatchId;
+  final String? focusBatchName;
 
   @override
   State<ComprehensiveReportScreen> createState() =>
@@ -353,7 +360,24 @@ class _ReportView extends StatelessWidget {
         const SizedBox(height: 18),
         _LedgerTrendCard(trends: report.dailyTrends),
         const SizedBox(height: 18),
-        _BatchTable(rows: report.batches),
+        _BatchTable(
+          rows: widget.focusBatchId == null
+              ? report.batches
+              : report.batches
+                  .where((row) => row.id == widget.focusBatchId)
+                  .toList(),
+          highlightBatchId: widget.focusBatchId,
+        ),
+        if (widget.focusBatchName != null) ...[
+          const SizedBox(height: 8),
+          Text(
+            'Focused on ${widget.focusBatchName}',
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.primary,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
         const SizedBox(height: 18),
         _FinancialLedgerTable(rows: report.financials, currency: money),
       ],
@@ -522,8 +546,9 @@ class _BreakdownCard extends StatelessWidget {
 
 class _BatchTable extends StatelessWidget {
   final List<ReportBatchRow> rows;
+  final String? highlightBatchId;
 
-  const _BatchTable({required this.rows});
+  const _BatchTable({required this.rows, this.highlightBatchId});
 
   @override
   Widget build(BuildContext context) {

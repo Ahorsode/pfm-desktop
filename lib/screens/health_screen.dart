@@ -118,7 +118,7 @@ class _HealthScreenState extends State<HealthScreen> {
                         )
                       : ListView.separated(
                           itemCount: filtered.length,
-                          separatorBuilder: (_, __) => const Divider(height: 1),
+                          separatorBuilder: (_, _) => const Divider(height: 1),
                           itemBuilder: (context, index) {
                             final row = filtered[index];
                             return _ScheduleTile(
@@ -266,7 +266,7 @@ class _ScheduleTile extends StatelessWidget {
                 ),
                 const SizedBox(height: 8),
                 DropdownButtonFormField<String>(
-                  value: inventoryId,
+                  initialValue: inventoryId,
                   decoration: const InputDecoration(
                     labelText: 'Inventory item',
                     border: OutlineInputBorder(),
@@ -613,7 +613,7 @@ class _CreateScheduleDialogState extends State<_CreateScheduleDialog> {
                       .where((b) => b.status.toUpperCase() == 'ACTIVE')
                       .toList();
                   return DropdownButtonFormField<String>(
-                    value: _batchId,
+                    initialValue: _batchId,
                     decoration: const InputDecoration(labelText: 'Batch'),
                     items: batches
                         .map(
@@ -628,7 +628,7 @@ class _CreateScheduleDialogState extends State<_CreateScheduleDialog> {
                 },
               ),
               DropdownButtonFormField<String>(
-                value: _namePreset,
+                initialValue: _namePreset,
                 decoration: InputDecoration(
                   labelText: _kind == HealthScheduleKind.vaccination
                       ? 'Vaccine'
@@ -650,7 +650,7 @@ class _CreateScheduleDialogState extends State<_CreateScheduleDialog> {
                   onChanged: (value) => _customName = value,
                 ),
               DropdownButtonFormField<HealthUsageType>(
-                value: _usageType,
+                initialValue: _usageType,
                 decoration: const InputDecoration(labelText: 'Usage type'),
                 items: const [
                   DropdownMenuItem(
@@ -693,7 +693,7 @@ class _CreateScheduleDialogState extends State<_CreateScheduleDialog> {
                   const SizedBox(width: 12),
                   Expanded(
                     child: DropdownButtonFormField<String>(
-                      value: _unit,
+                      initialValue: _unit,
                       decoration: const InputDecoration(labelText: 'Unit'),
                       items: healthUnitOptions
                           .map(

@@ -308,8 +308,14 @@ class _BatchAnalyticsRail extends StatelessWidget {
               children: [
                 IconButton(
                   tooltip: 'Back to Livestock',
-                  onPressed: () =>
-                      MainScaffold.of(context)?.setSelectedIndex(1),
+                  onPressed: () {
+                    final navigator = Navigator.of(context);
+                    if (navigator.canPop()) {
+                      navigator.pop();
+                      return;
+                    }
+                    MainScaffold.of(context)?.setSelectedIndex(1);
+                  },
                   icon: const Icon(Icons.arrow_back_rounded),
                 ),
                 const SizedBox(width: 8),

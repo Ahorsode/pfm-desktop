@@ -1,4 +1,3 @@
-import 'mortality_reasons.dart';
 
 export 'mortality_reasons.dart' show mortalityReasons;
 

@@ -7,9 +7,11 @@ import '../data/local_db.dart';
 import '../utils/farm_utils.dart';
 import '../utils/id_utils.dart';
 import '../utils/livestock_breed_options.dart';
-import '../utils/mortality_reasons.dart';
 import '../utils/mortality_log_utils.dart';
 import '../data/sync_engine.dart';
+import '../features/sales/sale_line_draft.dart';
+import '../services/local_sales_service.dart';
+import '../utils/user_role.dart';
 
 const _addHouseSentinel = '__add_new_house__';
 
@@ -788,7 +790,41 @@ class _QuickSaleDialogState extends State<QuickSaleDialog> {
   Customer? _selectedCustomer;
   bool _isWalkIn = true;
   DateTime _saleDate = DateTime.now();
+  bool _canOverridePrice = false;
+  bool _isSaving = false;
 
+  @override
+  void initState() {
+    super.initState();
+    _setDefaultPrice();
+    _loadRole();
+  }
+
+  Future<void> _loadRole() async {
+    final role = await FarmUtils.getUserRole();
+    final normalized = UserRoleUtils.normalize(role);
+    if (!mounted) return;
+    setState(() {
+      _canOverridePrice =
+          normalized == UserRoleUtils.owner ||
+          normalized == UserRoleUtils.manager;
+    });
+  }
+
+  void _setDefaultPrice() {
+    final initial = widget.batch.initialActualCost ?? 0;
+    final count = widget.batch.initialCount;
+    if (initial > 0 && count > 0) {
+      _priceController.text = (initial / count).toStringAsFixed(2);
+    }
+  }
+
+  @override
+  void dispose() {
+    _qtyController.dispose();
+    _priceController.dispose();
+    super.dispose();
+  }
   @override
   Widget build(BuildContext context) {
     final db = context.watch<AppDatabase>();
@@ -860,6 +896,7 @@ class _QuickSaleDialogState extends State<QuickSaleDialog> {
                           RegExp(r'^\d*\.?\d*'),
                         ),
                       ],
+                      readOnly: !_canOverridePrice,
                       style: const TextStyle(color: Colors.white),
                       decoration: _inputDecoration(
                         'Price (GH₵)',
@@ -898,11 +935,11 @@ class _QuickSaleDialogState extends State<QuickSaleDialog> {
           child: const Text('CANCEL', style: TextStyle(color: Colors.grey)),
         ),
         FilledButton(
-          onPressed: _submit,
+          onPressed: _isSaving ? null : _submit,
           style: FilledButton.styleFrom(
             backgroundColor: const Color(0xFF10B981),
           ),
-          child: const Text('COMPLETE SALE'),
+          child: Text(_isSaving ? 'SAVING...' : 'COMPLETE SALE'),
         ),
       ],
     );
@@ -1065,7 +1102,7 @@ class _QuickSaleDialogState extends State<QuickSaleDialog> {
   }
 
   Future<void> _submit() async {
-    if (!_formKey.currentState!.validate()) return;
+    if (!_formKey.currentState!.validate() || _isSaving) return;
 
     final qty = int.parse(_qtyController.text);
     final price = double.parse(_priceController.text);
@@ -1076,55 +1113,46 @@ class _QuickSaleDialogState extends State<QuickSaleDialog> {
     final workerId = await FarmUtils.getRequiredUserId();
     if (farmId == null) return;
 
+    setState(() => _isSaving = true);
     try {
-      await db.transaction(() async {
-        // 1. Record Sale
-        await db
-            .into(db.sales)
-            .insert(
-              SalesCompanion.insert(
-                id: newLocalId(),
-                farmId: farmId,
-                batchId: Value(widget.batch.id),
-                customerId: Value(_selectedCustomer?.id),
-                quantity: qty,
-                unitPrice: price,
-                totalAmount: total,
-                saleDate: Value(_saleDate),
-                userId: Value(workerId),
-                synced: const Value(false),
-              ),
-            );
-
-        // 2. Update Batch Count
-        await (db.update(
-          db.batches,
-        )..where((t) => t.id.equals(widget.batch.id))).write(
-          BatchesCompanion(
-            currentCount: Value(widget.batch.currentCount - qty),
-            synced: const Value(false),
+      final salesService = LocalSalesService(db);
+      final isCredit = !_isWalkIn && _selectedCustomer != null;
+      await salesService.recordMultiLineSale(
+        farmId: farmId,
+        userId: workerId,
+        items: [
+          SaleLineDraft(
+            productType: SaleProductType.livestock,
+            description: widget.batch.batchName,
+            quantity: qty,
+            unitPrice: price,
+            livestockId: widget.batch.id,
           ),
+        ],
+        orderDate: _saleDate,
+        totalCashReceived: isCredit ? 0 : total,
+        customerId: isCredit ? _selectedCustomer!.id : null,
+        customerName: isCredit ? _selectedCustomer!.name : 'Walk-in Customer',
+        paymentMethod: isCredit ? 'CREDIT' : 'CASH',
+        requireExactCashTotal: !isCredit,
+        completeNow: true,
+      );
+
+      if (mounted) {
+        Navigator.pop(context, true);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Sale recorded successfully')),
         );
-
-        // 3. Update Customer Balance if credit
-        if (!_isWalkIn && _selectedCustomer != null) {
-          await (db.update(
-            db.customers,
-          )..where((t) => t.id.equals(_selectedCustomer!.id))).write(
-            CustomersCompanion(
-              balanceOwed: Value((_selectedCustomer!.balanceOwed) + total),
-              synced: const Value(false),
-            ),
-          );
-        }
-      });
-
-      if (mounted) Navigator.pop(context);
+      }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Error: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isSaving = false);
       }
     }
   }

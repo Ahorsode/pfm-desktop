@@ -1,14 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:drift/drift.dart' hide Column, Batch;
 import 'package:provider/provider.dart';
+
 import '../data/local_db.dart';
+import '../models/batch_deep_dive_models.dart';
+import '../services/batch_deep_dive_service.dart';
+import '../services/batch_log_entries_service.dart';
 import '../utils/farm_utils.dart';
-import '../utils/growth_utils.dart';
-import '../utils/livestock_breed_options.dart';
-import '../utils/mortality_log_utils.dart';
-import '../widgets/batch_actions_dialogs.dart';
-import 'package:fl_chart/fl_chart.dart';
+import '../widgets/batch_finance_breakdown_panel.dart';
+import '../widgets/batch_health_schedule_panel.dart';
+import '../widgets/batch_logs_history_dialog.dart';
+import '../widgets/batch_quick_log_panel.dart';
+import '../widgets/batch_trend_charts.dart';
+import 'comprehensive_report_screen.dart';
 
 class BatchDetailsScreen extends StatefulWidget {
   final Batch batch;
@@ -19,130 +23,227 @@ class BatchDetailsScreen extends StatefulWidget {
 }
 
 class _BatchDetailsScreenState extends State<BatchDetailsScreen> {
-  late AppDatabase db;
-  List<WeightRecord> _weightRecords = [];
-  int _totalMortality = 0;
-  double _totalFeed = 0.0;
-  double _totalSales = 0.0;
-  double _fcr = 0.0;
-  double _mortalityRate = 0.0;
-  GrowthPerformance? _growthPerformance;
-  bool _showFinancials = false;
+  BatchDeepDivePayload? _payload;
+  List<BatchLogEntry> _entries = const [];
+  bool _loading = true;
+  String? _farmId;
 
   @override
   void initState() {
     super.initState();
-    db = Provider.of<AppDatabase>(context, listen: false);
-    _loadData();
+    _reload();
   }
 
-  Future<void> _loadData() async {
-    final mortality = await (db.select(
-      db.mortalities,
-    )..where((t) => t.batchId.equals(widget.batch.id))).get();
-    final feeding = await (db.select(
-      db.feedingLogs,
-    )..where((t) => t.batchId.equals(widget.batch.id))).get();
-    final weights =
-        await (db.select(db.weightRecords)
-              ..where((t) => t.batchId.equals(widget.batch.id))
-              ..orderBy([(t) => OrderingTerm.desc(t.logDate)]))
-            .get();
-    final sales = await (db.select(
-      db.sales,
-    )..where((t) => t.batchId.equals(widget.batch.id))).get();
-    final canView = await FarmUtils.canViewFinancials();
+  Future<void> _reload() async {
+    final farmId = await FarmUtils.getBoundFarmId();
+    if (farmId == null || !mounted) return;
 
-    final deadCount = mortality
-        .where(
-          (m) => isDeadMortalityRecord(
-            healthType: m.healthType,
-            category: m.category,
+    final db = context.read<AppDatabase>();
+    final payload = await BatchDeepDiveService(db).load(widget.batch.id, farmId);
+    if (!mounted) return;
+
+    final entries = payload == null
+        ? const <BatchLogEntry>[]
+        : BatchLogEntriesService.buildBatchLogEntries(
+            logs: payload.logs,
+            expenseBreakdown: payload.finance.result?.expenseBreakdown ?? const [],
+            canViewFinance: payload.finance.canViewFinance,
+          );
+
+    setState(() {
+      _farmId = farmId;
+      _payload = payload;
+      _entries = entries;
+      _loading = false;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final payload = _payload;
+    final currency = NumberFormat.currency(symbol: 'GH₵ ', decimalDigits: 2);
+
+    return Scaffold(
+      backgroundColor: cs.surface,
+      appBar: AppBar(
+        title: Text(widget.batch.batchName),
+        actions: [
+          IconButton(
+            tooltip: 'Generate report',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => ComprehensiveReportScreen(
+                    focusBatchId: widget.batch.id,
+                    focusBatchName: widget.batch.batchName,
+                  ),
+                ),
+              );
+            },
+            icon: const Icon(Icons.description_outlined),
           ),
-        )
-        .fold(0, (sum, m) => sum + m.count);
-    final totalFeed = feeding.fold(0.0, (sum, f) => sum + f.amountConsumed);
-    final latestWeight =
-        weights.isNotEmpty ? weights.first.averageWeight : 0.0;
-    final fcr = latestWeight > 0 && widget.batch.currentCount > 0
-        ? totalFeed / (widget.batch.currentCount * latestWeight)
-        : 0.0;
-    final mortalityRate = widget.batch.initialCount > 0
-        ? (deadCount / widget.batch.initialCount) * 100
-        : 0.0;
-    final growth = latestWeight > 0
-        ? calculateGrowthPerformance(
-            hatchDate: widget.batch.arrivalDate,
-            currentWeight: latestWeight,
-          )
-        : null;
-
-    if (mounted) {
-      setState(() {
-        _totalMortality = deadCount;
-        _totalFeed = totalFeed;
-        _weightRecords = weights.reversed.toList();
-        _totalSales = sales.fold(0.0, (sum, s) => sum + s.totalAmount);
-        _fcr = fcr;
-        _mortalityRate = mortalityRate;
-        _growthPerformance = growth;
-        _showFinancials = canView;
-      });
-    }
+          if (payload != null)
+            TextButton.icon(
+              onPressed: () => showDialog<void>(
+                context: context,
+                builder: (_) => BatchLogsHistoryDialog(
+                  entries: _entries,
+                  canViewFinance: payload.finance.canViewFinance,
+                ),
+              ),
+              icon: const Icon(Icons.history),
+              label: const Text('Logs'),
+            ),
+          const SizedBox(width: 8),
+        ],
+      ),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : payload == null || _farmId == null
+          ? const Center(child: Text('Unable to load batch details'))
+          : RefreshIndicator(
+              onRefresh: _reload,
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final isNarrow = constraints.maxWidth < 980;
+                  return SingleChildScrollView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: EdgeInsets.all(isNarrow ? 16 : 24),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        BatchQuickLogPanel(
+                          batch: widget.batch,
+                          payload: payload,
+                          farmId: _farmId!,
+                          onChanged: _reload,
+                        ),
+                        const SizedBox(height: 20),
+                        _buildOperationalMetrics(payload),
+                        if (payload.finance.canViewFinance &&
+                            payload.finance.result != null) ...[
+                          const SizedBox(height: 16),
+                          _buildFinanceMetrics(payload.finance.result!, currency),
+                        ],
+                        const SizedBox(height: 20),
+                        if (isNarrow) ...[
+                          BatchTrendCharts(payload: payload),
+                          const SizedBox(height: 16),
+                          _buildActivityTimeline(),
+                          const SizedBox(height: 16),
+                          _buildSidebar(payload),
+                        ] else
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(
+                                flex: 3,
+                                child: Column(
+                                  children: [
+                                    BatchTrendCharts(payload: payload),
+                                    const SizedBox(height: 16),
+                                    _buildActivityTimeline(),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 20),
+                              Expanded(
+                                flex: 2,
+                                child: _buildSidebar(payload),
+                              ),
+                            ],
+                          ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+    );
   }
 
+  Widget _buildOperationalMetrics(BatchDeepDivePayload payload) {
+    final metrics = payload.metrics;
+    final batch = payload.batch;
+    final stockSubtext = batch.isolationCount > 0
+        ? '${batch.isolationCount} in isolation'
+        : 'from ${NumberFormat('#,###').format(batch.initialCount)}';
 
-  Widget _buildMetricsRow(bool isNarrow) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final cards = [
-      _metricCard(
-        'Feed Conversion (FCR)',
-        _fcr > 0 ? _fcr.toStringAsFixed(2) : '---',
-        '${_totalFeed.toStringAsFixed(0)} bags fed',
-        Icons.show_chart,
-        const Color(0xFFF59E0B),
-        isDark,
-      ),
-      _metricCard(
-        'Mortality Rate',
-        '${_mortalityRate.toStringAsFixed(1)}%',
-        '$_totalMortality total deaths',
-        Icons.coronavirus_outlined,
-        const Color(0xFFEF4444),
-        isDark,
-      ),
-      if (_growthPerformance != null)
-        _metricCard(
-          'Growth Progress',
-          '${_growthPerformance!.weightPerformance.toStringAsFixed(0)}%',
-          'Target ${_growthPerformance!.targetWeight.toStringAsFixed(2)} kg',
-          Icons.trending_up,
-          _growthPerformance!.status == GrowthStatus.critical
-              ? const Color(0xFFEF4444)
-              : _growthPerformance!.status == GrowthStatus.deviated
-              ? const Color(0xFFF59E0B)
-              : const Color(0xFF10B981),
-          isDark,
-        ),
-    ];
-
-    if (isNarrow) {
-      return Column(
-        children: [
-          for (var i = 0; i < cards.length; i++) ...[
-            if (i > 0) const SizedBox(height: 12),
-            cards[i],
-          ],
-        ],
-      );
-    }
-
-    return Row(
+    return Wrap(
+      spacing: 12,
+      runSpacing: 12,
       children: [
-        for (var i = 0; i < cards.length; i++) ...[
-          if (i > 0) const SizedBox(width: 16),
-          Expanded(child: cards[i]),
-        ],
+        _metricCard(
+          'Current Age',
+          '${metrics.ageInDays} Days',
+          'Arrived ${DateFormat.yMMMd().format(batch.arrivalDate)}',
+          Icons.calendar_today_outlined,
+          const Color(0xFF10B981),
+        ),
+        _metricCard(
+          'Feed Conversion (FCR)',
+          metrics.fcr > 0 ? metrics.fcr.toStringAsFixed(2) : '---',
+          '${metrics.totalFeed.toStringAsFixed(0)} bags fed',
+          Icons.show_chart,
+          const Color(0xFFF59E0B),
+        ),
+        _metricCard(
+          'Mortality Rate',
+          '${metrics.mortalityRate.toStringAsFixed(1)}%',
+          '${metrics.totalMortality} total deaths',
+          Icons.coronavirus_outlined,
+          const Color(0xFFEF4444),
+        ),
+        _metricCard(
+          'Current Stock',
+          NumberFormat('#,###').format(batch.currentCount),
+          stockSubtext,
+          Icons.inventory_2_outlined,
+          const Color(0xFF3B82F6),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildFinanceMetrics(BatchFinanceResult finance, NumberFormat currency) {
+    final expenseSubtext = [
+      if (finance.initialInvestment > 0)
+        '${currency.format(finance.initialInvestment)} initial',
+      if (finance.consumptionAllocatedTotal > 0)
+        '${currency.format(finance.consumptionAllocatedTotal)} feed & med',
+      if (finance.generalAllocatedTotal > 0)
+        '${finance.headcountSharePct.toStringAsFixed(0)}% general',
+    ].join(' · ');
+
+    return Wrap(
+      spacing: 12,
+      runSpacing: 12,
+      children: [
+        _metricCard(
+          'Total Revenue',
+          currency.format(finance.totalRevenue),
+          'From sales',
+          Icons.account_balance_wallet_outlined,
+          const Color(0xFF0EA5E9),
+        ),
+        _metricCard(
+          'Total Expenses',
+          currency.format(finance.totalExpenses),
+          expenseSubtext.isEmpty ? 'Operating costs' : expenseSubtext,
+          Icons.payments_outlined,
+          const Color(0xFFFB923C),
+        ),
+        _metricCard(
+          'Net Profit',
+          currency.format(finance.netProfit),
+          finance.netProfit >= 0 ? 'In profit' : 'In loss',
+          finance.netProfit >= 0 ? Icons.trending_up : Icons.trending_down,
+          finance.netProfit >= 0
+              ? const Color(0xFF10B981)
+              : const Color(0xFFEF4444),
+        ),
       ],
     );
   }
@@ -153,686 +254,210 @@ class _BatchDetailsScreenState extends State<BatchDetailsScreen> {
     String subtext,
     IconData icon,
     Color color,
-    bool isDark,
   ) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1A1D21) : Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: isDark
-              ? Colors.white.withValues(alpha: 0.05)
-              : Colors.black.withValues(alpha: 0.05),
-        ),
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(icon, color: color, size: 20),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: TextStyle(
-                    color: isDark ? Colors.grey : Colors.grey.shade600,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                Text(
-                  value,
-                  style: TextStyle(
-                    color: isDark ? Colors.white : const Color(0xFF1E293B),
-                    fontWeight: FontWeight.w900,
-                    fontSize: 18,
-                  ),
-                ),
-                Text(
-                  subtext,
-                  style: TextStyle(
-                    color: isDark ? Colors.white54 : Colors.grey.shade600,
-                    fontSize: 10,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final age = DateTime.now().difference(widget.batch.arrivalDate).inDays;
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-
-    return Scaffold(
-      backgroundColor: isDark
-          ? const Color(0xFF0F1113)
-          : const Color(0xFFF1F5F9),
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        iconTheme: IconThemeData(
-          color: isDark ? Colors.white : const Color(0xFF1E293B),
-        ),
-        title: Text(
-          widget.batch.batchName,
-          style: TextStyle(
-            fontWeight: FontWeight.w900,
-            color: isDark ? Colors.white : const Color(0xFF1E293B),
-          ),
-        ),
-        actions: [
-          _buildStatusChip(widget.batch.status),
-          const SizedBox(width: 16),
-        ],
-      ),
-      body: LayoutBuilder(
-        builder: (context, constraints) {
-          final isNarrow = constraints.maxWidth < 850;
-          return SingleChildScrollView(
-            padding: EdgeInsets.all(isNarrow ? 16 : 24),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _buildHeroHeader(age, isNarrow),
-                const SizedBox(height: 16),
-                _buildMetricsRow(isNarrow),
-                const SizedBox(height: 16),
-                _buildActionButtons(),
-                const SizedBox(height: 24),
-                if (isNarrow) ...[
-                  _buildMainStats(isNarrow),
-                  const SizedBox(height: 24),
-                  _buildSideInfo(isNarrow),
-                ] else
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(flex: 3, child: _buildMainStats(isNarrow)),
-                      const SizedBox(width: 24),
-                      Expanded(flex: 2, child: _buildSideInfo(isNarrow)),
-                    ],
-                  ),
-                const SizedBox(height: 24),
-                _buildActivitySection(),
-              ],
-            ),
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _buildStatusChip(String status) {
-    final color = status == 'active' ? const Color(0xFF10B981) : Colors.orange;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: color.withValues(alpha: 0.3)),
-      ),
-      child: Text(
-        status.toUpperCase(),
-        style: TextStyle(
-          color: color,
-          fontSize: 10,
-          fontWeight: FontWeight.w900,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildHeroHeader(int age, bool isNarrow) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    if (isNarrow) {
-      return Container(
-        padding: const EdgeInsets.all(20),
+    final cs = Theme.of(context).colorScheme;
+    return SizedBox(
+      width: 220,
+      child: Container(
+        padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: isDark ? const Color(0xFF1A1D21) : Colors.white,
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(
-            color: isDark
-                ? Colors.white.withValues(alpha: 0.05)
-                : Colors.black.withValues(alpha: 0.05),
-          ),
-          boxShadow: isDark
-              ? []
-              : [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.02),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
+          color: cs.surfaceContainerLowest,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.3)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(icon, color: color, size: 20),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      color: cs.onSurfaceVariant,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  Text(
+                    value,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w900,
+                      fontSize: 18,
+                    ),
+                  ),
+                  Text(
+                    subtext,
+                    style: TextStyle(
+                      color: cs.onSurfaceVariant,
+                      fontSize: 10,
+                    ),
                   ),
                 ],
-        ),
-        child: Wrap(
-          spacing: 16,
-          runSpacing: 16,
-          children: [
-            SizedBox(
-              width: 150,
-              child: _heroStat(
-                'Stock',
-                '${widget.batch.currentCount}',
-                Icons.inventory_2_outlined,
-              ),
-            ),
-            SizedBox(
-              width: 150,
-              child: _heroStat(
-                'Age',
-                '$age Days',
-                Icons.calendar_today_outlined,
-              ),
-            ),
-            SizedBox(
-              width: 150,
-              child: _heroStat(
-                'Initial',
-                '${widget.batch.initialCount}',
-                Icons.add_circle_outline,
-              ),
-            ),
-            SizedBox(
-              width: 150,
-              child: _heroStat(
-                'Breed',
-                LivestockBreedCatalog.labelForKey(widget.batch.breedType),
-                Icons.pets_outlined,
               ),
             ),
           ],
         ),
-      );
-    }
-    return Container(
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1A1D21) : Colors.white,
-        gradient: LinearGradient(
-          colors: [
-            const Color(0xFF10B981).withValues(alpha: isDark ? 0.2 : 0.1),
-            isDark ? Colors.transparent : Colors.white,
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(
-          color: isDark
-              ? Colors.white.withValues(alpha: 0.05)
-              : Colors.black.withValues(alpha: 0.05),
-        ),
-        boxShadow: isDark
-            ? []
-            : [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.02),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: _heroStat(
-              'Current Stock',
-              '${widget.batch.currentCount}',
-              Icons.inventory_2_outlined,
-            ),
-          ),
-          _divider(),
-          Expanded(
-            child: _heroStat('Age', '$age Days', Icons.calendar_today_outlined),
-          ),
-          _divider(),
-          Expanded(
-            child: _heroStat(
-              'Initial Count',
-              '${widget.batch.initialCount}',
-              Icons.add_circle_outline,
-            ),
-          ),
-          _divider(),
-          Expanded(
-            child: _heroStat(
-              'Breed',
-              LivestockBreedCatalog.labelForKey(widget.batch.breedType),
-              Icons.pets_outlined,
-            ),
-          ),
-        ],
       ),
     );
   }
 
-  Widget _heroStat(String label, String value, IconData icon) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+  Widget _buildSidebar(BatchDeepDivePayload payload) {
     return Column(
       children: [
-        Icon(
-          icon,
-          color: isDark ? Colors.grey : Colors.grey.shade600,
-          size: 20,
+        BatchHealthSchedulePanel(
+          batchId: widget.batch.id,
+          farmId: _farmId!,
+          vaccinations: payload.logs.vaccinations,
+          medications: payload.logs.medications,
+          canEdit: payload.forms.canEditHealth,
+          onChanged: _reload,
         ),
-        const SizedBox(height: 8),
-        Text(
-          label,
-          style: TextStyle(
-            color: isDark ? Colors.grey : Colors.grey.shade600,
-            fontSize: 11,
-          ),
+        const SizedBox(height: 16),
+        if (payload.finance.canViewFinance && payload.finance.result != null)
+          BatchFinanceBreakdownPanel(finance: payload.finance.result!),
+        if (payload.finance.canViewFinance && payload.finance.result != null)
+          const SizedBox(height: 16),
+        BatchMetadataPanel(
+          batch: payload.batch,
+          finance: payload.finance.result,
         ),
-        Text(
-          value,
-          style: TextStyle(
-            color: isDark ? Colors.white : const Color(0xFF1E293B),
-            fontSize: 18,
-            fontWeight: FontWeight.w900,
-          ),
-        ),
+        const SizedBox(height: 16),
+        _buildRecentOperations(),
       ],
     );
   }
 
-  Widget _divider() => Container(width: 1, height: 40, color: Colors.white12);
+  Widget _buildActivityTimeline() {
+    final cs = Theme.of(context).colorScheme;
+    final recent = _entries.take(12).toList();
 
-  Widget _buildActionButtons() {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Row(
-        children: [
-          _actionBtn(
-            'Record Mortality',
-            Icons.coronavirus_outlined,
-            Colors.red,
-            () {
-              showDialog(
-                context: context,
-                builder: (_) => MortalityDialog(batch: widget.batch),
-              ).then((_) => _loadData());
-            },
-          ),
-          const SizedBox(width: 12),
-          _actionBtn(
-            'Quick Sale',
-            Icons.point_of_sale_outlined,
-            Colors.green,
-            () {
-              showDialog(
-                context: context,
-                builder: (_) => QuickSaleDialog(batch: widget.batch),
-              ).then((_) => _loadData());
-            },
-          ),
-          const SizedBox(width: 12),
-          _actionBtn('Edit Batch', Icons.edit_outlined, Colors.orange, () {
-            showDialog(
-              context: context,
-              builder: (_) => EditBatchDialog(batch: widget.batch),
-            ).then((_) => _loadData());
-          }),
-        ],
-      ),
-    );
-  }
-
-  Widget _actionBtn(
-    String label,
-    IconData icon,
-    Color color,
-    VoidCallback onTap,
-  ) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: color.withValues(alpha: 0.2)),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, color: color, size: 18),
-              const SizedBox(width: 8),
-              Text(
-                label,
-                style: TextStyle(
-                  color: isDark ? Colors.white : color.withValues(alpha: 0.9),
-                  fontWeight: FontWeight.bold,
-                  fontSize: 13,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildMainStats(bool isNarrow) {
-    return Column(
-      children: [
-        _buildChartCard('Growth vs Benchmark', Icons.show_chart, isNarrow),
-        const SizedBox(height: 24),
-        _buildLogTable(),
-      ],
-    );
-  }
-
-  Widget _buildChartCard(String title, IconData icon, bool isNarrow) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
-      height: 300,
-      padding: EdgeInsets.all(isNarrow ? 16 : 24),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1A1D21) : Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(
-          color: isDark
-              ? Colors.white.withValues(alpha: 0.05)
-              : Colors.black.withValues(alpha: 0.05),
-        ),
-        boxShadow: isDark
-            ? []
-            : [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.02),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4),
-                ),
-              ],
+        color: cs.surfaceContainerLowest,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.3)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Icon(icon, color: const Color(0xFF10B981), size: 20),
-              const SizedBox(width: 8),
-              Text(
-                title,
-                style: TextStyle(
-                  color: isDark ? Colors.white : const Color(0xFF1E293B),
-                  fontWeight: FontWeight.bold,
+          const Text(
+            'Activity Timeline',
+            style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16),
+          ),
+          const SizedBox(height: 12),
+          if (recent.isEmpty)
+            Text(
+              'No activity yet',
+              style: TextStyle(color: cs.onSurfaceVariant),
+            )
+          else
+            ...recent.map(
+              (entry) => ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: CircleAvatar(
+                  radius: 16,
+                  backgroundColor: _colorFor(entry.type).withValues(alpha: 0.12),
+                  child: Icon(
+                    _iconFor(entry.type),
+                    size: 16,
+                    color: _colorFor(entry.type),
+                  ),
+                ),
+                title: Text(entry.title),
+                subtitle: Text(
+                  '${DateFormat.yMMMd().add_jm().format(entry.date)} · ${entry.detail}',
                 ),
               ),
-            ],
-          ),
-          const SizedBox(height: 24),
-          Expanded(
-            child: _weightRecords.isEmpty
-                ? const Center(
-                    child: Text(
-                      'No weight records yet.',
-                      style: TextStyle(color: Colors.grey, fontSize: 12),
-                    ),
-                  )
-                : LineChart(
-                    LineChartData(
-                      gridData: const FlGridData(show: false),
-                      titlesData: FlTitlesData(
-                        leftTitles: const AxisTitles(
-                          sideTitles: SideTitles(showTitles: false),
-                        ),
-                        bottomTitles: AxisTitles(
-                          sideTitles: SideTitles(
-                            showTitles: true,
-                            getTitlesWidget: (value, meta) {
-                              if (value % 7 == 0) {
-                                return Text(
-                                  'Day ${value.toInt()}',
-                                  style: const TextStyle(
-                                    color: Colors.grey,
-                                    fontSize: 10,
-                                  ),
-                                );
-                              }
-                              return const SizedBox();
-                            },
-                          ),
-                        ),
-                        rightTitles: const AxisTitles(
-                          sideTitles: SideTitles(showTitles: false),
-                        ),
-                        topTitles: const AxisTitles(
-                          sideTitles: SideTitles(showTitles: false),
-                        ),
-                      ),
-                      borderData: FlBorderData(show: false),
-                      lineBarsData: [
-                        LineChartBarData(
-                          spots: _weightRecords.asMap().entries.map((e) {
-                            final days = e.value.logDate
-                                .difference(widget.batch.arrivalDate)
-                                .inDays;
-                            return FlSpot(
-                              days.toDouble(),
-                              e.value.averageWeight,
-                            );
-                          }).toList(),
-                          isCurved: true,
-                          color: const Color(0xFF10B981),
-                          barWidth: 4,
-                          dotData: const FlDotData(show: true),
-                          belowBarData: BarAreaData(
-                            show: true,
-                            color: const Color(
-                              0xFF10B981,
-                            ).withValues(alpha: 0.1),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-          ),
+            ),
         ],
       ),
     );
   }
 
-  Widget _buildSideInfo(bool isNarrow) {
-    final currency = NumberFormat.currency(symbol: 'GH₵ ', decimalDigits: 2);
-    return Column(
-      children: [
-        if (_showFinancials)
-          _infoTile(
-            'Financial Initialization',
-            currency.format(widget.batch.initialActualCost ?? 0.0),
-            Icons.payments_outlined,
-            Colors.blue,
-          ),
-        if (_showFinancials) const SizedBox(height: 16),
-        _infoTile(
-          'Total Mortality',
-          '$_totalMortality birds',
-          Icons.coronavirus_outlined,
-          Colors.red,
-        ),
-        const SizedBox(height: 16),
-        _infoTile(
-          'Feed Consumed',
-          '${_totalFeed.toStringAsFixed(1)} kg',
-          Icons.restaurant_outlined,
-          Colors.orange,
-        ),
-        if (_showFinancials) const SizedBox(height: 16),
-        if (_showFinancials)
-          _infoTile(
-            'Total Sales',
-            currency.format(_totalSales),
-            Icons.shopping_cart_outlined,
-            Colors.green,
-          ),
-      ],
-    );
-  }
+  Widget _buildRecentOperations() {
+    final cs = Theme.of(context).colorScheme;
+    final recent = _entries.take(6).toList();
 
-  Widget _infoTile(String label, String value, IconData icon, Color color) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1A1D21) : Colors.white,
+        color: cs.surfaceContainerLowest,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: isDark
-              ? Colors.white.withValues(alpha: 0.05)
-              : Colors.black.withValues(alpha: 0.05),
-        ),
-        boxShadow: isDark
-            ? []
-            : [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.02),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(icon, color: color, size: 20),
-          ),
-          const SizedBox(width: 16),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                label,
-                style: TextStyle(
-                  color: isDark ? Colors.grey : Colors.grey.shade600,
-                  fontSize: 11,
-                ),
-              ),
-              Text(
-                value,
-                style: TextStyle(
-                  color: isDark ? Colors.white : const Color(0xFF1E293B),
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildLogTable() {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Container(
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1A1D21) : Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(
-          color: isDark
-              ? Colors.white.withValues(alpha: 0.05)
-              : Colors.black.withValues(alpha: 0.05),
-        ),
-        boxShadow: isDark
-            ? []
-            : [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.02),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4),
-                ),
-              ],
+        border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.3)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
+          const Text(
             'Recent Operations',
-            style: TextStyle(
-              color: isDark ? Colors.white : const Color(0xFF1E293B),
-              fontWeight: FontWeight.bold,
-            ),
+            style: TextStyle(fontWeight: FontWeight.w800),
           ),
-          const SizedBox(height: 16),
-          const Center(
-            child: Text(
+          const SizedBox(height: 12),
+          if (recent.isEmpty)
+            Text(
               'No recent logs found.',
-              style: TextStyle(color: Colors.grey, fontSize: 12),
+              style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12),
+            )
+          else
+            ...recent.map(
+              (entry) => Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        entry.title,
+                        style: const TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                    Text(
+                      DateFormat.MMMd().format(entry.date),
+                      style: TextStyle(
+                        color: cs.onSurfaceVariant,
+                        fontSize: 11,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
-          ),
         ],
       ),
     );
   }
 
-  Widget _buildActivitySection() {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Batch History',
-          style: TextStyle(
-            color: isDark ? Colors.white : const Color(0xFF1E293B),
-            fontSize: 18,
-            fontWeight: FontWeight.w900,
-          ),
-        ),
-        const SizedBox(height: 16),
-        Container(
-          height: 200,
-          decoration: BoxDecoration(
-            color: isDark ? const Color(0xFF1A1D21) : Colors.white,
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(
-              color: isDark
-                  ? Colors.white.withValues(alpha: 0.05)
-                  : Colors.black.withValues(alpha: 0.05),
-            ),
-            boxShadow: isDark
-                ? []
-                : [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.02),
-                      blurRadius: 10,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-          ),
-          child: const Center(
-            child: Text(
-              'Timeline coming soon...',
-              style: TextStyle(color: Colors.grey),
-            ),
-          ),
-        ),
-      ],
-    );
+  Color _colorFor(BatchLogEntryType type) {
+    return switch (type) {
+      BatchLogEntryType.feed => const Color(0xFFF59E0B),
+      BatchLogEntryType.mortality => const Color(0xFFEF4444),
+      BatchLogEntryType.eggs => const Color(0xFFFB923C),
+      BatchLogEntryType.weight => const Color(0xFF10B981),
+      BatchLogEntryType.health => const Color(0xFF8B5CF6),
+      BatchLogEntryType.sales => const Color(0xFF0EA5E9),
+      BatchLogEntryType.expense => const Color(0xFF3B82F6),
+    };
+  }
+
+  IconData _iconFor(BatchLogEntryType type) {
+    return switch (type) {
+      BatchLogEntryType.feed => Icons.grain,
+      BatchLogEntryType.mortality => Icons.coronavirus_outlined,
+      BatchLogEntryType.eggs => Icons.egg_outlined,
+      BatchLogEntryType.weight => Icons.monitor_weight_outlined,
+      BatchLogEntryType.health => Icons.medical_services_outlined,
+      BatchLogEntryType.sales => Icons.shopping_cart_outlined,
+      BatchLogEntryType.expense => Icons.payments_outlined,
+    };
   }
 }

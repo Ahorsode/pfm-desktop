@@ -340,7 +340,7 @@ class _FinanceLedgerHubPanelState extends State<FinanceLedgerHubPanel> {
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
               itemCount: filtered.length,
-              separatorBuilder: (_, __) => const Divider(height: 1),
+              separatorBuilder: (_, _) => const Divider(height: 1),
               itemBuilder: (context, index) {
                 final entry = filtered[index];
                 final displayDescription =

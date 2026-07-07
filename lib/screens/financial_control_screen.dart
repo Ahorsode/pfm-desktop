@@ -7,7 +7,6 @@ import 'package:intl/intl.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../data/local_db.dart';
 import '../data/sync_engine.dart';
-import '../widgets/financial_init_dialog.dart';
 import '../widgets/finance_ledger_hub_panel.dart';
 import '../widgets/financial_init_wizard.dart';
 import '../utils/farm_utils.dart';

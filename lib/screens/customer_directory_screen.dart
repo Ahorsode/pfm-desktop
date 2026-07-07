@@ -169,8 +169,9 @@ class _CustomerDirectoryScreenState extends State<CustomerDirectoryScreen> {
                                   flex: 2,
                                   child: FilledButton(
                                     onPressed: () async {
-                                      if (!formKey.currentState!.validate())
+                                      if (!formKey.currentState!.validate()) {
                                         return;
+                                      }
                                       final companion = CustomersCompanion(
                                         id: Value(customer?.id ?? newLocalId()),
                                         farmId: Value(farmId),
