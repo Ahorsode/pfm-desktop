@@ -22,6 +22,8 @@ class LocalSalesService {
     String? customerName,
     double discountAmount = 0,
     String paymentMethod = 'CASH',
+    String? paymentReference,
+    String? paymentAccountName,
     bool requireExactCashTotal = true,
   }) async {
     if (items.isEmpty) {
@@ -44,6 +46,12 @@ class LocalSalesService {
     }
     if (!requireExactCashTotal && cashReceived < 0) {
       throw ArgumentError('Cash received cannot be negative.');
+    }
+    if (!requireExactCashTotal &&
+        paymentMethod != 'CREDIT' &&
+        cashReceived <= 0 &&
+        computedTotal > 0) {
+      throw ArgumentError('Cash received must be greater than zero.');
     }
 
     final outstanding = roundMoney(
@@ -130,9 +138,11 @@ class LocalSalesService {
         computedTotal,
         paymentStatus,
         paymentMethod,
-        saleId,
+        paymentReference?.trim().isNotEmpty == true ? paymentReference!.trim() : saleId,
         now.toIso8601String(),
-        '${items.map((item) => '${item.quantity} x ${item.description}').join(', ')} to $resolvedCustomerName',
+        paymentAccountName != null && paymentAccountName.trim().isNotEmpty
+            ? '${items.map((item) => '${item.quantity} x ${item.description}').join(', ')} to $resolvedCustomerName (${paymentAccountName.trim()})'
+            : '${items.map((item) => '${item.quantity} x ${item.description}').join(', ')} to $resolvedCustomerName',
         customerId,
         cashReceived,
         outstanding,

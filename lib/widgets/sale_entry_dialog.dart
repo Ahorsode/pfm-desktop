@@ -8,8 +8,10 @@ import '../features/sales/sale_line_draft.dart';
 import '../services/local_sales_service.dart';
 import '../utils/farm_utils.dart';
 import '../services/inventory_repository.dart';
-import '../utils/egg_sale_allocation_utils.dart';
 import '../utils/egg_log_utils.dart';
+import '../utils/egg_sale_allocation_utils.dart';
+import '../utils/sale_payment_utils.dart';
+import '../utils/sale_quantity_utils.dart';
 import '../utils/inventory_sale_utils.dart';
 
 enum _DiscountMode { flat, percentage }
@@ -38,14 +40,18 @@ class _SaleLineState {
   String description = '';
   EggAllocationMode eggAllocationMode = EggAllocationMode.fifo;
   String? eggBatchId;
+  EggSaleQuantityUnit eggQuantityUnit = EggSaleQuantityUnit.crate;
+  _DiscountMode lineDiscountMode = _DiscountMode.percentage;
   final TextEditingController quantityController = TextEditingController(text: '1');
   final TextEditingController unitPriceController = TextEditingController();
   final TextEditingController customDescriptionController = TextEditingController();
+  final TextEditingController lineDiscountController = TextEditingController(text: '0');
 
   void dispose() {
     quantityController.dispose();
     unitPriceController.dispose();
     customDescriptionController.dispose();
+    lineDiscountController.dispose();
   }
 }
 
@@ -91,12 +97,16 @@ class _SaleEntryDialog extends StatefulWidget {
 class _SaleEntryDialogState extends State<_SaleEntryDialog> {
   final _cashController = TextEditingController();
   final _discountController = TextEditingController(text: '0');
+  final _paymentReferenceController = TextEditingController();
+  final _paymentAccountNameController = TextEditingController();
   final _lines = [_SaleLineState()];
   late final LocalSalesService _salesService;
 
   String? _customerId;
   DateTime _orderDate = DateTime.now();
   _DiscountMode _discountMode = _DiscountMode.percentage;
+  SalePaymentMethod _paymentMethod = SalePaymentMethod.cash;
+  int _step = 1;
   bool _busy = false;
   bool _loading = true;
   String? _error;
@@ -110,7 +120,9 @@ class _SaleEntryDialogState extends State<_SaleEntryDialog> {
 
   bool get _isWalkIn => _customerId == null;
 
-  bool get _cashFieldEditable => _isWalkIn || widget.canOverridePrices;
+  bool get _isCreditSale => _paymentMethod == SalePaymentMethod.credit;
+
+  bool get _cashFieldEditable => _isWalkIn || widget.canOverridePrices || _isCreditSale;
 
   @override
   void initState() {
@@ -333,18 +345,36 @@ class _SaleEntryDialogState extends State<_SaleEntryDialog> {
   void dispose() {
     _cashController.dispose();
     _discountController.dispose();
+    _paymentReferenceController.dispose();
+    _paymentAccountNameController.dispose();
     for (final line in _lines) {
       line.dispose();
     }
     super.dispose();
   }
 
+  double _lineSubtotalFor(_SaleLineState line) {
+    final quantity = int.tryParse(line.quantityController.text.trim()) ?? 0;
+    final unitPrice = double.tryParse(line.unitPriceController.text.trim()) ?? 0;
+    return quantity * unitPrice;
+  }
+
+  double _lineDiscountFor(_SaleLineState line) {
+    final raw = double.tryParse(line.lineDiscountController.text.trim()) ?? 0;
+    final subtotal = _lineSubtotalFor(line);
+    if (line.lineDiscountMode == _DiscountMode.percentage) {
+      return (subtotal * raw / 100).clamp(0, subtotal);
+    }
+    return raw.clamp(0, subtotal);
+  }
+
+  double _lineTotalFor(_SaleLineState line) =>
+      (_lineSubtotalFor(line) - _lineDiscountFor(line)).clamp(0, double.infinity);
+
   double get _subtotal {
     var total = 0.0;
     for (final line in _lines) {
-      final quantity = int.tryParse(line.quantityController.text.trim()) ?? 0;
-      final unitPrice = double.tryParse(line.unitPriceController.text.trim()) ?? 0;
-      total += quantity * unitPrice;
+      total += _lineTotalFor(line);
     }
     return LocalSalesService.roundMoney(total);
   }
@@ -361,10 +391,54 @@ class _SaleEntryDialogState extends State<_SaleEntryDialog> {
       LocalSalesService.roundMoney((_subtotal - _discountAmount).clamp(0, double.infinity));
 
   void _syncCashReceived() {
-    if (!_isWalkIn && widget.canOverridePrices) {
+    if (!_isWalkIn && widget.canOverridePrices && !_isCreditSale) {
+      return;
+    }
+    if (_isCreditSale) {
       return;
     }
     _cashController.text = _computedTotal.toStringAsFixed(2);
+  }
+
+  bool get _canContinueStep1 {
+    if (_busy || _loading) {
+      return false;
+    }
+    for (final line in _lines) {
+      if (line.productType == SaleProductType.inventory &&
+          _inventoryOptions.isEmpty) {
+        return false;
+      }
+      if (line.productType == SaleProductType.inventory &&
+          line.eggAllocationMode == EggAllocationMode.batch &&
+          (line.eggBatchId == null || line.eggBatchId!.isEmpty)) {
+        return false;
+      }
+      if (line.productId == null || line.productId!.isEmpty) {
+        if (line.productType != SaleProductType.custom) {
+          return false;
+        }
+      }
+      if (line.productType == SaleProductType.inventory) {
+        final quantity = int.tryParse(line.quantityController.text.trim()) ?? 0;
+        if (quantity > _eggAvailableForLine(line)) {
+          return false;
+        }
+      }
+    }
+    return _computedTotal > 0;
+  }
+
+  bool get _canSubmitStep2 {
+    if (!_canSubmit) {
+      return false;
+    }
+    return validateSalePaymentFields(
+      paymentMethod: _paymentMethod,
+      paymentReference: _paymentReferenceController.text,
+      paymentAccountName: _paymentAccountNameController.text,
+      customerId: _customerId,
+    ).isEmpty;
   }
 
   bool get _canSubmit {
@@ -417,6 +491,12 @@ class _SaleEntryDialogState extends State<_SaleEntryDialog> {
                 line.eggAllocationMode == EggAllocationMode.batch
             ? line.eggBatchId
             : null,
+        eggQuantityUnit: line.eggQuantityUnit,
+        lineDiscountAmount:
+            double.tryParse(line.lineDiscountController.text.trim()) ?? 0,
+        lineDiscountType: line.lineDiscountMode == _DiscountMode.percentage
+            ? 'percent'
+            : 'flat',
         eggsPerCrate: _eggsPerCrate,
       );
     }).toList(growable: false);
@@ -448,7 +528,15 @@ class _SaleEntryDialogState extends State<_SaleEntryDialog> {
             ? 'Walk-in Customer'
             : widget.customers.firstWhere((c) => c.id == _customerId).name,
         discountAmount: widget.canOverridePrices ? _discountAmount : 0,
-        requireExactCashTotal: !_isWalkIn && !widget.canOverridePrices,
+        paymentMethod: _paymentMethod.apiValue,
+        paymentReference: _paymentReferenceController.text.trim().isEmpty
+            ? null
+            : _paymentReferenceController.text.trim(),
+        paymentAccountName: _paymentAccountNameController.text.trim().isEmpty
+            ? null
+            : _paymentAccountNameController.text.trim(),
+        requireExactCashTotal:
+            !_isWalkIn && !widget.canOverridePrices && !_isCreditSale,
       );
       if (mounted) Navigator.of(context).pop(true);
     } catch (error) {
@@ -463,7 +551,7 @@ class _SaleEntryDialogState extends State<_SaleEntryDialog> {
     return AlertDialog(
       title: const Text('Record Multi-Line Sale'),
       content: SizedBox(
-        width: 520,
+        width: _step == 2 ? 560 : 520,
         child: _loading
             ? const Padding(
                 padding: EdgeInsets.all(24),
@@ -473,6 +561,27 @@ class _SaleEntryDialogState extends State<_SaleEntryDialog> {
         child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: _WizardStepChip(
+                      label: '1. Customer & Products',
+                      active: _step == 1,
+                      completed: _step > 1,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: _WizardStepChip(
+                      label: '2. Payment',
+                      active: _step == 2,
+                      completed: false,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              if (_step == 1) ...[
               DropdownButtonFormField<String?>(
                 initialValue: _customerId,
                 decoration: const InputDecoration(labelText: 'Customer'),
@@ -525,6 +634,7 @@ class _SaleEntryDialogState extends State<_SaleEntryDialog> {
                 _LineEditor(
                   line: _lines[index],
                   canOverridePrices: widget.canOverridePrices,
+                  eggsPerCrate: _eggsPerCrate,
                   inventoryTypeLabel: 'Eggs',
                   inventoryOptions: _inventoryOptions,
                   livestockOptions: _livestockOptions,
@@ -573,6 +683,12 @@ class _SaleEntryDialogState extends State<_SaleEntryDialog> {
                   label: const Text('Add Line'),
                 ),
               ),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Line Subtotal'),
+                trailing: Text('GH₵ ${_subtotal.toStringAsFixed(2)}'),
+              ),
+              ] else ...[
               if (widget.canOverridePrices) ...[
                 SegmentedButton<_DiscountMode>(
                   segments: const [
@@ -592,6 +708,43 @@ class _SaleEntryDialogState extends State<_SaleEntryDialog> {
                   onChanged: (_) => setState(_syncCashReceived),
                 ),
               ],
+              DropdownButtonFormField<SalePaymentMethod>(
+                value: _paymentMethod,
+                decoration: const InputDecoration(labelText: 'Payment Method'),
+                items: SalePaymentMethod.values
+                    .map(
+                      (method) => DropdownMenuItem(
+                        value: method,
+                        child: Text(method.label),
+                      ),
+                    )
+                    .toList(),
+                onChanged: (value) {
+                  if (value == null) return;
+                  setState(() {
+                    _paymentMethod = value;
+                    _syncCashReceived();
+                  });
+                },
+              ),
+              if (_paymentMethod == SalePaymentMethod.mobileMoney) ...[
+                TextField(
+                  controller: _paymentReferenceController,
+                  keyboardType: TextInputType.phone,
+                  decoration: const InputDecoration(labelText: 'MoMo Phone Number'),
+                  onChanged: (_) => setState(() {}),
+                ),
+                TextField(
+                  controller: _paymentAccountNameController,
+                  decoration: const InputDecoration(labelText: 'Account Holder Name'),
+                  onChanged: (_) => setState(() {}),
+                ),
+              ] else if (_paymentMethod == SalePaymentMethod.bankTransfer)
+                TextField(
+                  controller: _paymentReferenceController,
+                  decoration: const InputDecoration(labelText: 'Bank Reference (optional)'),
+                  onChanged: (_) => setState(() {}),
+                ),
               ListTile(
                 contentPadding: EdgeInsets.zero,
                 title: const Text('Subtotal'),
@@ -611,12 +764,15 @@ class _SaleEntryDialogState extends State<_SaleEntryDialog> {
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
                 decoration: InputDecoration(
                   labelText: 'Total Cash Received (GH₵)',
-                  helperText: _isWalkIn
+                  helperText: _isCreditSale
+                      ? 'Credit sale: partial or zero payment allowed.'
+                      : _isWalkIn
                       ? 'Walk-in sale: cash defaults to total and can be adjusted.'
                       : widget.canOverridePrices
                           ? 'Credit sale: cash can differ from total.'
                           : 'Cash must equal the locked sale total.',
-                  errorText: !_isWalkIn &&
+                  errorText: !_isCreditSale &&
+                          !_isWalkIn &&
                           !widget.canOverridePrices &&
                           (_cashController.text.isNotEmpty) &&
                           ((double.tryParse(_cashController.text) ?? 0) - _computedTotal)
@@ -627,6 +783,7 @@ class _SaleEntryDialogState extends State<_SaleEntryDialog> {
                 ),
                 onChanged: _cashFieldEditable ? (_) => setState(() {}) : null,
               ),
+              ],
               if (_error != null)
                 Padding(
                   padding: const EdgeInsets.only(top: 8),
@@ -638,11 +795,64 @@ class _SaleEntryDialogState extends State<_SaleEntryDialog> {
       ),
       actions: [
         TextButton(onPressed: _busy ? null : () => Navigator.pop(context), child: const Text('Cancel')),
-        FilledButton(
-          onPressed: _busy || !_canSubmit ? null : _submit,
-          child: Text(_busy ? 'Saving...' : 'Record Sale'),
-        ),
+        if (_step == 1)
+          FilledButton(
+            onPressed: _busy || !_canContinueStep1 ? null : () => setState(() => _step = 2),
+            child: const Text('Continue'),
+          )
+        else ...[
+          TextButton(
+            onPressed: _busy ? null : () => setState(() => _step = 1),
+            child: const Text('Back'),
+          ),
+          FilledButton(
+            onPressed: _busy || !_canSubmitStep2 ? null : _submit,
+            child: Text(_busy ? 'Saving...' : 'Record Sale'),
+          ),
+        ],
       ],
+    );
+  }
+}
+
+class _WizardStepChip extends StatelessWidget {
+  const _WizardStepChip({
+    required this.label,
+    required this.active,
+    required this.completed,
+  });
+
+  final String label;
+  final bool active;
+  final bool completed;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: active
+              ? theme.colorScheme.primary
+              : theme.colorScheme.outlineVariant,
+        ),
+        color: active
+            ? theme.colorScheme.primaryContainer.withValues(alpha: 0.35)
+            : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+      ),
+      child: Text(
+        label,
+        textAlign: TextAlign.center,
+        style: TextStyle(
+          fontSize: 10,
+          fontWeight: FontWeight.w800,
+          color: active
+              ? theme.colorScheme.primary
+              : theme.colorScheme.onSurfaceVariant,
+        ),
+      ),
     );
   }
 }
@@ -651,6 +861,7 @@ class _LineEditor extends StatelessWidget {
   const _LineEditor({
     required this.line,
     required this.canOverridePrices,
+    required this.eggsPerCrate,
     required this.inventoryTypeLabel,
     required this.inventoryOptions,
     required this.livestockOptions,
@@ -666,6 +877,7 @@ class _LineEditor extends StatelessWidget {
 
   final _SaleLineState line;
   final bool canOverridePrices;
+  final int eggsPerCrate;
   final String inventoryTypeLabel;
   final List<_ProductOption> inventoryOptions;
   final List<_ProductOption> livestockOptions;
@@ -860,6 +1072,45 @@ class _LineEditor extends StatelessWidget {
                 },
               ),
             const SizedBox(height: 8),
+            if (line.productType == SaleProductType.inventory && !inventoryEmpty) ...[
+              SegmentedButton<EggSaleQuantityUnit>(
+                segments: const [
+                  ButtonSegment(
+                    value: EggSaleQuantityUnit.crate,
+                    label: Text('Crates'),
+                  ),
+                  ButtonSegment(
+                    value: EggSaleQuantityUnit.egg,
+                    label: Text('Eggs'),
+                  ),
+                ],
+                selected: {line.eggQuantityUnit},
+                onSelectionChanged: (selection) {
+                  final quantity =
+                      int.tryParse(line.quantityController.text.trim()) ?? 0;
+                  final unitPrice =
+                      double.tryParse(line.unitPriceController.text.trim()) ?? 0;
+                  if (selection.first == EggSaleQuantityUnit.egg) {
+                    line.eggQuantityUnit = EggSaleQuantityUnit.egg;
+                    line.quantityController.text = quantity > 0
+                        ? (quantity * eggsPerCrate).toString()
+                        : line.quantityController.text;
+                    line.unitPriceController.text = eggsPerCrate > 0
+                        ? (unitPrice / eggsPerCrate).toStringAsFixed(2)
+                        : line.unitPriceController.text;
+                  } else {
+                    line.eggQuantityUnit = EggSaleQuantityUnit.crate;
+                    line.quantityController.text = quantity > 0 && eggsPerCrate > 0
+                        ? (quantity / eggsPerCrate).ceil().toString()
+                        : line.quantityController.text;
+                    line.unitPriceController.text =
+                        (unitPrice * eggsPerCrate).toStringAsFixed(2);
+                  }
+                  onChanged();
+                },
+              ),
+              const SizedBox(height: 8),
+            ],
             Row(
               children: [
                 Expanded(
@@ -867,7 +1118,13 @@ class _LineEditor extends StatelessWidget {
                     controller: line.quantityController,
                     keyboardType: TextInputType.number,
                     inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                    decoration: const InputDecoration(labelText: 'Quantity'),
+                    decoration: InputDecoration(
+                      labelText: line.productType == SaleProductType.inventory
+                          ? line.eggQuantityUnit == EggSaleQuantityUnit.crate
+                              ? 'Crates'
+                              : 'Eggs'
+                          : 'Quantity',
+                    ),
                     onChanged: (_) => onChanged(),
                   ),
                 ),
@@ -877,12 +1134,42 @@ class _LineEditor extends StatelessWidget {
                     controller: line.unitPriceController,
                     readOnly: !canOverridePrices,
                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                    decoration: const InputDecoration(labelText: 'Unit Price'),
+                    decoration: InputDecoration(
+                      labelText: line.productType == SaleProductType.inventory
+                          ? line.eggQuantityUnit == EggSaleQuantityUnit.crate
+                              ? 'Price / crate'
+                              : 'Price / egg'
+                          : 'Unit Price',
+                    ),
                     onChanged: canOverridePrices ? (_) => onChanged() : null,
                   ),
                 ),
               ],
             ),
+            if (canOverridePrices) ...[
+              const SizedBox(height: 8),
+              SegmentedButton<_DiscountMode>(
+                segments: const [
+                  ButtonSegment(value: _DiscountMode.flat, label: Text('Flat')),
+                  ButtonSegment(value: _DiscountMode.percentage, label: Text('%')),
+                ],
+                selected: {line.lineDiscountMode},
+                onSelectionChanged: (selection) {
+                  line.lineDiscountMode = selection.first;
+                  onChanged();
+                },
+              ),
+              TextField(
+                controller: line.lineDiscountController,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: InputDecoration(
+                  labelText: line.lineDiscountMode == _DiscountMode.percentage
+                      ? 'Line Discount (%)'
+                      : 'Line Discount (GHS)',
+                ),
+                onChanged: (_) => onChanged(),
+              ),
+            ],
           ],
         ),
       ),
