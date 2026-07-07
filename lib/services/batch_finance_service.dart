@@ -1,3 +1,5 @@
+import 'package:drift/drift.dart';
+
 import '../data/local_db.dart';
 
 class BatchFinanceBreakdown {
@@ -52,9 +54,6 @@ class BatchFinanceService {
     final inventory = await (_db.select(_db.inventory)
           ..where((t) => t.farmId.equals(farmId)))
         .get();
-    final sales = await (_db.select(_db.sales)
-          ..where((t) => t.farmId.equals(farmId)))
-        .get();
 
     final batchIds = batches.map((batch) => batch.id).toSet();
     final totals = {
@@ -99,16 +98,30 @@ class BatchFinanceService {
       }
     }
 
-    for (final sale in sales) {
-      final batchId = sale.batchId;
-      if (batchId != null && batchIds.contains(batchId)) {
-        totals[batchId]!.revenue += sale.totalAmount;
-      } else {
-        _splitByHeadcount(batches, sale.totalAmount, (id, share) {
-          totals[id]!.revenue += share;
-        });
-      }
-    }
+    final saleItemRows = await _db.customSelect(
+      'SELECT * FROM sale_items WHERE farm_id = ?',
+      variables: [Variable.withString(farmId)],
+    ).get();
+    final batchAllocationRows = await _db.customSelect(
+      'SELECT * FROM order_item_batch_allocations WHERE farm_id = ?',
+      variables: [Variable.withString(farmId)],
+    ).get();
+    final orderRows = await _db.customSelect(
+      "SELECT id FROM orders WHERE farm_id = ? AND COALESCE(is_deleted, 0) = 0 AND upper(status) = 'CANCELLED'",
+      variables: [Variable.withString(farmId)],
+    ).get();
+    final cancelledOrderIds = orderRows
+        .map((row) => row.read<String>('id'))
+        .toSet();
+
+    _allocateRevenue(
+      batches: batches,
+      batchIds: batchIds,
+      totals: totals,
+      saleItems: saleItemRows,
+      batchAllocations: batchAllocationRows,
+      cancelledOrderIds: cancelledOrderIds,
+    );
 
     return totals.values
         .map(
@@ -197,6 +210,65 @@ class BatchFinanceService {
     for (final entry in usageByBatch.entries) {
       totals[entry.key]!.consumption +=
           expense.amount * (entry.value / totalUsage);
+    }
+  }
+
+  void _allocateRevenue({
+    required List<Batch> batches,
+    required Set<String> batchIds,
+    required Map<String, _BatchAccumulator> totals,
+    required List<QueryRow> saleItems,
+    required List<QueryRow> batchAllocations,
+    required Set<String> cancelledOrderIds,
+  }) {
+    final allocatedItemIds = <String>{};
+    for (final row in batchAllocations) {
+      final batchId = row.read<String?>('batch_id') ?? '';
+      if (batchId.isEmpty || !batchIds.contains(batchId)) {
+        continue;
+      }
+      totals[batchId]!.revenue += row.read<double>('revenue_amount');
+      final orderItemId = row.read<String?>('order_item_id') ?? '';
+      if (orderItemId.isNotEmpty) {
+        allocatedItemIds.add(orderItemId);
+      }
+    }
+
+    final linked = <String, double>{};
+    var unlinked = 0.0;
+    for (final item in saleItems) {
+      final saleId = item.read<String?>('sale_id') ?? '';
+      if (cancelledOrderIds.contains(saleId)) {
+        continue;
+      }
+      final itemId = item.read<String?>('id') ?? '';
+      if (allocatedItemIds.contains(itemId)) {
+        continue;
+      }
+      final total = item.read<double>('total_price');
+      final eggMode = item.read<String?>('egg_allocation_mode') ?? '';
+      final eggBatchId = item.read<String?>('egg_batch_id') ?? '';
+      if (eggMode == 'batch' &&
+          eggBatchId.isNotEmpty &&
+          batchIds.contains(eggBatchId)) {
+        linked[eggBatchId] = (linked[eggBatchId] ?? 0) + total;
+        continue;
+      }
+      final batchId = item.read<String?>('livestock_id') ?? '';
+      if (batchId.isNotEmpty && batchIds.contains(batchId)) {
+        linked[batchId] = (linked[batchId] ?? 0) + total;
+      } else {
+        unlinked += total;
+      }
+    }
+
+    for (final entry in linked.entries) {
+      totals[entry.key]!.revenue += entry.value;
+    }
+    if (unlinked > 0) {
+      _splitByHeadcount(batches, unlinked, (id, share) {
+        totals[id]!.revenue += share;
+      });
     }
   }
 

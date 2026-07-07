@@ -631,13 +631,14 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 28;
+  int get schemaVersion => 29;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
     onCreate: (m) async {
       await m.createAll();
       await _ensureSalesLedgerTables(m);
+      await _ensureFifoSalesLedgerTables(m);
     },
     onUpgrade: (m, from, to) async {
       if (from < 15) {
@@ -743,6 +744,9 @@ class AppDatabase extends _$AppDatabase {
         await _ensureEggCategoryTables(m);
         await m.addColumn(inventory, inventory.eggCategoryId);
       }
+      if (from < 29) {
+        await _ensureFifoSalesLedgerTables(m);
+      }
     },
   );
 }
@@ -757,6 +761,81 @@ Future<void> _ensureEggCategoryTables(Migrator m) async {
       unit_size INTEGER NOT NULL DEFAULT 30
     )
   ''');
+}
+
+Future<void> _ensureFifoSalesLedgerTables(Migrator m) async {
+  await m.database.customStatement('''
+    CREATE TABLE IF NOT EXISTS orders (
+      id TEXT NOT NULL PRIMARY KEY,
+      farm_id TEXT NOT NULL,
+      customer_id TEXT,
+      invoice_number INTEGER,
+      subtotal_amount REAL NOT NULL DEFAULT 0,
+      tax_amount REAL NOT NULL DEFAULT 0,
+      total_amount REAL NOT NULL,
+      cash_received REAL NOT NULL DEFAULT 0,
+      currency TEXT NOT NULL DEFAULT 'GHS',
+      status TEXT NOT NULL DEFAULT 'PENDING',
+      discount_amount REAL NOT NULL DEFAULT 0,
+      payment_method TEXT,
+      payment_reference TEXT,
+      payment_account_name TEXT,
+      order_date TEXT NOT NULL,
+      paid_at TEXT,
+      user_id TEXT NOT NULL,
+      is_deleted INTEGER NOT NULL DEFAULT 0,
+      deleted_at TEXT,
+      created_at TEXT,
+      updated_at TEXT
+    )
+  ''');
+
+  await m.database.customStatement('''
+    CREATE TABLE IF NOT EXISTS order_items (
+      id TEXT NOT NULL PRIMARY KEY,
+      order_id TEXT NOT NULL,
+      description TEXT NOT NULL,
+      quantity INTEGER NOT NULL,
+      unit_price REAL NOT NULL,
+      total_price REAL NOT NULL,
+      inventory_id TEXT,
+      livestock_id TEXT,
+      egg_allocation_mode TEXT,
+      egg_batch_id TEXT,
+      line_discount_amount REAL NOT NULL DEFAULT 0,
+      line_discount_type TEXT,
+      egg_quantity_unit TEXT
+    )
+  ''');
+
+  await m.database.customStatement('''
+    CREATE TABLE IF NOT EXISTS order_item_batch_allocations (
+      id TEXT NOT NULL PRIMARY KEY,
+      order_item_id TEXT NOT NULL,
+      batch_id TEXT NOT NULL,
+      farm_id TEXT NOT NULL,
+      eggs_used INTEGER NOT NULL,
+      revenue_amount REAL NOT NULL,
+      created_at TEXT,
+      updated_at TEXT
+    )
+  ''');
+
+  final columns = [
+    ('financial_transactions', 'order_id', 'TEXT'),
+    ('sale_items', 'egg_allocation_mode', 'TEXT'),
+    ('sale_items', 'egg_batch_id', 'TEXT'),
+    ('sale_items', 'line_discount_amount', 'REAL NOT NULL DEFAULT 0'),
+    ('sale_items', 'line_discount_type', "TEXT NOT NULL DEFAULT 'flat'"),
+    ('sale_items', 'egg_quantity_unit', 'TEXT'),
+  ];
+  for (final entry in columns) {
+    try {
+      await m.database.customStatement(
+        'ALTER TABLE ${entry.$1} ADD COLUMN ${entry.$2} ${entry.$3}',
+      );
+    } catch (_) {}
+  }
 }
 
 Future<void> _ensureSalesLedgerTables(Migrator m) async {

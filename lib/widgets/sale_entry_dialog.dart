@@ -115,6 +115,7 @@ class _SaleEntryDialogState extends State<_SaleEntryDialog> {
   List<_ProductOption> _livestockOptions = const [];
   List<InventoryItem> _eggInventoryItems = const [];
   List<EggBatchStockOption> _eggBatchOptions = const [];
+  int _fifoTotalEggs = 0;
   Map<String, double> _eggCategoryPrices = const {};
   int _eggsPerCrate = defaultEggsPerCrate;
 
@@ -122,7 +123,7 @@ class _SaleEntryDialogState extends State<_SaleEntryDialog> {
 
   bool get _isCreditSale => _paymentMethod == SalePaymentMethod.credit;
 
-  bool get _cashFieldEditable => _isWalkIn || widget.canOverridePrices || _isCreditSale;
+  bool get _cashFieldEditable => widget.canOverridePrices || _isCreditSale;
 
   @override
   void initState() {
@@ -202,6 +203,7 @@ class _SaleEntryDialogState extends State<_SaleEntryDialog> {
             ),
           )
           .toList(growable: false);
+      _fifoTotalEggs = eggBatchStock.totalEggs;
       _loading = false;
       for (final line in _lines) {
         _autoSelectProduct(line);
@@ -275,7 +277,12 @@ class _SaleEntryDialogState extends State<_SaleEntryDialog> {
     final product = _inventoryOptions
         .where((option) => option.id == line.productId)
         .firstOrNull;
-    return product?.available.floor() ?? 0;
+    return _fifoTotalEggs;
+  }
+
+  bool get _needsCompletionPrompt {
+    final cash = double.tryParse(_cashController.text.trim()) ?? 0;
+    return _isCreditSale || (_computedTotal - cash).abs() > 0.01;
   }
 
   Future<void> _pickEggSizeForLine(int index) async {
@@ -420,8 +427,13 @@ class _SaleEntryDialogState extends State<_SaleEntryDialog> {
         }
       }
       if (line.productType == SaleProductType.inventory) {
-        final quantity = int.tryParse(line.quantityController.text.trim()) ?? 0;
-        if (quantity > _eggAvailableForLine(line)) {
+        final displayQuantity = int.tryParse(line.quantityController.text.trim()) ?? 0;
+        final quantityEggs = saleQuantityInEggs(
+          displayQuantity: displayQuantity,
+          unit: line.eggQuantityUnit,
+          eggsPerCrate: _eggsPerCrate,
+        );
+        if (quantityEggs > _eggAvailableForLine(line)) {
           return false;
         }
       }
@@ -461,8 +473,13 @@ class _SaleEntryDialogState extends State<_SaleEntryDialog> {
         }
       }
       if (line.productType == SaleProductType.inventory) {
-        final quantity = int.tryParse(line.quantityController.text.trim()) ?? 0;
-        if (quantity > _eggAvailableForLine(line)) {
+        final displayQuantity = int.tryParse(line.quantityController.text.trim()) ?? 0;
+        final quantityEggs = saleQuantityInEggs(
+          displayQuantity: displayQuantity,
+          unit: line.eggQuantityUnit,
+          eggsPerCrate: _eggsPerCrate,
+        );
+        if (quantityEggs > _eggAvailableForLine(line)) {
           return false;
         }
       }
@@ -502,11 +519,38 @@ class _SaleEntryDialogState extends State<_SaleEntryDialog> {
     }).toList(growable: false);
   }
 
-  Future<void> _submit() async {
+  Future<void> _submit({bool? completeNow}) async {
     if (!_canSubmit) {
       setState(() => _error = 'Complete every line item before saving.');
       return;
     }
+
+    if (completeNow == null && _needsCompletionPrompt) {
+      final choice = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Complete this sale now?'),
+          content: const Text(
+            'This credit or partial-payment sale can be completed now to deduct stock, or saved to complete later.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Skip for now'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Complete sale now'),
+            ),
+          ],
+        ),
+      );
+      if (choice == null || !mounted) {
+        return;
+      }
+      return _submit(completeNow: choice);
+    }
+
     setState(() {
       _busy = true;
       _error = null;
@@ -537,6 +581,7 @@ class _SaleEntryDialogState extends State<_SaleEntryDialog> {
             : _paymentAccountNameController.text.trim(),
         requireExactCashTotal:
             !_isWalkIn && !widget.canOverridePrices && !_isCreditSale,
+        completeNow: completeNow,
       );
       if (mounted) Navigator.of(context).pop(true);
     } catch (error) {
@@ -767,7 +812,7 @@ class _SaleEntryDialogState extends State<_SaleEntryDialog> {
                   helperText: _isCreditSale
                       ? 'Credit sale: partial or zero payment allowed.'
                       : _isWalkIn
-                      ? 'Walk-in sale: cash defaults to total and can be adjusted.'
+                      ? 'Walk-in sale: cash is locked to the sale total'
                       : widget.canOverridePrices
                           ? 'Credit sale: cash can differ from total.'
                           : 'Cash must equal the locked sale total.',

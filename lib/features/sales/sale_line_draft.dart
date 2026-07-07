@@ -1,5 +1,5 @@
-import '../utils/egg_log_utils.dart';
-import '../utils/sale_quantity_utils.dart';
+import '../../utils/egg_log_utils.dart';
+import '../../utils/sale_quantity_utils.dart';
 
 enum SaleProductType { inventory, livestock, custom }
 
