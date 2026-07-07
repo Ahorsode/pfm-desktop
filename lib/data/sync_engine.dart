@@ -748,7 +748,6 @@ class SyncEngine extends ChangeNotifier {
               .select('id')
               .eq('id', id)
               .maybeSingle();
-          final now = DateTime.now().toUtc().toIso8601String();
           final payload = {
             'id': id,
             'farmId': _remoteFarmIdForPush(fl.farmId, webFarmId),
@@ -758,7 +757,6 @@ class SyncEngine extends ChangeNotifier {
             'amount_consumed': fl.amountConsumed,
             'log_date': fl.logDate.toIso8601String(),
             'user_id': pushUserIdForPayload(fl.userId),
-            'updatedAt': now,
           };
           assertSyncPayloadUsesStringIds(payload);
 
@@ -768,7 +766,6 @@ class SyncEngine extends ChangeNotifier {
                 .update(payload)
                 .eq('id', id);
           } else {
-            payload['createdAt'] = now;
             await _supabase.from('daily_feeding_logs').insert(payload);
           }
           await (db.update(db.feedingLogs)..where((t) => t.id.equals(fl.id)))
@@ -983,7 +980,7 @@ class SyncEngine extends ChangeNotifier {
             'batch_id': optionalIdString(e.batchId),
             'supplierId': optionalIdString(e.supplierId),
             'user_id': pushUserIdForPayload(e.userId),
-            'category': e.category,
+            'category': _normalizeExpenseCategory(e.category),
             'amount': e.amount,
             'expense_date': e.date.toIso8601String(),
             'description': e.description,
@@ -1940,14 +1937,30 @@ class SyncEngine extends ChangeNotifier {
   String _settlementExpenseCategory(String settlementType) {
     switch (settlementType) {
       case 'COLLECTION':
-        return 'COLLECTION';
       case 'PAYMENT':
-        return 'PAYMENT';
       case 'DEBT_INCURRED':
         return 'OTHER';
       default:
         return 'OTHER';
     }
+  }
+
+  String _normalizeExpenseCategory(String? raw) {
+    final key = (raw ?? '').trim().toUpperCase();
+    const allowed = {
+      'FEED',
+      'MEDICATION',
+      'EQUIPMENT',
+      'UTILITIES',
+      'SALARY',
+      'MAINTENANCE',
+      'OTHER',
+      'LIVESTOCK_PURCHASE',
+      'TRANSPORT',
+    };
+    if (allowed.contains(key)) return key;
+    if (key == 'FEEDING' || key == 'FEEDS') return 'FEED';
+    return 'OTHER';
   }
 
   Future<void> _pushHealthSchedules(

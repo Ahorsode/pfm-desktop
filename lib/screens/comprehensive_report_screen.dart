@@ -204,7 +204,13 @@ class _ComprehensiveReportScreenState extends State<ComprehensiveReportScreen>
                     ),
                   ),
                 )
-              : SingleChildScrollView(child: _ReportView(report: _report!)),
+              : SingleChildScrollView(
+                  child: _ReportView(
+                    report: _report!,
+                    focusBatchId: widget.focusBatchId,
+                    focusBatchName: widget.focusBatchName,
+                  ),
+                ),
         ),
       ],
     );
@@ -289,8 +295,14 @@ class _ComprehensiveReportScreenState extends State<ComprehensiveReportScreen>
 
 class _ReportView extends StatelessWidget {
   final ComprehensiveFarmReport report;
+  final String? focusBatchId;
+  final String? focusBatchName;
 
-  const _ReportView({required this.report});
+  const _ReportView({
+    required this.report,
+    this.focusBatchId,
+    this.focusBatchName,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -361,17 +373,17 @@ class _ReportView extends StatelessWidget {
         _LedgerTrendCard(trends: report.dailyTrends),
         const SizedBox(height: 18),
         _BatchTable(
-          rows: widget.focusBatchId == null
+          rows: focusBatchId == null
               ? report.batches
               : report.batches
-                  .where((row) => row.id == widget.focusBatchId)
+                  .where((row) => row.id == focusBatchId)
                   .toList(),
-          highlightBatchId: widget.focusBatchId,
+          highlightBatchId: focusBatchId,
         ),
-        if (widget.focusBatchName != null) ...[
+        if (focusBatchName != null) ...[
           const SizedBox(height: 8),
           Text(
-            'Focused on ${widget.focusBatchName}',
+            'Focused on $focusBatchName',
             style: TextStyle(
               color: Theme.of(context).colorScheme.primary,
               fontWeight: FontWeight.w700,

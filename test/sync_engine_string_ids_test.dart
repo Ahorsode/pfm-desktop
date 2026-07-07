@@ -361,4 +361,21 @@ void main() {
     expect(form.id.isNotEmpty, isTrue);
     expect(form.stockLevel, 40);
   });
+
+  test('feeding log push payload uses string ids without cloud-only columns', () {
+    final payload = {
+      'id': newLocalId(),
+      'farmId': newLocalId(),
+      'batch_id': newLocalId(),
+      'feed_type_id': newLocalId(),
+      'formulation_id': null,
+      'amount_consumed': 1.5,
+      'log_date': DateTime.utc(2026, 7, 7).toIso8601String(),
+      'user_id': newLocalId(),
+    };
+
+    assertSyncPayloadUsesStringIds(payload);
+    expect(payload.containsKey('createdAt'), isFalse);
+    expect(payload.containsKey('updatedAt'), isFalse);
+  });
 }

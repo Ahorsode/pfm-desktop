@@ -23,14 +23,14 @@ void main() {
       expect(localCustomer['balanceOwed'], 125.5);
     });
 
-    test('PAYMENT settlements link supplierId on expense payload', () {
+    test('PAYMENT settlements map to OTHER expense category for cloud sync', () {
       final expensePayload = {
-        'category': 'PAYMENT',
+        'category': 'OTHER',
         'supplierId': 'sup-1',
         'amount': 50.0,
       };
 
-      expect(expensePayload['category'], 'PAYMENT');
+      expect(expensePayload['category'], 'OTHER');
       expect(expensePayload['supplierId'], isNotNull);
     });
 
