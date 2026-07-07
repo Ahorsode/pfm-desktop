@@ -9,6 +9,7 @@ import '../services/local_sales_service.dart';
 import '../utils/farm_utils.dart';
 import '../services/inventory_repository.dart';
 import '../utils/egg_sale_allocation_utils.dart';
+import '../utils/egg_log_utils.dart';
 import '../utils/inventory_sale_utils.dart';
 
 enum _DiscountMode { flat, percentage }
@@ -105,6 +106,7 @@ class _SaleEntryDialogState extends State<_SaleEntryDialog> {
   List<InventoryItem> _eggInventoryItems = const [];
   List<EggBatchStockOption> _eggBatchOptions = const [];
   Map<String, double> _eggCategoryPrices = const {};
+  int _eggsPerCrate = defaultEggsPerCrate;
 
   bool get _isWalkIn => _customerId == null;
 
@@ -121,6 +123,10 @@ class _SaleEntryDialogState extends State<_SaleEntryDialog> {
     final farmId = await FarmUtils.getBoundFarmId();
     final prices = <String, double>{};
     if (farmId != null) {
+      final settingsRow = await (widget.db.select(widget.db.farmSettings)
+            ..where((t) => t.farmId.equals(farmId)))
+          .getSingleOrNull();
+      _eggsPerCrate = settingsRow?.eggsPerCrate ?? defaultEggsPerCrate;
       final rows = await widget.db.customSelect(
         'SELECT id, selling_price FROM egg_categories WHERE farm_id = ?',
         variables: [Variable.withString(farmId)],
@@ -411,6 +417,7 @@ class _SaleEntryDialogState extends State<_SaleEntryDialog> {
                 line.eggAllocationMode == EggAllocationMode.batch
             ? line.eggBatchId
             : null,
+        eggsPerCrate: _eggsPerCrate,
       );
     }).toList(growable: false);
   }

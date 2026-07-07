@@ -96,8 +96,10 @@ class LocalSalesService {
           '${saleId}_item_$index',
           saleId,
           item.description,
-          item.quantity,
-          item.unitPrice,
+          item.resolvedQuantityEggs,
+          item.productType == SaleProductType.inventory
+              ? item.resolvedUnitPricePerEgg
+              : item.unitPrice,
           item.lineTotal,
           farmId,
           item.inventoryId,
@@ -107,7 +109,7 @@ class LocalSalesService {
       await EggFifoService(_db).deductForInventorySale(
         farmId: farmId,
         inventoryId: item.inventoryId,
-        quantity: item.quantity,
+        quantity: item.resolvedQuantityEggs,
         batchId: item.eggAllocationMode == 'batch' ? item.eggBatchId : null,
       );
     }
