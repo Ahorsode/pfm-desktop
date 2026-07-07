@@ -8,8 +8,8 @@ import '../features/sales/sale_line_draft.dart';
 import '../services/local_sales_service.dart';
 import '../utils/farm_utils.dart';
 import '../services/inventory_repository.dart';
-import '../utils/egg_log_utils.dart';
 import '../utils/egg_sale_allocation_utils.dart';
+import '../utils/egg_log_utils.dart';
 import '../utils/sale_payment_utils.dart';
 import '../utils/sale_quantity_utils.dart';
 import '../utils/inventory_sale_utils.dart';
@@ -116,6 +116,7 @@ class _SaleEntryDialogState extends State<_SaleEntryDialog> {
   List<InventoryItem> _eggInventoryItems = const [];
   List<EggBatchStockOption> _eggBatchOptions = const [];
   int _fifoTotalEggs = 0;
+  Map<String, int> _fifoByCategoryId = const {};
   Map<String, double> _eggCategoryPrices = const {};
   int _eggsPerCrate = defaultEggsPerCrate;
 
@@ -153,19 +154,26 @@ class _SaleEntryDialogState extends State<_SaleEntryDialog> {
     final eggBatchStock = farmId == null
         ? const ActiveBatchEggStock(totalEggs: 0, batches: [])
         : await InventoryRepository(widget.db).getActiveBatchEggStock(farmId);
+    final fifoAvailability = farmId == null
+        ? (totalEggs: 0, byCategoryId: <String, int>{})
+        : await InventoryRepository(widget.db).getEggFifoAvailabilityMap(farmId);
     final inventoryOptions = saleInventory
         .map(
-          (row) => _ProductOption(
-            id: row.id,
-            label: formatSaleInventoryLabel(row),
-            description: formatSaleInventoryLabel(row),
-            unitPrice: inventoryItemSalePrice(
-              row,
-              eggCategoryPrices: prices,
-            ),
-            available: row.stockLevel,
-            productType: SaleProductType.inventory,
-          ),
+          (row) {
+            final fifoEggs = _fifoEggsForInventoryItem(row, fifoAvailability);
+            return _ProductOption(
+              id: row.id,
+              label:
+                  '${formatSaleInventoryLabel(row)} (${formatEggStockCrateLabel(fifoEggs, eggsPerCrate: _eggsPerCrate)})',
+              description: formatSaleInventoryLabel(row),
+              unitPrice: inventoryItemSalePrice(
+                row,
+                eggCategoryPrices: prices,
+              ),
+              available: fifoEggs.toDouble(),
+              productType: SaleProductType.inventory,
+            );
+          },
         )
         .toList(growable: false);
     final livestockOptions = widget.batches
@@ -203,7 +211,8 @@ class _SaleEntryDialogState extends State<_SaleEntryDialog> {
             ),
           )
           .toList(growable: false);
-      _fifoTotalEggs = eggBatchStock.totalEggs;
+      _fifoTotalEggs = fifoAvailability.totalEggs;
+      _fifoByCategoryId = fifoAvailability.byCategoryId;
       _loading = false;
       for (final line in _lines) {
         _autoSelectProduct(line);
@@ -277,6 +286,41 @@ class _SaleEntryDialogState extends State<_SaleEntryDialog> {
     final product = _inventoryOptions
         .where((option) => option.id == line.productId)
         .firstOrNull;
+    return _fifoEggsForLine(line);
+  }
+
+  int _fifoEggsForInventoryItem(
+    InventoryItem row,
+    ({int totalEggs, Map<String, int> byCategoryId}) fifoAvailability,
+  ) {
+    if (isUnsortedEggInventoryItem(row)) {
+      return fifoAvailability.totalEggs;
+    }
+    final categoryId = row.eggCategoryId?.trim() ?? '';
+    if (categoryId.isNotEmpty) {
+      return fifoAvailability.byCategoryId[categoryId] ?? 0;
+    }
+    return fifoAvailability.totalEggs;
+  }
+
+  int _fifoEggsForLine(_SaleLineState line) {
+    final productId = line.productId;
+    if (productId == null || productId.isEmpty) {
+      return _fifoTotalEggs;
+    }
+    final item = _eggInventoryItems
+        .where((row) => row.id == productId)
+        .firstOrNull;
+    if (item == null) {
+      return _fifoTotalEggs;
+    }
+    if (isUnsortedEggInventoryItem(item)) {
+      return _fifoTotalEggs;
+    }
+    final categoryId = item.eggCategoryId?.trim() ?? '';
+    if (categoryId.isNotEmpty) {
+      return _fifoByCategoryId[categoryId] ?? 0;
+    }
     return _fifoTotalEggs;
   }
 

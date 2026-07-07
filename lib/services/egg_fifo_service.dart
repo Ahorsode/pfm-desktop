@@ -4,6 +4,7 @@ import 'package:drift/drift.dart';
 
 import '../data/local_db.dart';
 import '../utils/inventory_sale_utils.dart';
+import '../utils/egg_sale_allocation_utils.dart';
 
 class BatchEggAllocation {
   const BatchEggAllocation({
@@ -152,7 +153,9 @@ class EggFifoService {
       farmId: farmId,
       quantity: quantity,
       batchId: batchId,
-      categoryId: categoryId ?? inventory.eggCategoryId,
+      categoryId: isUnsortedEggInventoryItem(inventory)
+          ? null
+          : (categoryId ?? inventory.eggCategoryId),
     );
     await (_db.update(_db.inventory)..where((t) => t.id.equals(inventoryId))).write(
       InventoryCompanion(

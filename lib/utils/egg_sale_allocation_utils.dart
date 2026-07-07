@@ -1,5 +1,7 @@
 /// Egg sale allocation: FIFO vs batch-scoped FIFO, sorted size selection.
 
+import '../data/local_db.dart';
+
 enum EggAllocationMode { fifo, batch }
 
 class EggBatchStockOption {
@@ -60,4 +62,16 @@ dynamic defaultEggInventoryRow(List<dynamic> rows) {
     }
   }
   return rows.first;
+}
+
+bool isUnsortedEggInventoryRow(Map<String, Object?> row) {
+  final name = row['item_name']?.toString().toLowerCase() ??
+      row['itemName']?.toString().toLowerCase() ??
+      '';
+  return name.contains('unsorted') || name == 'eggs';
+}
+
+bool isUnsortedEggInventoryItem(InventoryItem item) {
+  return item.itemName.toLowerCase().contains('unsorted') ||
+      item.itemName.toLowerCase() == 'eggs';
 }
