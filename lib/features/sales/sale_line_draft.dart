@@ -8,6 +8,8 @@ class SaleLineDraft {
     required this.unitPrice,
     this.inventoryId,
     this.livestockId,
+    this.eggAllocationMode,
+    this.eggBatchId,
   });
 
   final SaleProductType productType;
@@ -16,6 +18,8 @@ class SaleLineDraft {
   final double unitPrice;
   final String? inventoryId;
   final String? livestockId;
+  final String? eggAllocationMode;
+  final String? eggBatchId;
 
   double get lineTotal => quantity * unitPrice;
 }

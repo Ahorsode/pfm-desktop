@@ -13,19 +13,25 @@ class EggFifoService {
   Future<void> deductFromProductionLogs({
     required String farmId,
     required int quantity,
+    String? batchId,
   }) async {
     if (quantity <= 0) {
       return;
     }
     var qtyToDeduct = quantity;
-    final logs = await (_db.select(_db.eggProductions)
-          ..where(
-            (t) =>
-                t.farmId.equals(farmId) &
-                t.eggsRemaining.isBiggerThanValue(0),
-          )
-          ..orderBy([(t) => OrderingTerm.asc(t.logDate)]))
-        .get();
+    final query = _db.select(_db.eggProductions)
+      ..where(
+        (t) {
+          var expr = t.farmId.equals(farmId) &
+              t.eggsRemaining.isBiggerThanValue(0);
+          if (batchId != null && batchId.isNotEmpty) {
+            expr = expr & t.batchId.equals(batchId);
+          }
+          return expr;
+        },
+      )
+      ..orderBy([(t) => OrderingTerm.asc(t.logDate)]);
+    final logs = await query.get();
 
     for (final log in logs) {
       if (qtyToDeduct <= 0) {
@@ -47,6 +53,7 @@ class EggFifoService {
     required String farmId,
     required String? inventoryId,
     required int quantity,
+    String? batchId,
   }) async {
     if (inventoryId == null || inventoryId.isEmpty || quantity <= 0) {
       return;
@@ -57,6 +64,10 @@ class EggFifoService {
     if (inventory == null || !isEggInventoryItem(inventory)) {
       return;
     }
-    await deductFromProductionLogs(farmId: farmId, quantity: quantity);
+    await deductFromProductionLogs(
+      farmId: farmId,
+      quantity: quantity,
+      batchId: batchId,
+    );
   }
 }

@@ -108,6 +108,7 @@ class LocalSalesService {
         farmId: farmId,
         inventoryId: item.inventoryId,
         quantity: item.quantity,
+        batchId: item.eggAllocationMode == 'batch' ? item.eggBatchId : null,
       );
     }
 

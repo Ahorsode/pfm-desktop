@@ -7,6 +7,8 @@ import '../data/local_db.dart';
 import '../features/sales/sale_line_draft.dart';
 import '../services/local_sales_service.dart';
 import '../utils/farm_utils.dart';
+import '../services/inventory_repository.dart';
+import '../utils/egg_sale_allocation_utils.dart';
 import '../utils/inventory_sale_utils.dart';
 
 enum _DiscountMode { flat, percentage }
@@ -33,6 +35,8 @@ class _SaleLineState {
   SaleProductType productType = SaleProductType.inventory;
   String? productId;
   String description = '';
+  EggAllocationMode eggAllocationMode = EggAllocationMode.fifo;
+  String? eggBatchId;
   final TextEditingController quantityController = TextEditingController(text: '1');
   final TextEditingController unitPriceController = TextEditingController();
   final TextEditingController customDescriptionController = TextEditingController();
@@ -98,6 +102,9 @@ class _SaleEntryDialogState extends State<_SaleEntryDialog> {
 
   List<_ProductOption> _inventoryOptions = const [];
   List<_ProductOption> _livestockOptions = const [];
+  List<InventoryItem> _eggInventoryItems = const [];
+  List<EggBatchStockOption> _eggBatchOptions = const [];
+  Map<String, double> _eggCategoryPrices = const {};
 
   bool get _isWalkIn => _customerId == null;
 
@@ -124,6 +131,9 @@ class _SaleEntryDialogState extends State<_SaleEntryDialog> {
     }
 
     final saleInventory = sellableEggInventory(widget.inventory);
+    final eggBatchStock = farmId == null
+        ? const ActiveBatchEggStock(totalEggs: 0, batches: [])
+        : await InventoryRepository(widget.db).getActiveBatchEggStock(farmId);
     final inventoryOptions = saleInventory
         .map(
           (row) => _ProductOption(
@@ -163,6 +173,17 @@ class _SaleEntryDialogState extends State<_SaleEntryDialog> {
     setState(() {
       _inventoryOptions = inventoryOptions;
       _livestockOptions = livestockOptions;
+      _eggInventoryItems = saleInventory;
+      _eggCategoryPrices = prices;
+      _eggBatchOptions = eggBatchStock.batches
+          .map(
+            (row) => EggBatchStockOption(
+              batchId: row.batchId,
+              batchName: row.batchName,
+              eggsRemaining: row.eggsRemaining,
+            ),
+          )
+          .toList(growable: false);
       _loading = false;
       for (final line in _lines) {
         _autoSelectProduct(line);
@@ -180,6 +201,9 @@ class _SaleEntryDialogState extends State<_SaleEntryDialog> {
   }
 
   bool _shouldHideProductPicker(_SaleLineState line) {
+    if (line.productType == SaleProductType.inventory) {
+      return false;
+    }
     if (line.productType == SaleProductType.custom) {
       return false;
     }
@@ -190,8 +214,97 @@ class _SaleEntryDialogState extends State<_SaleEntryDialog> {
     return options.length == 1;
   }
 
+  void _setEggProductFromRow(_SaleLineState line, InventoryItem row) {
+    line.productId = row.id;
+    line.description = formatSaleInventoryLabel(row);
+    line.unitPriceController.text = inventoryItemSalePrice(
+      row,
+      eggCategoryPrices: _eggCategoryPrices,
+    ).toStringAsFixed(2);
+  }
+
+  void _applyDefaultEggProduct(_SaleLineState line) {
+    if (_eggInventoryItems.isEmpty) {
+      line.productId = null;
+      line.description = '';
+      line.unitPriceController.clear();
+      return;
+    }
+    if (!requiresEggSizeSelection(_eggInventoryItems)) {
+      final row = defaultEggInventoryRow(_eggInventoryItems);
+      if (row is InventoryItem) {
+        _setEggProductFromRow(line, row);
+      }
+      return;
+    }
+    line.productId = null;
+    line.description = 'Eggs';
+    line.unitPriceController.clear();
+  }
+
+  int _eggAvailableForLine(_SaleLineState line) {
+    if (line.eggAllocationMode == EggAllocationMode.batch) {
+      if (line.eggBatchId == null || line.eggBatchId!.isEmpty) {
+        return 0;
+      }
+      for (final batch in _eggBatchOptions) {
+        if (batch.batchId == line.eggBatchId) {
+          return batch.eggsRemaining;
+        }
+      }
+      return 0;
+    }
+    final product = _inventoryOptions
+        .where((option) => option.id == line.productId)
+        .firstOrNull;
+    return product?.available.floor() ?? 0;
+  }
+
+  Future<void> _pickEggSizeForLine(int index) async {
+    final line = _lines[index];
+    final selected = await showDialog<InventoryItem>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Select egg size'),
+        content: SizedBox(
+          width: 360,
+          child: ListView(
+            shrinkWrap: true,
+            children: [
+              for (final row in _eggInventoryItems)
+                ListTile(
+                  title: Text(eggSizeLabelFromRow(row)),
+                  subtitle: Text('${row.stockLevel.floor()} in stock'),
+                  onTap: () => Navigator.of(context).pop(row),
+                ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+        ],
+      ),
+    );
+    if (selected == null || !mounted) {
+      return;
+    }
+    setState(() {
+      _setEggProductFromRow(line, selected);
+      _syncCashReceived();
+    });
+  }
+
   void _autoSelectProduct(_SaleLineState line) {
     if (line.productType == SaleProductType.custom) {
+      return;
+    }
+    if (line.productType == SaleProductType.inventory) {
+      line.eggAllocationMode = EggAllocationMode.fifo;
+      line.eggBatchId = null;
+      _applyDefaultEggProduct(line);
       return;
     }
     final options = _optionsFor(line.productType);
@@ -257,8 +370,19 @@ class _SaleEntryDialogState extends State<_SaleEntryDialog> {
           _inventoryOptions.isEmpty) {
         return false;
       }
+      if (line.productType == SaleProductType.inventory &&
+          line.eggAllocationMode == EggAllocationMode.batch &&
+          (line.eggBatchId == null || line.eggBatchId!.isEmpty)) {
+        return false;
+      }
       if (line.productId == null || line.productId!.isEmpty) {
         if (line.productType != SaleProductType.custom) {
+          return false;
+        }
+      }
+      if (line.productType == SaleProductType.inventory) {
+        final quantity = int.tryParse(line.quantityController.text.trim()) ?? 0;
+        if (quantity > _eggAvailableForLine(line)) {
           return false;
         }
       }
@@ -280,6 +404,13 @@ class _SaleEntryDialogState extends State<_SaleEntryDialog> {
         unitPrice: unitPrice,
         inventoryId: line.productType == SaleProductType.inventory ? line.productId : null,
         livestockId: line.productType == SaleProductType.livestock ? line.productId : null,
+        eggAllocationMode: line.productType == SaleProductType.inventory
+            ? line.eggAllocationMode.name
+            : null,
+        eggBatchId: line.productType == SaleProductType.inventory &&
+                line.eggAllocationMode == EggAllocationMode.batch
+            ? line.eggBatchId
+            : null,
       );
     }).toList(growable: false);
   }
@@ -394,11 +525,17 @@ class _SaleEntryDialogState extends State<_SaleEntryDialog> {
                   inventoryEmpty: _lines[index].productType ==
                           SaleProductType.inventory &&
                       _inventoryOptions.isEmpty,
+                  eggBatchOptions: _eggBatchOptions,
+                  requiresEggSizeSelection:
+                      requiresEggSizeSelection(_eggInventoryItems),
+                  onPickEggSize: () => _pickEggSizeForLine(index),
                   onProductTypeChanged: (type) {
                     setState(() {
                       final line = _lines[index];
                       line.productType = type;
                       line.productId = null;
+                      line.eggAllocationMode = EggAllocationMode.fifo;
+                      line.eggBatchId = null;
                       line.description = '';
                       line.unitPriceController.clear();
                       _autoSelectProduct(line);
@@ -514,6 +651,9 @@ class _LineEditor extends StatelessWidget {
     required this.inventoryEmpty,
     required this.onProductTypeChanged,
     required this.onChanged,
+    this.eggBatchOptions = const [],
+    this.requiresEggSizeSelection = false,
+    this.onPickEggSize,
     this.onRemove,
   });
 
@@ -524,6 +664,9 @@ class _LineEditor extends StatelessWidget {
   final List<_ProductOption> livestockOptions;
   final bool hideProductPicker;
   final bool inventoryEmpty;
+  final List<EggBatchStockOption> eggBatchOptions;
+  final bool requiresEggSizeSelection;
+  final VoidCallback? onPickEggSize;
   final ValueChanged<SaleProductType> onProductTypeChanged;
   final VoidCallback onChanged;
   final VoidCallback? onRemove;
@@ -587,7 +730,80 @@ class _LineEditor extends StatelessWidget {
                 decoration: const InputDecoration(labelText: 'Description'),
                 onChanged: (_) => onChanged(),
               )
-            else if (inventoryEmpty && line.productType == SaleProductType.inventory)
+            else if (line.productType == SaleProductType.inventory &&
+                !inventoryEmpty) ...[
+              SegmentedButton<EggAllocationMode>(
+                segments: const [
+                  ButtonSegment(
+                    value: EggAllocationMode.fifo,
+                    label: Text('FIFO'),
+                  ),
+                  ButtonSegment(
+                    value: EggAllocationMode.batch,
+                    label: Text('By Batch'),
+                  ),
+                ],
+                selected: {line.eggAllocationMode},
+                onSelectionChanged: (selection) {
+                  line.eggAllocationMode = selection.first;
+                  if (selection.first == EggAllocationMode.fifo) {
+                    line.eggBatchId = null;
+                  }
+                  onChanged();
+                },
+              ),
+              const SizedBox(height: 8),
+              if (line.eggAllocationMode == EggAllocationMode.batch) ...[
+                if (eggBatchOptions.isEmpty)
+                  InputDecorator(
+                    decoration: const InputDecoration(labelText: 'Batch'),
+                    child: Text(
+                      'No active layer batches with eggs in stock',
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.error,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  )
+                else
+                  DropdownButtonFormField<String?>(
+                    initialValue: line.eggBatchId,
+                    decoration: const InputDecoration(labelText: 'Batch'),
+                    items: [
+                      for (final batch in eggBatchOptions)
+                        DropdownMenuItem(
+                          value: batch.batchId,
+                          child: Text(
+                            '${batch.batchName} (${batch.eggsRemaining} eggs)',
+                          ),
+                        ),
+                    ],
+                    onChanged: (value) {
+                      line.eggBatchId = value;
+                      onChanged();
+                    },
+                  ),
+                const SizedBox(height: 8),
+              ],
+              if (requiresEggSizeSelection)
+                OutlinedButton.icon(
+                  onPressed: onPickEggSize,
+                  icon: const Icon(Icons.egg_outlined),
+                  label: Text(
+                    _selectedOption == null
+                        ? 'Select egg size'
+                        : 'Size: ${_selectedOption!.label}',
+                  ),
+                )
+              else if (_selectedOption != null)
+                InputDecorator(
+                  decoration: InputDecoration(labelText: inventoryTypeLabel),
+                  child: Text(
+                    _selectedOption!.label,
+                    style: const TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                ),
+            ] else if (inventoryEmpty && line.productType == SaleProductType.inventory)
               InputDecorator(
                 decoration: const InputDecoration(labelText: 'Eggs Product'),
                 child: Text(
