@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -10,7 +9,25 @@ import '../utils/id_utils.dart';
 import '../utils/inventory_constants.dart';
 import '../utils/feed_source_utils.dart';
 import '../utils/livestock_breed_options.dart';
+import '../services/feed_formulation_service.dart';
 import 'feed_analytics_screen.dart';
+
+const _kFeedFormulationTypes = [
+  'PRE_STARTER',
+  'STARTER',
+  'GROWER',
+  'FINISHER',
+  'BREEDER',
+  'CUSTOM',
+];
+
+const _kFeedTargetLivestock = [
+  'POULTRY_BROILER',
+  'POULTRY_LAYER',
+  'CATTLE',
+  'SHEEP_GOAT',
+  'PIG',
+];
 
 class FeedManagementScreen extends StatefulWidget {
   const FeedManagementScreen({super.key});
@@ -575,44 +592,50 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
         return StreamBuilder<List<FeedFormulation>>(
           stream: db.select(db.feedFormulations).watch(),
           builder: (context, formSnapshot) {
-            final logs = snapshot.data ?? [];
-            final formulations = formSnapshot.data ?? [];
+            return StreamBuilder<List<InventoryItem>>(
+              stream: db.select(db.inventory).watch(),
+              builder: (context, inventorySnapshot) {
+                final logs = snapshot.data ?? [];
+                final formulations = formSnapshot.data ?? [];
+                final inventoryItems = inventorySnapshot.data ?? [];
 
-            // Aggregate ingredient usage
-            final Map<String, double> ingredientTotals = {};
+                final Map<String, double> ingredientTotals = {};
+                final inventoryNames = {
+                  for (final item in inventoryItems) item.id: item.itemName,
+                };
 
-            for (var log in logs) {
-              if (log.formulationId != null) {
-                final form = formulations.firstWhere(
-                  (f) => f.id == log.formulationId,
-                  orElse: () => const FeedFormulation(
-                    id: '',
-                    farmId: '',
-                    name: '',
-                    isActive: false,
-                    synced: false,
-                  ),
-                );
-                if (form.id.isNotEmpty && form.ingredientsJson != null) {
-                  try {
-                    final Map<String, dynamic> ratios = jsonDecode(
-                      form.ingredientsJson!,
+                for (var log in logs) {
+                  if (log.feedTypeId != null) {
+                    final label =
+                        inventoryNames[log.feedTypeId] ?? 'Inventory feed';
+                    ingredientTotals[label] =
+                        (ingredientTotals[label] ?? 0.0) + log.amountConsumed;
+                    continue;
+                  }
+                  if (log.formulationId != null) {
+                    final form = formulations.firstWhere(
+                      (f) => f.id == log.formulationId,
+                      orElse: () => FeedFormulation(
+                        id: '',
+                        farmId: '',
+                        name: '',
+                        type: 'CUSTOM',
+                        stockLevel: 0,
+                        createdAt: DateTime.now(),
+                        updatedAt: DateTime.now(),
+                        synced: false,
+                      ),
                     );
-                    ratios.forEach((ingredient, percentage) {
-                      final parsedPercentage =
-                          double.tryParse(percentage.toString()) ?? 0.0;
-                      final ingredientUsed =
-                          log.amountConsumed * (parsedPercentage / 100.0);
-                      ingredientTotals[ingredient] =
-                          (ingredientTotals[ingredient] ?? 0.0) +
-                          ingredientUsed;
-                    });
-                  } catch (_) {}
+                    if (form.id.isNotEmpty) {
+                      final label = 'Formulation: ${form.name}';
+                      ingredientTotals[label] =
+                          (ingredientTotals[label] ?? 0.0) +
+                          log.amountConsumed;
+                    }
+                  }
                 }
-              }
-            }
 
-            return Container(
+                return Container(
               height: 388,
               padding: const EdgeInsets.all(32),
               decoration: BoxDecoration(
@@ -715,6 +738,8 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
                 ],
               ),
             );
+              },
+            );
           },
         );
       },
@@ -791,7 +816,7 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
                       builder: (context, snapshot) {
                         final list = snapshot.data ?? [];
                         return DropdownButtonFormField<String>(
-                          value: selectedBatch,
+                          initialValue: selectedBatch,
                           dropdownColor: isDark
                               ? const Color(0xFF0F172A)
                               : Colors.white,
@@ -882,7 +907,7 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
                             }
 
                             return DropdownButtonFormField<String>(
-                              value: selectedFeedSource,
+                              initialValue: selectedFeedSource,
                               dropdownColor: isDark
                                   ? const Color(0xFF0F172A)
                                   : Colors.white,
@@ -1117,49 +1142,24 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
                                             ),
                                           ))
                                         .get();
-                                if (forms.isNotEmpty &&
-                                    forms.first.ingredientsJson != null) {
-                                  try {
-                                    final ratios = jsonDecode(
-                                      forms.first.ingredientsJson!,
-                                    ) as Map<String, dynamic>;
-                                    for (final entry in ratios.entries) {
-                                      final ingredientUsed =
-                                          amount *
-                                          ((double.tryParse(
-                                                    entry.value.toString(),
-                                                  ) ??
-                                                  0.0) /
-                                              100.0);
-                                      if (ingredientUsed <= 0) {
-                                        continue;
-                                      }
-                                      final inventoryRows =
-                                          await (db.select(db.inventory)..where(
-                                                (t) => t.itemName.equals(
-                                                  entry.key,
-                                                ),
-                                              ))
-                                              .get();
-                                      if (inventoryRows.isEmpty) {
-                                        continue;
-                                      }
-                                      final item = inventoryRows.first;
-                                      await (db.update(db.inventory)..where(
-                                            (t) => t.id.equals(item.id),
-                                          ))
-                                          .write(
-                                            InventoryCompanion(
-                                              stockLevel: Value(
-                                                (item.stockLevel -
-                                                        ingredientUsed)
-                                                    .clamp(0.0, 999999.0),
-                                              ),
-                                              synced: const Value(false),
-                                            ),
-                                          );
-                                    }
-                                  } catch (_) {}
+                                if (forms.isNotEmpty) {
+                                  final form = forms.first;
+                                  await (db.update(db.feedFormulations)
+                                        ..where(
+                                          (t) => t.id.equals(form.id),
+                                        ))
+                                      .write(
+                                    FeedFormulationsCompanion(
+                                      stockLevel: Value(
+                                        (form.stockLevel - amount).clamp(
+                                          0.0,
+                                          999999.0,
+                                        ),
+                                      ),
+                                      synced: const Value(false),
+                                      updatedAt: Value(DateTime.now()),
+                                    ),
+                                  );
                                 }
                               }
                             });
@@ -1214,27 +1214,101 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
   // --- DIALOG: CREATE FORMULATION ---
   void _showCreateFormulationDialog(AppDatabase db) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final service = FeedFormulationService(db);
     final nameCtrl = TextEditingController();
-    final List<Map<String, dynamic>> ingredients = [
-      {'name': TextEditingController(), 'percentage': TextEditingController()},
-    ];
+    var selectedType = _kFeedFormulationTypes[1];
+    var selectedLivestock = _kFeedTargetLivestock[0];
+    final List<Map<String, dynamic>> ingredients = [];
+    var inventoryItems = <InventoryItem>[];
+
+    Future<void> loadInventory(StateSetter setDialogState) async {
+      final farmId = await FarmUtils.getBoundFarmId();
+      if (farmId == null) {
+        return;
+      }
+      final items = await service.loadFeedInventory(farmId);
+      setDialogState(() {
+        inventoryItems = items;
+        if (ingredients.isEmpty && items.isNotEmpty) {
+          ingredients.add({
+            'inventoryId': items.first.id,
+            'bags': TextEditingController(),
+          });
+        }
+      });
+    }
+
+    var inventoryLoaded = false;
 
     showDialog(
       context: context,
       builder: (context) {
         return StatefulBuilder(
           builder: (context, setDialogState) {
-            double totalPercentage = 0.0;
-            try {
-              totalPercentage = ingredients.fold<double>(0.0, (sum, item) {
-                final p =
-                    double.tryParse(
-                      (item['percentage'] as TextEditingController).text,
-                    ) ??
-                    0.0;
-                return sum + p;
-              });
-            } catch (_) {}
+            if (!inventoryLoaded) {
+              inventoryLoaded = true;
+              loadInventory(setDialogState);
+            }
+
+            double totalBags = 0;
+            for (final item in ingredients) {
+              totalBags +=
+                  double.tryParse(
+                    (item['bags'] as TextEditingController).text,
+                  ) ??
+                  0;
+            }
+
+            List<InventoryItem> availableForRow(int index) {
+              final currentId = ingredients[index]['inventoryId'] as String?;
+              final otherIds = <String>{
+                for (var i = 0; i < ingredients.length; i++)
+                  if (i != index)
+                    ingredients[i]['inventoryId'] as String? ?? '',
+              }..remove('');
+              return inventoryItems
+                  .where(
+                    (item) =>
+                        item.id == currentId || !otherIds.contains(item.id),
+                  )
+                  .toList();
+            }
+
+            if (inventoryItems.isEmpty) {
+              return Dialog(
+                backgroundColor:
+                    isDark ? const Color(0xFF0F172A) : Colors.white,
+                child: Padding(
+                  padding: const EdgeInsets.all(32),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'No feed inventory items available.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: isDark ? Colors.white : const Color(0xFF0F172A),
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        'Add feed ingredients to inventory before creating a formulation.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: isDark ? Colors.white70 : Colors.black54,
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      TextButton(
+                        onPressed: () => Navigator.pop(context),
+                        child: const Text('Close'),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }
 
             return Dialog(
               backgroundColor: isDark ? const Color(0xFF0F172A) : Colors.white,
@@ -1242,7 +1316,7 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
                 borderRadius: BorderRadius.circular(16),
               ),
               child: Container(
-                width: 600,
+                width: 640,
                 padding: const EdgeInsets.all(32),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -1252,7 +1326,7 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Text(
-                          'CREATE CUSTOM FORMULATION',
+                          'CREATE FEED FORMULATION',
                           style: TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.w900,
@@ -1268,8 +1342,6 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
                       ],
                     ),
                     const SizedBox(height: 24),
-
-                    // Formulation Name Input
                     Text(
                       'Formulation Name',
                       style: TextStyle(
@@ -1287,18 +1359,108 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
                         color: isDark ? Colors.white : Colors.black87,
                       ),
                       decoration: _dialogInputDecoration(
-                        'e.g., Layer Starter Formula',
+                        'e.g., Broiler Power Starter',
                         isDark,
                       ),
                     ),
                     const SizedBox(height: 16),
-
-                    // Ingredients Splitter
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Feed Type',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 12,
+                                  color: isDark
+                                      ? Colors.white70
+                                      : const Color(0xFF475569),
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              DropdownButtonFormField<String>(
+                                value: selectedType,
+                                dropdownColor: isDark
+                                    ? const Color(0xFF1E293B)
+                                    : Colors.white,
+                                style: TextStyle(
+                                  color: isDark
+                                      ? Colors.white
+                                      : const Color(0xFF0F172A),
+                                ),
+                                items: [
+                                  for (final type in _kFeedFormulationTypes)
+                                    DropdownMenuItem(
+                                      value: type,
+                                      child: Text(type.replaceAll('_', ' ')),
+                                    ),
+                                ],
+                                onChanged: (value) {
+                                  if (value == null) {
+                                    return;
+                                  }
+                                  setDialogState(() => selectedType = value);
+                                },
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Target Livestock',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 12,
+                                  color: isDark
+                                      ? Colors.white70
+                                      : const Color(0xFF475569),
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              DropdownButtonFormField<String>(
+                                value: selectedLivestock,
+                                dropdownColor: isDark
+                                    ? const Color(0xFF1E293B)
+                                    : Colors.white,
+                                style: TextStyle(
+                                  color: isDark
+                                      ? Colors.white
+                                      : const Color(0xFF0F172A),
+                                ),
+                                items: [
+                                  for (final type in _kFeedTargetLivestock)
+                                    DropdownMenuItem(
+                                      value: type,
+                                      child: Text(type.replaceAll('_', ' ')),
+                                    ),
+                                ],
+                                onChanged: (value) {
+                                  if (value == null) {
+                                    return;
+                                  }
+                                  setDialogState(
+                                    () => selectedLivestock = value,
+                                  );
+                                },
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Text(
-                          'Ingredients Distribution',
+                          'Ingredients (bags from inventory)',
                           style: TextStyle(
                             fontWeight: FontWeight.bold,
                             fontSize: 12,
@@ -1308,14 +1470,28 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
                           ),
                         ),
                         TextButton.icon(
-                          onPressed: () {
-                            setDialogState(() {
-                              ingredients.add({
-                                'name': TextEditingController(),
-                                'percentage': TextEditingController(),
-                              });
-                            });
-                          },
+                          onPressed: ingredients.length >= inventoryItems.length
+                              ? null
+                              : () {
+                                  final usedIds = ingredients
+                                      .map(
+                                        (row) =>
+                                            row['inventoryId'] as String? ?? '',
+                                      )
+                                      .toSet();
+                                  final next = inventoryItems
+                                      .where((item) => !usedIds.contains(item.id))
+                                      .firstOrNull;
+                                  if (next == null) {
+                                    return;
+                                  }
+                                  setDialogState(() {
+                                    ingredients.add({
+                                      'inventoryId': next.id,
+                                      'bags': TextEditingController(),
+                                    });
+                                  });
+                                },
                           icon: const Icon(
                             Icons.add,
                             size: 16,
@@ -1333,30 +1509,46 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
                     ),
                     const SizedBox(height: 8),
                     Container(
-                      constraints: const BoxConstraints(maxHeight: 200),
+                      constraints: const BoxConstraints(maxHeight: 240),
                       child: ListView.builder(
                         shrinkWrap: true,
                         itemCount: ingredients.length,
                         itemBuilder: (context, index) {
+                          final options = availableForRow(index);
+                          final selectedId =
+                              ingredients[index]['inventoryId'] as String?;
+                          final selectedItem = inventoryItems
+                              .where((item) => item.id == selectedId)
+                              .firstOrNull;
                           return Padding(
-                            padding: const EdgeInsets.only(bottom: 8.0),
+                            padding: const EdgeInsets.only(bottom: 8),
                             child: Row(
                               children: [
                                 Expanded(
                                   flex: 3,
-                                  child: TextField(
-                                    controller:
-                                        ingredients[index]['name']
-                                            as TextEditingController,
+                                  child: DropdownButtonFormField<String>(
+                                    value: selectedId,
+                                    dropdownColor: isDark
+                                        ? const Color(0xFF1E293B)
+                                        : Colors.white,
                                     style: TextStyle(
                                       color: isDark
                                           ? Colors.white
-                                          : Colors.black87,
+                                          : const Color(0xFF0F172A),
                                     ),
-                                    decoration: _dialogInputDecoration(
-                                      'Maize, Fishmeal, etc.',
-                                      isDark,
-                                    ),
+                                    items: [
+                                      for (final item in options)
+                                        DropdownMenuItem(
+                                          value: item.id,
+                                          child: Text(item.itemName),
+                                        ),
+                                    ],
+                                    onChanged: (value) {
+                                      setDialogState(() {
+                                        ingredients[index]['inventoryId'] =
+                                            value;
+                                      });
+                                    },
                                   ),
                                 ),
                                 const SizedBox(width: 8),
@@ -1364,7 +1556,7 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
                                   flex: 2,
                                   child: TextField(
                                     controller:
-                                        ingredients[index]['percentage']
+                                        ingredients[index]['bags']
                                             as TextEditingController,
                                     keyboardType: TextInputType.number,
                                     inputFormatters: [
@@ -1378,7 +1570,9 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
                                           : Colors.black87,
                                     ),
                                     decoration: _dialogInputDecoration(
-                                      '% ratio',
+                                      selectedItem == null
+                                          ? 'Bags'
+                                          : 'Max ${selectedItem.stockLevel.toStringAsFixed(0)}',
                                       isDark,
                                     ),
                                     onChanged: (_) => setDialogState(() {}),
@@ -1389,11 +1583,13 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
                                     Icons.delete_outline,
                                     color: Colors.redAccent,
                                   ),
-                                  onPressed: () {
-                                    setDialogState(() {
-                                      ingredients.removeAt(index);
-                                    });
-                                  },
+                                  onPressed: ingredients.length <= 1
+                                      ? null
+                                      : () {
+                                          setDialogState(() {
+                                            ingredients.removeAt(index);
+                                          });
+                                        },
                                 ),
                               ],
                             ),
@@ -1402,13 +1598,11 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
                       ),
                     ),
                     const SizedBox(height: 16),
-
-                    // Total Percentage Tracker Widget
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Text(
-                          'Total Ratio Allocation:',
+                          'Final Batch Size:',
                           style: TextStyle(
                             color: isDark
                                 ? Colors.white70
@@ -1418,24 +1612,18 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
                           ),
                         ),
                         Text(
-                          '${totalPercentage.toStringAsFixed(1)}% / 100.0%',
+                          '${totalBags.toStringAsFixed(1)} bags',
                           style: TextStyle(
-                            color: totalPercentage == 100.0
-                                ? (isDark
-                                      ? Colors.green
-                                      : const Color(0xFF16A34A))
-                                : (isDark
-                                      ? Colors.amberAccent
-                                      : Colors.orange.shade800),
-                            fontSize: 14,
+                            color: isDark
+                                ? Colors.green.shade300
+                                : const Color(0xFF16A34A),
+                            fontSize: 16,
                             fontWeight: FontWeight.w900,
                           ),
                         ),
                       ],
                     ),
                     const SizedBox(height: 24),
-
-                    // Submit Action Button
                     SizedBox(
                       width: double.infinity,
                       height: 52,
@@ -1445,20 +1633,16 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
                           if (name.isEmpty) {
                             ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(
-                                content: Text(
-                                  'Please name this custom formulation',
-                                ),
+                                content: Text('Please name this formulation'),
                                 backgroundColor: Colors.orange,
                               ),
                             );
                             return;
                           }
-                          if (totalPercentage != 100.0) {
+                          if (ingredients.isEmpty) {
                             ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(
-                                content: Text(
-                                  'Ingredient ratios must sum to exactly 100%',
-                                ),
+                                content: Text('Add at least one ingredient'),
                                 backgroundColor: Colors.orange,
                               ),
                             );
@@ -1466,39 +1650,41 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
                           }
 
                           final farmId = await FarmUtils.getBoundFarmId();
-                          if (farmId == null) return;
+                          if (farmId == null) {
+                            return;
+                          }
 
-                          // Construct ingredient map JSON
-                          final Map<String, double> ratios = {};
-                          for (var item in ingredients) {
-                            final ingName =
-                                (item['name'] as TextEditingController).text
-                                    .trim();
-                            final ingPct =
+                          final payload = <({String inventoryId, double bags})>[];
+                          for (final item in ingredients) {
+                            final inventoryId =
+                                item['inventoryId'] as String? ?? '';
+                            final bags =
                                 double.tryParse(
-                                  (item['percentage'] as TextEditingController)
-                                      .text,
+                                  (item['bags'] as TextEditingController).text,
                                 ) ??
-                                0.0;
-                            if (ingName.isNotEmpty && ingPct > 0) {
-                              ratios[ingName] = ingPct;
+                                0;
+                            if (inventoryId.isEmpty || bags <= 0) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                    'Each ingredient needs a source and bag count',
+                                  ),
+                                  backgroundColor: Colors.orange,
+                                ),
+                              );
+                              return;
                             }
+                            payload.add((inventoryId: inventoryId, bags: bags));
                           }
 
                           try {
-                            await db
-                                .into(db.feedFormulations)
-                                .insert(
-                                  FeedFormulationsCompanion.insert(
-                                    id: newLocalId(),
-                                    farmId: farmId,
-                                    name: name,
-                                    ingredientsJson: Value(jsonEncode(ratios)),
-                                    isActive: const Value(true),
-                                    synced: const Value(false),
-                                  ),
-                                );
-
+                            await service.createFormulation(
+                              farmId: farmId,
+                              name: name,
+                              type: selectedType,
+                              targetLivestock: selectedLivestock,
+                              ingredients: payload,
+                            );
                             if (context.mounted) {
                               Navigator.pop(context);
                               ScaffoldMessenger.of(context).showSnackBar(
@@ -1605,19 +1791,26 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
                       );
                     }
 
-                    return Container(
+                    final formulationService = FeedFormulationService(db);
+                    return FutureBuilder<
+                        Map<String, List<FeedFormulationIngredientView>>>(
+                      future: formulationService
+                          .loadIngredientViewsByFormulationIds(
+                        list.map((formula) => formula.id),
+                      ),
+                      builder: (context, ingredientSnapshot) {
+                        final ingredientViews =
+                            ingredientSnapshot.data ?? const {};
+
+                        return Container(
                       constraints: const BoxConstraints(maxHeight: 400),
                       child: ListView.builder(
                         shrinkWrap: true,
                         itemCount: list.length,
                         itemBuilder: (context, index) {
                           final formula = list[index];
-                          Map<String, dynamic> ingredientsMap = {};
-                          try {
-                            ingredientsMap = jsonDecode(
-                              formula.ingredientsJson ?? '{}',
-                            );
-                          } catch (_) {}
+                          final views =
+                              ingredientViews[formula.id] ?? const [];
 
                           return Container(
                             margin: const EdgeInsets.only(bottom: 16),
@@ -1640,14 +1833,32 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
                                   mainAxisAlignment:
                                       MainAxisAlignment.spaceBetween,
                                   children: [
-                                    Text(
-                                      formula.name,
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 16,
-                                        color: isDark
-                                            ? Colors.white
-                                            : const Color(0xFF0F172A),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            formula.name,
+                                            style: TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 16,
+                                              color: isDark
+                                                  ? Colors.white
+                                                  : const Color(0xFF0F172A),
+                                            ),
+                                          ),
+                                          const SizedBox(height: 4),
+                                          Text(
+                                            '${formula.type.replaceAll('_', ' ')} • ${formula.stockLevel.toStringAsFixed(1)} bags',
+                                            style: TextStyle(
+                                              color: isDark
+                                                  ? Colors.white54
+                                                  : Colors.black54,
+                                              fontSize: 12,
+                                            ),
+                                          ),
+                                        ],
                                       ),
                                     ),
                                     IconButton(
@@ -1657,11 +1868,8 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
                                         size: 20,
                                       ),
                                       onPressed: () async {
-                                        await (db.delete(db.feedFormulations)
-                                              ..where(
-                                                (t) => t.id.equals(formula.id),
-                                              ))
-                                            .go();
+                                        await formulationService
+                                            .deleteFormulation(formula.id);
                                         if (context.mounted) {
                                           ScaffoldMessenger.of(
                                             context,
@@ -1681,7 +1889,7 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
                                 Wrap(
                                   spacing: 8,
                                   runSpacing: 8,
-                                  children: ingredientsMap.entries.map((e) {
+                                  children: views.map((view) {
                                     return Container(
                                       padding: const EdgeInsets.symmetric(
                                         horizontal: 10,
@@ -1696,7 +1904,7 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
                                         borderRadius: BorderRadius.circular(8),
                                       ),
                                       child: Text(
-                                        '${e.key}: ${e.value}%',
+                                        '${view.itemName}: ${view.quantity.toStringAsFixed(1)} ${view.unit}',
                                         style: TextStyle(
                                           color: isDark
                                               ? Colors.green.shade300
@@ -1713,6 +1921,8 @@ class _FeedManagementScreenState extends State<FeedManagementScreen> {
                           );
                         },
                       ),
+                    );
+                      },
                     );
                   },
                 ),

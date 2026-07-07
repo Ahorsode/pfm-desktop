@@ -892,13 +892,17 @@ class SyncEngine extends ChangeNotifier {
       for (var ff in pendingFormulations) {
         try {
           final id = safeIdString(ff.id);
+          final now = DateTime.now().toUtc().toIso8601String();
           final payload = {
             'id': id,
             'farmId': _remoteFarmIdForPush(ff.farmId, webFarmId),
             'name': ff.name,
-            'description': ff.description,
-            'isActive': ff.isActive,
-            'updatedAt': DateTime.now().toUtc().toIso8601String(),
+            'notes': ff.notes,
+            'type': ff.type,
+            'targetLivestock': ff.targetLivestock,
+            'stockLevel': ff.stockLevel,
+            'createdAt': ff.createdAt.toUtc().toIso8601String(),
+            'updatedAt': now,
           };
           assertSyncPayloadUsesStringIds(payload);
           final existing = await _supabase
@@ -919,6 +923,44 @@ class SyncEngine extends ChangeNotifier {
               .write(const FeedFormulationsCompanion(synced: Value(true)));
         } catch (e) {
           debugPrint("FeedFormulation push error: $e");
+        }
+      }
+
+      // 9.1 Push Feed Formulation Ingredients
+      final pendingIngredients = await (db.select(
+        db.feedFormulationIngredients,
+      )..where((t) => t.synced.equals(false))).get();
+      for (var ing in pendingIngredients) {
+        try {
+          final id = safeIdString(ing.id);
+          final payload = {
+            'id': id,
+            'formulationId': safeIdString(ing.formulationId),
+            'inventoryId': safeIdString(ing.inventoryId),
+            'quantity': ing.quantity,
+            'unit': ing.unit,
+          };
+          assertSyncPayloadUsesStringIds(payload);
+          final existing = await _supabase
+              .from('feed_formulation_ingredients')
+              .select('id')
+              .eq('id', id)
+              .maybeSingle();
+          if (existing != null) {
+            await _supabase
+                .from('feed_formulation_ingredients')
+                .update(payload)
+                .eq('id', id);
+          } else {
+            await _supabase.from('feed_formulation_ingredients').insert(payload);
+          }
+          await (db.update(db.feedFormulationIngredients)
+                ..where((t) => t.id.equals(ing.id)))
+              .write(
+            const FeedFormulationIngredientsCompanion(synced: Value(true)),
+          );
+        } catch (e) {
+          debugPrint("FeedFormulationIngredient push error: $e");
         }
       }
 
@@ -1240,6 +1282,7 @@ class SyncEngine extends ChangeNotifier {
       debugPrint('Pull: synced ${remoteCustomers.length} customers');
 
       await _syncSuppliersFromCloud(farmIdFilter);
+      await _syncFeedFormulationsFromCloud(farmIdFilter);
 
       // 4.1 Pull User Permissions (if provided by RPC)
       final remotePermissions =
@@ -1726,6 +1769,61 @@ class SyncEngine extends ChangeNotifier {
           );
     }
     debugPrint('Pull: synced ${remoteSuppliers.length} suppliers');
+  }
+
+  Future<void> _syncFeedFormulationsFromCloud(String farmIdFilter) async {
+    final remoteFormulations = await _supabase
+        .from('feed_formulations')
+        .select()
+        .eq('farmId', farmIdFilter);
+    final formulationIds = <String>[];
+    for (final row in remoteFormulations) {
+      final id = safeIdString(row['id']);
+      formulationIds.add(id);
+      await db.into(db.feedFormulations).insertOnConflictUpdate(
+        FeedFormulationsCompanion.insert(
+          id: id,
+          farmId: farmIdFilter,
+          name: row['name'] as String,
+          notes: Value(_safeStr(row['notes'])),
+          type: Value(_safeStr(row['type']) ?? 'CUSTOM'),
+          targetLivestock: Value(_safeStr(row['targetLivestock'])),
+          stockLevel: Value(_safeDouble(row['stockLevel']) ?? 0),
+          createdAt: Value(
+            DateTime.tryParse(_safeStr(row['createdAt']) ?? '') ?? DateTime.now(),
+          ),
+          updatedAt: Value(
+            DateTime.tryParse(_safeStr(row['updatedAt']) ?? '') ?? DateTime.now(),
+          ),
+          synced: const Value(true),
+        ),
+      );
+    }
+    debugPrint('Pull: synced ${remoteFormulations.length} feed formulations');
+
+    if (formulationIds.isEmpty) {
+      return;
+    }
+
+    final remoteIngredients = await _supabase
+        .from('feed_formulation_ingredients')
+        .select()
+        .inFilter('formulationId', formulationIds);
+    for (final row in remoteIngredients) {
+      await db.into(db.feedFormulationIngredients).insertOnConflictUpdate(
+        FeedFormulationIngredientsCompanion.insert(
+          id: safeIdString(row['id']),
+          formulationId: safeIdString(row['formulationId']),
+          inventoryId: safeIdString(row['inventoryId']),
+          quantity: _safeDouble(row['quantity']) ?? 0,
+          unit: Value(_safeStr(row['unit']) ?? 'bag'),
+          synced: const Value(true),
+        ),
+      );
+    }
+    debugPrint(
+      'Pull: synced ${remoteIngredients.length} feed formulation ingredients',
+    );
   }
 
   Future<void> _pushCustomerContactToCloud(

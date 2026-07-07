@@ -19,8 +19,8 @@ void main() {
     await db.close();
   });
 
-  test('local schema version is 22 with text primary keys', () {
-    expect(db.schemaVersion, 27);
+  test('local schema version is 30 with text primary keys', () {
+    expect(db.schemaVersion, 30);
     expect(db.houses.id, isA<GeneratedColumn<String>>());
     expect(db.batches.id, isA<GeneratedColumn<String>>());
     expect(db.batches.farmId, isA<GeneratedColumn<String>>());
@@ -167,7 +167,7 @@ void main() {
   });
 
   test('onCreate builds all drift tables', () async {
-    expect(db.allTables.length, 26);
+    expect(db.allTables.length, 27);
 
     for (final table in db.allTables) {
       final rows = await db
@@ -320,10 +320,22 @@ void main() {
             id: formulationId,
             farmId: farmId,
             name: 'Starter Mix',
-            ingredientsJson: const Value('{"maize":60,"soya":40}'),
+            type: const Value('STARTER'),
+            stockLevel: const Value(40),
             synced: const Value(false),
           ),
         );
+
+    await db.into(db.feedFormulationIngredients).insert(
+      FeedFormulationIngredientsCompanion.insert(
+        id: newLocalId(),
+        formulationId: formulationId,
+        inventoryId: newLocalId(),
+        quantity: 40,
+        unit: const Value('bag'),
+        synced: const Value(false),
+      ),
+    );
 
     await db
         .into(db.feedingLogs)
@@ -347,6 +359,6 @@ void main() {
       db.feedFormulations,
     )..where((t) => t.id.equals(log.formulationId!))).getSingle();
     expect(form.id.isNotEmpty, isTrue);
-    expect(form.ingredientsJson, isNot(null));
+    expect(form.stockLevel, 40);
   });
 }

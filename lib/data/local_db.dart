@@ -379,9 +379,28 @@ class FeedFormulations extends Table {
   TextColumn get id => text()();
   TextColumn get farmId => text()();
   TextColumn get name => text()();
-  TextColumn get ingredientsJson => text().nullable()();
-  TextColumn get description => text().nullable()();
-  BoolColumn get isActive => boolean().withDefault(const Constant(true))();
+  TextColumn get notes => text().nullable()();
+  TextColumn get type => text().withDefault(const Constant('CUSTOM'))();
+  TextColumn get targetLivestock => text().nullable()();
+  RealColumn get stockLevel => real().withDefault(const Constant(0))();
+  DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+  DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
+  BoolColumn get synced => boolean().withDefault(const Constant(false))();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+@DataClassName('FeedFormulationIngredient')
+class FeedFormulationIngredients extends Table {
+  @override
+  String get tableName => 'feed_formulation_ingredients';
+
+  TextColumn get id => text()();
+  TextColumn get formulationId => text()();
+  TextColumn get inventoryId => text()();
+  RealColumn get quantity => real()();
+  TextColumn get unit => text().withDefault(const Constant('bag'))();
   BoolColumn get synced => boolean().withDefault(const Constant(false))();
 
   @override
@@ -611,6 +630,7 @@ LazyDatabase _openConnection() {
     FarmMembers,
     CloudUserIdMappings,
     FeedFormulations,
+    FeedFormulationIngredients,
     VaccinationSchedules,
     MedicationSchedules,
     HealthRecords,
@@ -631,7 +651,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 29;
+  int get schemaVersion => 30;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -747,7 +767,48 @@ class AppDatabase extends _$AppDatabase {
       if (from < 29) {
         await _ensureFifoSalesLedgerTables(m);
       }
+      if (from < 30) {
+        await _ensureFeedFormulationParityTables(m);
+        await m.createTable(feedFormulationIngredients);
+      }
     },
+  );
+}
+
+Future<void> _ensureFeedFormulationParityTables(Migrator m) async {
+  await m.database.customStatement('''
+    CREATE TABLE IF NOT EXISTS feed_formulations_new (
+      id TEXT NOT NULL PRIMARY KEY,
+      farm_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      notes TEXT,
+      type TEXT NOT NULL DEFAULT 'CUSTOM',
+      target_livestock TEXT,
+      stock_level REAL NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL DEFAULT (CAST(strftime('%s', 'now') AS INTEGER) * 1000000),
+      updated_at INTEGER NOT NULL DEFAULT (CAST(strftime('%s', 'now') AS INTEGER) * 1000000),
+      synced INTEGER NOT NULL DEFAULT 0 CHECK (synced IN (0, 1))
+    )
+  ''');
+
+  await m.database.customStatement('''
+    INSERT OR IGNORE INTO feed_formulations_new (
+      id, farm_id, name, notes, type, stock_level, synced
+    )
+    SELECT
+      id,
+      farm_id,
+      name,
+      description,
+      'CUSTOM',
+      0,
+      synced
+    FROM feed_formulations
+  ''');
+
+  await m.database.customStatement('DROP TABLE IF EXISTS feed_formulations');
+  await m.database.customStatement(
+    'ALTER TABLE feed_formulations_new RENAME TO feed_formulations',
   );
 }
 

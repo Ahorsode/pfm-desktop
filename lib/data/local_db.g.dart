@@ -9224,42 +9224,71 @@ class $FeedFormulationsTable extends FeedFormulations
     type: DriftSqlType.string,
     requiredDuringInsert: true,
   );
-  static const VerificationMeta _ingredientsJsonMeta = const VerificationMeta(
-    'ingredientsJson',
-  );
+  static const VerificationMeta _notesMeta = const VerificationMeta('notes');
   @override
-  late final GeneratedColumn<String> ingredientsJson = GeneratedColumn<String>(
-    'ingredients_json',
+  late final GeneratedColumn<String> notes = GeneratedColumn<String>(
+    'notes',
     aliasedName,
     true,
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
-  static const VerificationMeta _descriptionMeta = const VerificationMeta(
-    'description',
-  );
+  static const VerificationMeta _typeMeta = const VerificationMeta('type');
   @override
-  late final GeneratedColumn<String> description = GeneratedColumn<String>(
-    'description',
-    aliasedName,
-    true,
-    type: DriftSqlType.string,
-    requiredDuringInsert: false,
-  );
-  static const VerificationMeta _isActiveMeta = const VerificationMeta(
-    'isActive',
-  );
-  @override
-  late final GeneratedColumn<bool> isActive = GeneratedColumn<bool>(
-    'is_active',
+  late final GeneratedColumn<String> type = GeneratedColumn<String>(
+    'type',
     aliasedName,
     false,
-    type: DriftSqlType.bool,
+    type: DriftSqlType.string,
     requiredDuringInsert: false,
-    defaultConstraints: GeneratedColumn.constraintIsAlways(
-      'CHECK ("is_active" IN (0, 1))',
-    ),
-    defaultValue: const Constant(true),
+    defaultValue: const Constant('CUSTOM'),
+  );
+  static const VerificationMeta _targetLivestockMeta = const VerificationMeta(
+    'targetLivestock',
+  );
+  @override
+  late final GeneratedColumn<String> targetLivestock = GeneratedColumn<String>(
+    'target_livestock',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _stockLevelMeta = const VerificationMeta(
+    'stockLevel',
+  );
+  @override
+  late final GeneratedColumn<double> stockLevel = GeneratedColumn<double>(
+    'stock_level',
+    aliasedName,
+    false,
+    type: DriftSqlType.double,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
   );
   static const VerificationMeta _syncedMeta = const VerificationMeta('synced');
   @override
@@ -9279,9 +9308,12 @@ class $FeedFormulationsTable extends FeedFormulations
     id,
     farmId,
     name,
-    ingredientsJson,
-    description,
-    isActive,
+    notes,
+    type,
+    targetLivestock,
+    stockLevel,
+    createdAt,
+    updatedAt,
     synced,
   ];
   @override
@@ -9317,28 +9349,43 @@ class $FeedFormulationsTable extends FeedFormulations
     } else if (isInserting) {
       context.missing(_nameMeta);
     }
-    if (data.containsKey('ingredients_json')) {
+    if (data.containsKey('notes')) {
       context.handle(
-        _ingredientsJsonMeta,
-        ingredientsJson.isAcceptableOrUnknown(
-          data['ingredients_json']!,
-          _ingredientsJsonMeta,
+        _notesMeta,
+        notes.isAcceptableOrUnknown(data['notes']!, _notesMeta),
+      );
+    }
+    if (data.containsKey('type')) {
+      context.handle(
+        _typeMeta,
+        type.isAcceptableOrUnknown(data['type']!, _typeMeta),
+      );
+    }
+    if (data.containsKey('target_livestock')) {
+      context.handle(
+        _targetLivestockMeta,
+        targetLivestock.isAcceptableOrUnknown(
+          data['target_livestock']!,
+          _targetLivestockMeta,
         ),
       );
     }
-    if (data.containsKey('description')) {
+    if (data.containsKey('stock_level')) {
       context.handle(
-        _descriptionMeta,
-        description.isAcceptableOrUnknown(
-          data['description']!,
-          _descriptionMeta,
-        ),
+        _stockLevelMeta,
+        stockLevel.isAcceptableOrUnknown(data['stock_level']!, _stockLevelMeta),
       );
     }
-    if (data.containsKey('is_active')) {
+    if (data.containsKey('created_at')) {
       context.handle(
-        _isActiveMeta,
-        isActive.isAcceptableOrUnknown(data['is_active']!, _isActiveMeta),
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
       );
     }
     if (data.containsKey('synced')) {
@@ -9368,17 +9415,29 @@ class $FeedFormulationsTable extends FeedFormulations
         DriftSqlType.string,
         data['${effectivePrefix}name'],
       )!,
-      ingredientsJson: attachedDatabase.typeMapping.read(
+      notes: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
-        data['${effectivePrefix}ingredients_json'],
+        data['${effectivePrefix}notes'],
       ),
-      description: attachedDatabase.typeMapping.read(
+      type: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
-        data['${effectivePrefix}description'],
+        data['${effectivePrefix}type'],
+      )!,
+      targetLivestock: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}target_livestock'],
       ),
-      isActive: attachedDatabase.typeMapping.read(
-        DriftSqlType.bool,
-        data['${effectivePrefix}is_active'],
+      stockLevel: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}stock_level'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}updated_at'],
       )!,
       synced: attachedDatabase.typeMapping.read(
         DriftSqlType.bool,
@@ -9397,17 +9456,23 @@ class FeedFormulation extends DataClass implements Insertable<FeedFormulation> {
   final String id;
   final String farmId;
   final String name;
-  final String? ingredientsJson;
-  final String? description;
-  final bool isActive;
+  final String? notes;
+  final String type;
+  final String? targetLivestock;
+  final double stockLevel;
+  final DateTime createdAt;
+  final DateTime updatedAt;
   final bool synced;
   const FeedFormulation({
     required this.id,
     required this.farmId,
     required this.name,
-    this.ingredientsJson,
-    this.description,
-    required this.isActive,
+    this.notes,
+    required this.type,
+    this.targetLivestock,
+    required this.stockLevel,
+    required this.createdAt,
+    required this.updatedAt,
     required this.synced,
   });
   @override
@@ -9416,13 +9481,16 @@ class FeedFormulation extends DataClass implements Insertable<FeedFormulation> {
     map['id'] = Variable<String>(id);
     map['farm_id'] = Variable<String>(farmId);
     map['name'] = Variable<String>(name);
-    if (!nullToAbsent || ingredientsJson != null) {
-      map['ingredients_json'] = Variable<String>(ingredientsJson);
+    if (!nullToAbsent || notes != null) {
+      map['notes'] = Variable<String>(notes);
     }
-    if (!nullToAbsent || description != null) {
-      map['description'] = Variable<String>(description);
+    map['type'] = Variable<String>(type);
+    if (!nullToAbsent || targetLivestock != null) {
+      map['target_livestock'] = Variable<String>(targetLivestock);
     }
-    map['is_active'] = Variable<bool>(isActive);
+    map['stock_level'] = Variable<double>(stockLevel);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
     map['synced'] = Variable<bool>(synced);
     return map;
   }
@@ -9432,13 +9500,16 @@ class FeedFormulation extends DataClass implements Insertable<FeedFormulation> {
       id: Value(id),
       farmId: Value(farmId),
       name: Value(name),
-      ingredientsJson: ingredientsJson == null && nullToAbsent
+      notes: notes == null && nullToAbsent
           ? const Value.absent()
-          : Value(ingredientsJson),
-      description: description == null && nullToAbsent
+          : Value(notes),
+      type: Value(type),
+      targetLivestock: targetLivestock == null && nullToAbsent
           ? const Value.absent()
-          : Value(description),
-      isActive: Value(isActive),
+          : Value(targetLivestock),
+      stockLevel: Value(stockLevel),
+      createdAt: Value(createdAt),
+      updatedAt: Value(updatedAt),
       synced: Value(synced),
     );
   }
@@ -9452,9 +9523,12 @@ class FeedFormulation extends DataClass implements Insertable<FeedFormulation> {
       id: serializer.fromJson<String>(json['id']),
       farmId: serializer.fromJson<String>(json['farmId']),
       name: serializer.fromJson<String>(json['name']),
-      ingredientsJson: serializer.fromJson<String?>(json['ingredientsJson']),
-      description: serializer.fromJson<String?>(json['description']),
-      isActive: serializer.fromJson<bool>(json['isActive']),
+      notes: serializer.fromJson<String?>(json['notes']),
+      type: serializer.fromJson<String>(json['type']),
+      targetLivestock: serializer.fromJson<String?>(json['targetLivestock']),
+      stockLevel: serializer.fromJson<double>(json['stockLevel']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
       synced: serializer.fromJson<bool>(json['synced']),
     );
   }
@@ -9465,9 +9539,12 @@ class FeedFormulation extends DataClass implements Insertable<FeedFormulation> {
       'id': serializer.toJson<String>(id),
       'farmId': serializer.toJson<String>(farmId),
       'name': serializer.toJson<String>(name),
-      'ingredientsJson': serializer.toJson<String?>(ingredientsJson),
-      'description': serializer.toJson<String?>(description),
-      'isActive': serializer.toJson<bool>(isActive),
+      'notes': serializer.toJson<String?>(notes),
+      'type': serializer.toJson<String>(type),
+      'targetLivestock': serializer.toJson<String?>(targetLivestock),
+      'stockLevel': serializer.toJson<double>(stockLevel),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
       'synced': serializer.toJson<bool>(synced),
     };
   }
@@ -9476,19 +9553,25 @@ class FeedFormulation extends DataClass implements Insertable<FeedFormulation> {
     String? id,
     String? farmId,
     String? name,
-    Value<String?> ingredientsJson = const Value.absent(),
-    Value<String?> description = const Value.absent(),
-    bool? isActive,
+    Value<String?> notes = const Value.absent(),
+    String? type,
+    Value<String?> targetLivestock = const Value.absent(),
+    double? stockLevel,
+    DateTime? createdAt,
+    DateTime? updatedAt,
     bool? synced,
   }) => FeedFormulation(
     id: id ?? this.id,
     farmId: farmId ?? this.farmId,
     name: name ?? this.name,
-    ingredientsJson: ingredientsJson.present
-        ? ingredientsJson.value
-        : this.ingredientsJson,
-    description: description.present ? description.value : this.description,
-    isActive: isActive ?? this.isActive,
+    notes: notes.present ? notes.value : this.notes,
+    type: type ?? this.type,
+    targetLivestock: targetLivestock.present
+        ? targetLivestock.value
+        : this.targetLivestock,
+    stockLevel: stockLevel ?? this.stockLevel,
+    createdAt: createdAt ?? this.createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
     synced: synced ?? this.synced,
   );
   FeedFormulation copyWithCompanion(FeedFormulationsCompanion data) {
@@ -9496,13 +9579,16 @@ class FeedFormulation extends DataClass implements Insertable<FeedFormulation> {
       id: data.id.present ? data.id.value : this.id,
       farmId: data.farmId.present ? data.farmId.value : this.farmId,
       name: data.name.present ? data.name.value : this.name,
-      ingredientsJson: data.ingredientsJson.present
-          ? data.ingredientsJson.value
-          : this.ingredientsJson,
-      description: data.description.present
-          ? data.description.value
-          : this.description,
-      isActive: data.isActive.present ? data.isActive.value : this.isActive,
+      notes: data.notes.present ? data.notes.value : this.notes,
+      type: data.type.present ? data.type.value : this.type,
+      targetLivestock: data.targetLivestock.present
+          ? data.targetLivestock.value
+          : this.targetLivestock,
+      stockLevel: data.stockLevel.present
+          ? data.stockLevel.value
+          : this.stockLevel,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
       synced: data.synced.present ? data.synced.value : this.synced,
     );
   }
@@ -9513,9 +9599,12 @@ class FeedFormulation extends DataClass implements Insertable<FeedFormulation> {
           ..write('id: $id, ')
           ..write('farmId: $farmId, ')
           ..write('name: $name, ')
-          ..write('ingredientsJson: $ingredientsJson, ')
-          ..write('description: $description, ')
-          ..write('isActive: $isActive, ')
+          ..write('notes: $notes, ')
+          ..write('type: $type, ')
+          ..write('targetLivestock: $targetLivestock, ')
+          ..write('stockLevel: $stockLevel, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
           ..write('synced: $synced')
           ..write(')'))
         .toString();
@@ -9526,9 +9615,12 @@ class FeedFormulation extends DataClass implements Insertable<FeedFormulation> {
     id,
     farmId,
     name,
-    ingredientsJson,
-    description,
-    isActive,
+    notes,
+    type,
+    targetLivestock,
+    stockLevel,
+    createdAt,
+    updatedAt,
     synced,
   );
   @override
@@ -9538,9 +9630,12 @@ class FeedFormulation extends DataClass implements Insertable<FeedFormulation> {
           other.id == this.id &&
           other.farmId == this.farmId &&
           other.name == this.name &&
-          other.ingredientsJson == this.ingredientsJson &&
-          other.description == this.description &&
-          other.isActive == this.isActive &&
+          other.notes == this.notes &&
+          other.type == this.type &&
+          other.targetLivestock == this.targetLivestock &&
+          other.stockLevel == this.stockLevel &&
+          other.createdAt == this.createdAt &&
+          other.updatedAt == this.updatedAt &&
           other.synced == this.synced);
 }
 
@@ -9548,18 +9643,24 @@ class FeedFormulationsCompanion extends UpdateCompanion<FeedFormulation> {
   final Value<String> id;
   final Value<String> farmId;
   final Value<String> name;
-  final Value<String?> ingredientsJson;
-  final Value<String?> description;
-  final Value<bool> isActive;
+  final Value<String?> notes;
+  final Value<String> type;
+  final Value<String?> targetLivestock;
+  final Value<double> stockLevel;
+  final Value<DateTime> createdAt;
+  final Value<DateTime> updatedAt;
   final Value<bool> synced;
   final Value<int> rowid;
   const FeedFormulationsCompanion({
     this.id = const Value.absent(),
     this.farmId = const Value.absent(),
     this.name = const Value.absent(),
-    this.ingredientsJson = const Value.absent(),
-    this.description = const Value.absent(),
-    this.isActive = const Value.absent(),
+    this.notes = const Value.absent(),
+    this.type = const Value.absent(),
+    this.targetLivestock = const Value.absent(),
+    this.stockLevel = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
     this.synced = const Value.absent(),
     this.rowid = const Value.absent(),
   });
@@ -9567,9 +9668,12 @@ class FeedFormulationsCompanion extends UpdateCompanion<FeedFormulation> {
     required String id,
     required String farmId,
     required String name,
-    this.ingredientsJson = const Value.absent(),
-    this.description = const Value.absent(),
-    this.isActive = const Value.absent(),
+    this.notes = const Value.absent(),
+    this.type = const Value.absent(),
+    this.targetLivestock = const Value.absent(),
+    this.stockLevel = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
     this.synced = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
@@ -9579,9 +9683,12 @@ class FeedFormulationsCompanion extends UpdateCompanion<FeedFormulation> {
     Expression<String>? id,
     Expression<String>? farmId,
     Expression<String>? name,
-    Expression<String>? ingredientsJson,
-    Expression<String>? description,
-    Expression<bool>? isActive,
+    Expression<String>? notes,
+    Expression<String>? type,
+    Expression<String>? targetLivestock,
+    Expression<double>? stockLevel,
+    Expression<DateTime>? createdAt,
+    Expression<DateTime>? updatedAt,
     Expression<bool>? synced,
     Expression<int>? rowid,
   }) {
@@ -9589,9 +9696,12 @@ class FeedFormulationsCompanion extends UpdateCompanion<FeedFormulation> {
       if (id != null) 'id': id,
       if (farmId != null) 'farm_id': farmId,
       if (name != null) 'name': name,
-      if (ingredientsJson != null) 'ingredients_json': ingredientsJson,
-      if (description != null) 'description': description,
-      if (isActive != null) 'is_active': isActive,
+      if (notes != null) 'notes': notes,
+      if (type != null) 'type': type,
+      if (targetLivestock != null) 'target_livestock': targetLivestock,
+      if (stockLevel != null) 'stock_level': stockLevel,
+      if (createdAt != null) 'created_at': createdAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
       if (synced != null) 'synced': synced,
       if (rowid != null) 'rowid': rowid,
     });
@@ -9601,9 +9711,12 @@ class FeedFormulationsCompanion extends UpdateCompanion<FeedFormulation> {
     Value<String>? id,
     Value<String>? farmId,
     Value<String>? name,
-    Value<String?>? ingredientsJson,
-    Value<String?>? description,
-    Value<bool>? isActive,
+    Value<String?>? notes,
+    Value<String>? type,
+    Value<String?>? targetLivestock,
+    Value<double>? stockLevel,
+    Value<DateTime>? createdAt,
+    Value<DateTime>? updatedAt,
     Value<bool>? synced,
     Value<int>? rowid,
   }) {
@@ -9611,9 +9724,12 @@ class FeedFormulationsCompanion extends UpdateCompanion<FeedFormulation> {
       id: id ?? this.id,
       farmId: farmId ?? this.farmId,
       name: name ?? this.name,
-      ingredientsJson: ingredientsJson ?? this.ingredientsJson,
-      description: description ?? this.description,
-      isActive: isActive ?? this.isActive,
+      notes: notes ?? this.notes,
+      type: type ?? this.type,
+      targetLivestock: targetLivestock ?? this.targetLivestock,
+      stockLevel: stockLevel ?? this.stockLevel,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
       synced: synced ?? this.synced,
       rowid: rowid ?? this.rowid,
     );
@@ -9631,14 +9747,23 @@ class FeedFormulationsCompanion extends UpdateCompanion<FeedFormulation> {
     if (name.present) {
       map['name'] = Variable<String>(name.value);
     }
-    if (ingredientsJson.present) {
-      map['ingredients_json'] = Variable<String>(ingredientsJson.value);
+    if (notes.present) {
+      map['notes'] = Variable<String>(notes.value);
     }
-    if (description.present) {
-      map['description'] = Variable<String>(description.value);
+    if (type.present) {
+      map['type'] = Variable<String>(type.value);
     }
-    if (isActive.present) {
-      map['is_active'] = Variable<bool>(isActive.value);
+    if (targetLivestock.present) {
+      map['target_livestock'] = Variable<String>(targetLivestock.value);
+    }
+    if (stockLevel.present) {
+      map['stock_level'] = Variable<double>(stockLevel.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
     }
     if (synced.present) {
       map['synced'] = Variable<bool>(synced.value);
@@ -9655,9 +9780,435 @@ class FeedFormulationsCompanion extends UpdateCompanion<FeedFormulation> {
           ..write('id: $id, ')
           ..write('farmId: $farmId, ')
           ..write('name: $name, ')
-          ..write('ingredientsJson: $ingredientsJson, ')
-          ..write('description: $description, ')
-          ..write('isActive: $isActive, ')
+          ..write('notes: $notes, ')
+          ..write('type: $type, ')
+          ..write('targetLivestock: $targetLivestock, ')
+          ..write('stockLevel: $stockLevel, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('synced: $synced, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $FeedFormulationIngredientsTable extends FeedFormulationIngredients
+    with
+        TableInfo<$FeedFormulationIngredientsTable, FeedFormulationIngredient> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $FeedFormulationIngredientsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _formulationIdMeta = const VerificationMeta(
+    'formulationId',
+  );
+  @override
+  late final GeneratedColumn<String> formulationId = GeneratedColumn<String>(
+    'formulation_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _inventoryIdMeta = const VerificationMeta(
+    'inventoryId',
+  );
+  @override
+  late final GeneratedColumn<String> inventoryId = GeneratedColumn<String>(
+    'inventory_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _quantityMeta = const VerificationMeta(
+    'quantity',
+  );
+  @override
+  late final GeneratedColumn<double> quantity = GeneratedColumn<double>(
+    'quantity',
+    aliasedName,
+    false,
+    type: DriftSqlType.double,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _unitMeta = const VerificationMeta('unit');
+  @override
+  late final GeneratedColumn<String> unit = GeneratedColumn<String>(
+    'unit',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('bag'),
+  );
+  static const VerificationMeta _syncedMeta = const VerificationMeta('synced');
+  @override
+  late final GeneratedColumn<bool> synced = GeneratedColumn<bool>(
+    'synced',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("synced" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    formulationId,
+    inventoryId,
+    quantity,
+    unit,
+    synced,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'feed_formulation_ingredients';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<FeedFormulationIngredient> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('formulation_id')) {
+      context.handle(
+        _formulationIdMeta,
+        formulationId.isAcceptableOrUnknown(
+          data['formulation_id']!,
+          _formulationIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_formulationIdMeta);
+    }
+    if (data.containsKey('inventory_id')) {
+      context.handle(
+        _inventoryIdMeta,
+        inventoryId.isAcceptableOrUnknown(
+          data['inventory_id']!,
+          _inventoryIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_inventoryIdMeta);
+    }
+    if (data.containsKey('quantity')) {
+      context.handle(
+        _quantityMeta,
+        quantity.isAcceptableOrUnknown(data['quantity']!, _quantityMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_quantityMeta);
+    }
+    if (data.containsKey('unit')) {
+      context.handle(
+        _unitMeta,
+        unit.isAcceptableOrUnknown(data['unit']!, _unitMeta),
+      );
+    }
+    if (data.containsKey('synced')) {
+      context.handle(
+        _syncedMeta,
+        synced.isAcceptableOrUnknown(data['synced']!, _syncedMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  FeedFormulationIngredient map(
+    Map<String, dynamic> data, {
+    String? tablePrefix,
+  }) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return FeedFormulationIngredient(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      formulationId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}formulation_id'],
+      )!,
+      inventoryId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}inventory_id'],
+      )!,
+      quantity: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}quantity'],
+      )!,
+      unit: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}unit'],
+      )!,
+      synced: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}synced'],
+      )!,
+    );
+  }
+
+  @override
+  $FeedFormulationIngredientsTable createAlias(String alias) {
+    return $FeedFormulationIngredientsTable(attachedDatabase, alias);
+  }
+}
+
+class FeedFormulationIngredient extends DataClass
+    implements Insertable<FeedFormulationIngredient> {
+  final String id;
+  final String formulationId;
+  final String inventoryId;
+  final double quantity;
+  final String unit;
+  final bool synced;
+  const FeedFormulationIngredient({
+    required this.id,
+    required this.formulationId,
+    required this.inventoryId,
+    required this.quantity,
+    required this.unit,
+    required this.synced,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['formulation_id'] = Variable<String>(formulationId);
+    map['inventory_id'] = Variable<String>(inventoryId);
+    map['quantity'] = Variable<double>(quantity);
+    map['unit'] = Variable<String>(unit);
+    map['synced'] = Variable<bool>(synced);
+    return map;
+  }
+
+  FeedFormulationIngredientsCompanion toCompanion(bool nullToAbsent) {
+    return FeedFormulationIngredientsCompanion(
+      id: Value(id),
+      formulationId: Value(formulationId),
+      inventoryId: Value(inventoryId),
+      quantity: Value(quantity),
+      unit: Value(unit),
+      synced: Value(synced),
+    );
+  }
+
+  factory FeedFormulationIngredient.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return FeedFormulationIngredient(
+      id: serializer.fromJson<String>(json['id']),
+      formulationId: serializer.fromJson<String>(json['formulationId']),
+      inventoryId: serializer.fromJson<String>(json['inventoryId']),
+      quantity: serializer.fromJson<double>(json['quantity']),
+      unit: serializer.fromJson<String>(json['unit']),
+      synced: serializer.fromJson<bool>(json['synced']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'formulationId': serializer.toJson<String>(formulationId),
+      'inventoryId': serializer.toJson<String>(inventoryId),
+      'quantity': serializer.toJson<double>(quantity),
+      'unit': serializer.toJson<String>(unit),
+      'synced': serializer.toJson<bool>(synced),
+    };
+  }
+
+  FeedFormulationIngredient copyWith({
+    String? id,
+    String? formulationId,
+    String? inventoryId,
+    double? quantity,
+    String? unit,
+    bool? synced,
+  }) => FeedFormulationIngredient(
+    id: id ?? this.id,
+    formulationId: formulationId ?? this.formulationId,
+    inventoryId: inventoryId ?? this.inventoryId,
+    quantity: quantity ?? this.quantity,
+    unit: unit ?? this.unit,
+    synced: synced ?? this.synced,
+  );
+  FeedFormulationIngredient copyWithCompanion(
+    FeedFormulationIngredientsCompanion data,
+  ) {
+    return FeedFormulationIngredient(
+      id: data.id.present ? data.id.value : this.id,
+      formulationId: data.formulationId.present
+          ? data.formulationId.value
+          : this.formulationId,
+      inventoryId: data.inventoryId.present
+          ? data.inventoryId.value
+          : this.inventoryId,
+      quantity: data.quantity.present ? data.quantity.value : this.quantity,
+      unit: data.unit.present ? data.unit.value : this.unit,
+      synced: data.synced.present ? data.synced.value : this.synced,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('FeedFormulationIngredient(')
+          ..write('id: $id, ')
+          ..write('formulationId: $formulationId, ')
+          ..write('inventoryId: $inventoryId, ')
+          ..write('quantity: $quantity, ')
+          ..write('unit: $unit, ')
+          ..write('synced: $synced')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(id, formulationId, inventoryId, quantity, unit, synced);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is FeedFormulationIngredient &&
+          other.id == this.id &&
+          other.formulationId == this.formulationId &&
+          other.inventoryId == this.inventoryId &&
+          other.quantity == this.quantity &&
+          other.unit == this.unit &&
+          other.synced == this.synced);
+}
+
+class FeedFormulationIngredientsCompanion
+    extends UpdateCompanion<FeedFormulationIngredient> {
+  final Value<String> id;
+  final Value<String> formulationId;
+  final Value<String> inventoryId;
+  final Value<double> quantity;
+  final Value<String> unit;
+  final Value<bool> synced;
+  final Value<int> rowid;
+  const FeedFormulationIngredientsCompanion({
+    this.id = const Value.absent(),
+    this.formulationId = const Value.absent(),
+    this.inventoryId = const Value.absent(),
+    this.quantity = const Value.absent(),
+    this.unit = const Value.absent(),
+    this.synced = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  FeedFormulationIngredientsCompanion.insert({
+    required String id,
+    required String formulationId,
+    required String inventoryId,
+    required double quantity,
+    this.unit = const Value.absent(),
+    this.synced = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       formulationId = Value(formulationId),
+       inventoryId = Value(inventoryId),
+       quantity = Value(quantity);
+  static Insertable<FeedFormulationIngredient> custom({
+    Expression<String>? id,
+    Expression<String>? formulationId,
+    Expression<String>? inventoryId,
+    Expression<double>? quantity,
+    Expression<String>? unit,
+    Expression<bool>? synced,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (formulationId != null) 'formulation_id': formulationId,
+      if (inventoryId != null) 'inventory_id': inventoryId,
+      if (quantity != null) 'quantity': quantity,
+      if (unit != null) 'unit': unit,
+      if (synced != null) 'synced': synced,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  FeedFormulationIngredientsCompanion copyWith({
+    Value<String>? id,
+    Value<String>? formulationId,
+    Value<String>? inventoryId,
+    Value<double>? quantity,
+    Value<String>? unit,
+    Value<bool>? synced,
+    Value<int>? rowid,
+  }) {
+    return FeedFormulationIngredientsCompanion(
+      id: id ?? this.id,
+      formulationId: formulationId ?? this.formulationId,
+      inventoryId: inventoryId ?? this.inventoryId,
+      quantity: quantity ?? this.quantity,
+      unit: unit ?? this.unit,
+      synced: synced ?? this.synced,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (formulationId.present) {
+      map['formulation_id'] = Variable<String>(formulationId.value);
+    }
+    if (inventoryId.present) {
+      map['inventory_id'] = Variable<String>(inventoryId.value);
+    }
+    if (quantity.present) {
+      map['quantity'] = Variable<double>(quantity.value);
+    }
+    if (unit.present) {
+      map['unit'] = Variable<String>(unit.value);
+    }
+    if (synced.present) {
+      map['synced'] = Variable<bool>(synced.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('FeedFormulationIngredientsCompanion(')
+          ..write('id: $id, ')
+          ..write('formulationId: $formulationId, ')
+          ..write('inventoryId: $inventoryId, ')
+          ..write('quantity: $quantity, ')
+          ..write('unit: $unit, ')
           ..write('synced: $synced, ')
           ..write('rowid: $rowid')
           ..write(')'))
@@ -16105,6 +16656,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $FeedFormulationsTable feedFormulations = $FeedFormulationsTable(
     this,
   );
+  late final $FeedFormulationIngredientsTable feedFormulationIngredients =
+      $FeedFormulationIngredientsTable(this);
   late final $VaccinationSchedulesTable vaccinationSchedules =
       $VaccinationSchedulesTable(this);
   late final $MedicationSchedulesTable medicationSchedules =
@@ -16142,6 +16695,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     farmMembers,
     cloudUserIdMappings,
     feedFormulations,
+    feedFormulationIngredients,
     vaccinationSchedules,
     medicationSchedules,
     healthRecords,
@@ -20595,9 +21149,12 @@ typedef $$FeedFormulationsTableCreateCompanionBuilder =
       required String id,
       required String farmId,
       required String name,
-      Value<String?> ingredientsJson,
-      Value<String?> description,
-      Value<bool> isActive,
+      Value<String?> notes,
+      Value<String> type,
+      Value<String?> targetLivestock,
+      Value<double> stockLevel,
+      Value<DateTime> createdAt,
+      Value<DateTime> updatedAt,
       Value<bool> synced,
       Value<int> rowid,
     });
@@ -20606,9 +21163,12 @@ typedef $$FeedFormulationsTableUpdateCompanionBuilder =
       Value<String> id,
       Value<String> farmId,
       Value<String> name,
-      Value<String?> ingredientsJson,
-      Value<String?> description,
-      Value<bool> isActive,
+      Value<String?> notes,
+      Value<String> type,
+      Value<String?> targetLivestock,
+      Value<double> stockLevel,
+      Value<DateTime> createdAt,
+      Value<DateTime> updatedAt,
       Value<bool> synced,
       Value<int> rowid,
     });
@@ -20637,18 +21197,33 @@ class $$FeedFormulationsTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
-  ColumnFilters<String> get ingredientsJson => $composableBuilder(
-    column: $table.ingredientsJson,
+  ColumnFilters<String> get notes => $composableBuilder(
+    column: $table.notes,
     builder: (column) => ColumnFilters(column),
   );
 
-  ColumnFilters<String> get description => $composableBuilder(
-    column: $table.description,
+  ColumnFilters<String> get type => $composableBuilder(
+    column: $table.type,
     builder: (column) => ColumnFilters(column),
   );
 
-  ColumnFilters<bool> get isActive => $composableBuilder(
-    column: $table.isActive,
+  ColumnFilters<String> get targetLivestock => $composableBuilder(
+    column: $table.targetLivestock,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get stockLevel => $composableBuilder(
+    column: $table.stockLevel,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -20682,18 +21257,33 @@ class $$FeedFormulationsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
-  ColumnOrderings<String> get ingredientsJson => $composableBuilder(
-    column: $table.ingredientsJson,
+  ColumnOrderings<String> get notes => $composableBuilder(
+    column: $table.notes,
     builder: (column) => ColumnOrderings(column),
   );
 
-  ColumnOrderings<String> get description => $composableBuilder(
-    column: $table.description,
+  ColumnOrderings<String> get type => $composableBuilder(
+    column: $table.type,
     builder: (column) => ColumnOrderings(column),
   );
 
-  ColumnOrderings<bool> get isActive => $composableBuilder(
-    column: $table.isActive,
+  ColumnOrderings<String> get targetLivestock => $composableBuilder(
+    column: $table.targetLivestock,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get stockLevel => $composableBuilder(
+    column: $table.stockLevel,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
     builder: (column) => ColumnOrderings(column),
   );
 
@@ -20721,18 +21311,27 @@ class $$FeedFormulationsTableAnnotationComposer
   GeneratedColumn<String> get name =>
       $composableBuilder(column: $table.name, builder: (column) => column);
 
-  GeneratedColumn<String> get ingredientsJson => $composableBuilder(
-    column: $table.ingredientsJson,
+  GeneratedColumn<String> get notes =>
+      $composableBuilder(column: $table.notes, builder: (column) => column);
+
+  GeneratedColumn<String> get type =>
+      $composableBuilder(column: $table.type, builder: (column) => column);
+
+  GeneratedColumn<String> get targetLivestock => $composableBuilder(
+    column: $table.targetLivestock,
     builder: (column) => column,
   );
 
-  GeneratedColumn<String> get description => $composableBuilder(
-    column: $table.description,
+  GeneratedColumn<double> get stockLevel => $composableBuilder(
+    column: $table.stockLevel,
     builder: (column) => column,
   );
 
-  GeneratedColumn<bool> get isActive =>
-      $composableBuilder(column: $table.isActive, builder: (column) => column);
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
 
   GeneratedColumn<bool> get synced =>
       $composableBuilder(column: $table.synced, builder: (column) => column);
@@ -20778,18 +21377,24 @@ class $$FeedFormulationsTableTableManager
                 Value<String> id = const Value.absent(),
                 Value<String> farmId = const Value.absent(),
                 Value<String> name = const Value.absent(),
-                Value<String?> ingredientsJson = const Value.absent(),
-                Value<String?> description = const Value.absent(),
-                Value<bool> isActive = const Value.absent(),
+                Value<String?> notes = const Value.absent(),
+                Value<String> type = const Value.absent(),
+                Value<String?> targetLivestock = const Value.absent(),
+                Value<double> stockLevel = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
                 Value<bool> synced = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => FeedFormulationsCompanion(
                 id: id,
                 farmId: farmId,
                 name: name,
-                ingredientsJson: ingredientsJson,
-                description: description,
-                isActive: isActive,
+                notes: notes,
+                type: type,
+                targetLivestock: targetLivestock,
+                stockLevel: stockLevel,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
                 synced: synced,
                 rowid: rowid,
               ),
@@ -20798,18 +21403,24 @@ class $$FeedFormulationsTableTableManager
                 required String id,
                 required String farmId,
                 required String name,
-                Value<String?> ingredientsJson = const Value.absent(),
-                Value<String?> description = const Value.absent(),
-                Value<bool> isActive = const Value.absent(),
+                Value<String?> notes = const Value.absent(),
+                Value<String> type = const Value.absent(),
+                Value<String?> targetLivestock = const Value.absent(),
+                Value<double> stockLevel = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
                 Value<bool> synced = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => FeedFormulationsCompanion.insert(
                 id: id,
                 farmId: farmId,
                 name: name,
-                ingredientsJson: ingredientsJson,
-                description: description,
-                isActive: isActive,
+                notes: notes,
+                type: type,
+                targetLivestock: targetLivestock,
+                stockLevel: stockLevel,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
                 synced: synced,
                 rowid: rowid,
               ),
@@ -20836,6 +21447,248 @@ typedef $$FeedFormulationsTableProcessedTableManager =
         BaseReferences<_$AppDatabase, $FeedFormulationsTable, FeedFormulation>,
       ),
       FeedFormulation,
+      PrefetchHooks Function()
+    >;
+typedef $$FeedFormulationIngredientsTableCreateCompanionBuilder =
+    FeedFormulationIngredientsCompanion Function({
+      required String id,
+      required String formulationId,
+      required String inventoryId,
+      required double quantity,
+      Value<String> unit,
+      Value<bool> synced,
+      Value<int> rowid,
+    });
+typedef $$FeedFormulationIngredientsTableUpdateCompanionBuilder =
+    FeedFormulationIngredientsCompanion Function({
+      Value<String> id,
+      Value<String> formulationId,
+      Value<String> inventoryId,
+      Value<double> quantity,
+      Value<String> unit,
+      Value<bool> synced,
+      Value<int> rowid,
+    });
+
+class $$FeedFormulationIngredientsTableFilterComposer
+    extends Composer<_$AppDatabase, $FeedFormulationIngredientsTable> {
+  $$FeedFormulationIngredientsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get formulationId => $composableBuilder(
+    column: $table.formulationId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get inventoryId => $composableBuilder(
+    column: $table.inventoryId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get quantity => $composableBuilder(
+    column: $table.quantity,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get unit => $composableBuilder(
+    column: $table.unit,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get synced => $composableBuilder(
+    column: $table.synced,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$FeedFormulationIngredientsTableOrderingComposer
+    extends Composer<_$AppDatabase, $FeedFormulationIngredientsTable> {
+  $$FeedFormulationIngredientsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get formulationId => $composableBuilder(
+    column: $table.formulationId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get inventoryId => $composableBuilder(
+    column: $table.inventoryId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get quantity => $composableBuilder(
+    column: $table.quantity,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get unit => $composableBuilder(
+    column: $table.unit,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get synced => $composableBuilder(
+    column: $table.synced,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$FeedFormulationIngredientsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $FeedFormulationIngredientsTable> {
+  $$FeedFormulationIngredientsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get formulationId => $composableBuilder(
+    column: $table.formulationId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get inventoryId => $composableBuilder(
+    column: $table.inventoryId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<double> get quantity =>
+      $composableBuilder(column: $table.quantity, builder: (column) => column);
+
+  GeneratedColumn<String> get unit =>
+      $composableBuilder(column: $table.unit, builder: (column) => column);
+
+  GeneratedColumn<bool> get synced =>
+      $composableBuilder(column: $table.synced, builder: (column) => column);
+}
+
+class $$FeedFormulationIngredientsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $FeedFormulationIngredientsTable,
+          FeedFormulationIngredient,
+          $$FeedFormulationIngredientsTableFilterComposer,
+          $$FeedFormulationIngredientsTableOrderingComposer,
+          $$FeedFormulationIngredientsTableAnnotationComposer,
+          $$FeedFormulationIngredientsTableCreateCompanionBuilder,
+          $$FeedFormulationIngredientsTableUpdateCompanionBuilder,
+          (
+            FeedFormulationIngredient,
+            BaseReferences<
+              _$AppDatabase,
+              $FeedFormulationIngredientsTable,
+              FeedFormulationIngredient
+            >,
+          ),
+          FeedFormulationIngredient,
+          PrefetchHooks Function()
+        > {
+  $$FeedFormulationIngredientsTableTableManager(
+    _$AppDatabase db,
+    $FeedFormulationIngredientsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$FeedFormulationIngredientsTableFilterComposer(
+                $db: db,
+                $table: table,
+              ),
+          createOrderingComposer: () =>
+              $$FeedFormulationIngredientsTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer: () =>
+              $$FeedFormulationIngredientsTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> formulationId = const Value.absent(),
+                Value<String> inventoryId = const Value.absent(),
+                Value<double> quantity = const Value.absent(),
+                Value<String> unit = const Value.absent(),
+                Value<bool> synced = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => FeedFormulationIngredientsCompanion(
+                id: id,
+                formulationId: formulationId,
+                inventoryId: inventoryId,
+                quantity: quantity,
+                unit: unit,
+                synced: synced,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String formulationId,
+                required String inventoryId,
+                required double quantity,
+                Value<String> unit = const Value.absent(),
+                Value<bool> synced = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => FeedFormulationIngredientsCompanion.insert(
+                id: id,
+                formulationId: formulationId,
+                inventoryId: inventoryId,
+                quantity: quantity,
+                unit: unit,
+                synced: synced,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$FeedFormulationIngredientsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $FeedFormulationIngredientsTable,
+      FeedFormulationIngredient,
+      $$FeedFormulationIngredientsTableFilterComposer,
+      $$FeedFormulationIngredientsTableOrderingComposer,
+      $$FeedFormulationIngredientsTableAnnotationComposer,
+      $$FeedFormulationIngredientsTableCreateCompanionBuilder,
+      $$FeedFormulationIngredientsTableUpdateCompanionBuilder,
+      (
+        FeedFormulationIngredient,
+        BaseReferences<
+          _$AppDatabase,
+          $FeedFormulationIngredientsTable,
+          FeedFormulationIngredient
+        >,
+      ),
+      FeedFormulationIngredient,
       PrefetchHooks Function()
     >;
 typedef $$VaccinationSchedulesTableCreateCompanionBuilder =
@@ -24055,6 +24908,12 @@ class $AppDatabaseManager {
       $$CloudUserIdMappingsTableTableManager(_db, _db.cloudUserIdMappings);
   $$FeedFormulationsTableTableManager get feedFormulations =>
       $$FeedFormulationsTableTableManager(_db, _db.feedFormulations);
+  $$FeedFormulationIngredientsTableTableManager
+  get feedFormulationIngredients =>
+      $$FeedFormulationIngredientsTableTableManager(
+        _db,
+        _db.feedFormulationIngredients,
+      );
   $$VaccinationSchedulesTableTableManager get vaccinationSchedules =>
       $$VaccinationSchedulesTableTableManager(_db, _db.vaccinationSchedules);
   $$MedicationSchedulesTableTableManager get medicationSchedules =>
