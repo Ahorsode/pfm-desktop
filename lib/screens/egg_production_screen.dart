@@ -1449,6 +1449,7 @@ class _LogEggProductionDialogState extends State<LogEggProductionDialog> {
 
   bool _isCratesMode = false;
   bool _isSorted = false;
+  int _eggsPerCrate = defaultEggsPerCrate;
 
   final _totalController = TextEditingController(text: '0');
   final _cratesController = TextEditingController(text: '0');
@@ -1473,6 +1474,23 @@ class _LogEggProductionDialogState extends State<LogEggProductionDialog> {
     _smallController.addListener(_updateState);
     _mediumController.addListener(_updateState);
     _largeController.addListener(_updateState);
+    _loadEggsPerCrate();
+  }
+
+  Future<void> _loadEggsPerCrate() async {
+    final farmId = await FarmUtils.getBoundFarmId();
+    if (farmId == null || !mounted) {
+      return;
+    }
+    final settings = await (widget.db.select(widget.db.farmSettings)
+          ..where((t) => t.farmId.equals(farmId)))
+        .getSingleOrNull();
+    if (!mounted || settings == null) {
+      return;
+    }
+    setState(() {
+      _eggsPerCrate = settings.eggsPerCrate;
+    });
   }
 
   @override
@@ -1502,6 +1520,7 @@ class _LogEggProductionDialogState extends State<LogEggProductionDialog> {
     crates: int.tryParse(_cratesController.text) ?? 0,
     remainder: int.tryParse(_remainderController.text) ?? 0,
     individualTotal: int.tryParse(_totalController.text) ?? 0,
+    eggsPerCrate: _eggsPerCrate,
   );
 
   int get _allocatedTotal {
@@ -1619,7 +1638,7 @@ class _LogEggProductionDialogState extends State<LogEggProductionDialog> {
                     const SizedBox(width: 12),
                     Expanded(
                       child: _buildToggleButton(
-                        label: 'CRATES (30/EA)',
+                        label: 'CRATES ($_eggsPerCrate/EA)',
                         isActive: _isCratesMode,
                         activeColor: orangeColor,
                         onTap: () => setState(() => _isCratesMode = true),
@@ -1947,7 +1966,9 @@ class _LogEggProductionDialogState extends State<LogEggProductionDialog> {
         if (val == null || val.isEmpty) return 'Required';
         if (isRemainder) {
           final num = int.tryParse(val) ?? 0;
-          if (num > 29) return 'Max 29';
+          if (num > _eggsPerCrate - 1) {
+            return 'Max ${_eggsPerCrate - 1}';
+          }
         }
         return null;
       },

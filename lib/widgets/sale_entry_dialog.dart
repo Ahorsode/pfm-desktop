@@ -14,7 +14,18 @@ import '../utils/sale_payment_utils.dart';
 import '../utils/sale_quantity_utils.dart';
 import '../utils/inventory_sale_utils.dart';
 
-enum _DiscountMode { flat, percentage }
+enum _DiscountMode { flat, percentage, item }
+
+String _desktopDiscountType(_DiscountMode mode) {
+  switch (mode) {
+    case _DiscountMode.percentage:
+      return 'percent';
+    case _DiscountMode.item:
+      return 'item';
+    case _DiscountMode.flat:
+      return 'flat';
+  }
+}
 
 class _ProductOption {
   const _ProductOption({
@@ -413,6 +424,9 @@ class _SaleEntryDialogState extends State<_SaleEntryDialog> {
   double _lineDiscountFor(_SaleLineState line) {
     final raw = double.tryParse(line.lineDiscountController.text.trim()) ?? 0;
     final subtotal = _lineSubtotalFor(line);
+    if (line.lineDiscountMode == _DiscountMode.item) {
+      return 0;
+    }
     if (line.lineDiscountMode == _DiscountMode.percentage) {
       return (subtotal * raw / 100).clamp(0, subtotal);
     }
@@ -472,8 +486,13 @@ class _SaleEntryDialogState extends State<_SaleEntryDialog> {
       }
       if (line.productType == SaleProductType.inventory) {
         final displayQuantity = int.tryParse(line.quantityController.text.trim()) ?? 0;
+        final giveaway = line.lineDiscountMode == _DiscountMode.item
+            ? (double.tryParse(line.lineDiscountController.text.trim()) ?? 0)
+                .round()
+                .clamp(0, 999999)
+            : 0;
         final quantityEggs = saleQuantityInEggs(
-          displayQuantity: displayQuantity,
+          displayQuantity: saleQuantityWithGiveaway(displayQuantity, giveaway),
           unit: line.eggQuantityUnit,
           eggsPerCrate: _eggsPerCrate,
         );
@@ -518,8 +537,13 @@ class _SaleEntryDialogState extends State<_SaleEntryDialog> {
       }
       if (line.productType == SaleProductType.inventory) {
         final displayQuantity = int.tryParse(line.quantityController.text.trim()) ?? 0;
+        final giveaway = line.lineDiscountMode == _DiscountMode.item
+            ? (double.tryParse(line.lineDiscountController.text.trim()) ?? 0)
+                .round()
+                .clamp(0, 999999)
+            : 0;
         final quantityEggs = saleQuantityInEggs(
-          displayQuantity: displayQuantity,
+          displayQuantity: saleQuantityWithGiveaway(displayQuantity, giveaway),
           unit: line.eggQuantityUnit,
           eggsPerCrate: _eggsPerCrate,
         );
@@ -555,9 +579,7 @@ class _SaleEntryDialogState extends State<_SaleEntryDialog> {
         eggQuantityUnit: line.eggQuantityUnit,
         lineDiscountAmount:
             double.tryParse(line.lineDiscountController.text.trim()) ?? 0,
-        lineDiscountType: line.lineDiscountMode == _DiscountMode.percentage
-            ? 'percent'
-            : 'flat',
+        lineDiscountType: _desktopDiscountType(line.lineDiscountMode),
         eggsPerCrate: _eggsPerCrate,
       );
     }).toList(growable: false);
@@ -1241,6 +1263,7 @@ class _LineEditor extends StatelessWidget {
                 segments: const [
                   ButtonSegment(value: _DiscountMode.flat, label: Text('Flat')),
                   ButtonSegment(value: _DiscountMode.percentage, label: Text('%')),
+                  ButtonSegment(value: _DiscountMode.item, label: Text('Free')),
                 ],
                 selected: {line.lineDiscountMode},
                 onSelectionChanged: (selection) {
@@ -1252,9 +1275,11 @@ class _LineEditor extends StatelessWidget {
                 controller: line.lineDiscountController,
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
                 decoration: InputDecoration(
-                  labelText: line.lineDiscountMode == _DiscountMode.percentage
-                      ? 'Line Discount (%)'
-                      : 'Line Discount (GHS)',
+                  labelText: line.lineDiscountMode == _DiscountMode.item
+                      ? 'Extra free crates (on top)'
+                      : line.lineDiscountMode == _DiscountMode.percentage
+                          ? 'Line Discount (%)'
+                          : 'Line Discount (GHS)',
                 ),
                 onChanged: (_) => onChanged(),
               ),

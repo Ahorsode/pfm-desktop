@@ -344,6 +344,7 @@ class _BatchEggLogDialogState extends State<_BatchEggLogDialog> {
             farmId: widget.farmId,
             batchId: widget.batchId,
             eggsCollected: eggs,
+            eggsRemaining: Value(eggs),
             logDate: _logDate,
             userId: Value(workerId),
             synced: const Value(false),

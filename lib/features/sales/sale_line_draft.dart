@@ -21,6 +21,7 @@ class SaleLineDraft {
 
   final SaleProductType productType;
   final String description;
+  /// Paid quantity in [eggQuantityUnit] for eggs, or birds for livestock.
   final int quantity;
   final double unitPrice;
   final String? inventoryId;
@@ -28,16 +29,27 @@ class SaleLineDraft {
   final String? eggAllocationMode;
   final String? eggBatchId;
   final EggSaleQuantityUnit eggQuantityUnit;
+  /// For `item` discounts this is free unit count; otherwise money or percent.
   final double lineDiscountAmount;
   final String lineDiscountType;
   final int eggsPerCrate;
 
+  int get giveawayQuantity {
+    if (lineDiscountType != 'item') {
+      return 0;
+    }
+    return lineDiscountAmount.round().clamp(0, 999999);
+  }
+
+  int get stockQuantityDisplay =>
+      saleQuantityWithGiveaway(quantity, giveawayQuantity);
+
   int get resolvedQuantityEggs {
     if (productType != SaleProductType.inventory) {
-      return quantity;
+      return stockQuantityDisplay;
     }
     return saleQuantityInEggs(
-      displayQuantity: quantity,
+      displayQuantity: stockQuantityDisplay,
       unit: eggQuantityUnit,
       eggsPerCrate: eggsPerCrate,
     );
@@ -49,10 +61,16 @@ class SaleLineDraft {
         lineSubtotal: lineSubtotal,
         discountAmount: lineDiscountAmount,
         discountType: lineDiscountType,
+        unitPrice: unitPrice,
       );
 
-  double get lineTotal =>
-      (lineSubtotal - lineDiscountValue).clamp(0, double.infinity);
+  /// Billed total: paid units only for item giveaways (additive free stock).
+  double get lineTotal {
+    if (lineDiscountType == 'item') {
+      return lineSubtotal.clamp(0, double.infinity);
+    }
+    return (lineSubtotal - lineDiscountValue).clamp(0, double.infinity);
+  }
 
   double get resolvedUnitPricePerEgg {
     if (productType != SaleProductType.inventory) {
